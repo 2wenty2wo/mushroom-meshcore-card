@@ -708,6 +708,9 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   private _renderNeighbors(node: NodeInfo, t: LocalizeFunc): string {
+    const nodeCfg = this._nodeCfg(node.name);
+    if (nodeCfg.show_neighbors === false) return "";
+
     const neighbors = this._getNeighbors(node.deviceId);
     const neighborsWithSnr = neighbors.filter(n => n.snr !== null && !isNaN(parseFloat(n.snr)));
     
@@ -725,7 +728,12 @@ export class MeshcoreCard extends HTMLElement {
       `;
     }
     
-    const neighborRows = neighborsWithSnr.map(n => {
+    // Cap the list (neighbors are sorted best-SNR-first, so the cap keeps
+    // the strongest links); the count badge still shows the full total.
+    const cap = nodeCfg.max_neighbors;
+    const shownNeighbors = cap && cap > 0 ? neighborsWithSnr.slice(0, cap) : neighborsWithSnr;
+
+    const neighborRows = shownNeighbors.map(n => {
       const snr = parseFloat(n.snr).toFixed(1);
       const snrClass = this._getSnrClass(snr);
       const snrDesc = this._snrDescription(parseFloat(n.snr), t);

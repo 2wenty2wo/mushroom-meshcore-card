@@ -65,6 +65,7 @@ type: custom:meshcore-card
   - Battery percentage bar with voltage
   - Location map link (resolved from the node's contact advertisement)
   - **Repeater nodes**: TX/RX airtime bars, noise floor, uptime, TX/RX rate, relayed/canceled/duplicate traffic counts, sent/received totals
+  - **Neighbors list** on repeaters, sorted by SNR — hideable or cappable per node (`show_neighbors`, `max_neighbors`)
   - Optional sensor readings: temperature, humidity, illuminance, pressure (configured per node)
 - **Drag-to-reorder** — drag nodes in the visual editor to set display order
 - **Throttled rendering** — updates at most once every 10 seconds
@@ -91,6 +92,9 @@ nodes:
     humidity_entity: sensor.x     # humidity sensor to display (optional)
     illuminance_entity: sensor.x  # illuminance sensor to display (optional)
     pressure_entity: sensor.x     # pressure sensor to display (optional)
+    show_neighbors: true          # show the repeater's neighbors list (default: true)
+    max_neighbors: 10             # cap the neighbors list at N strongest-SNR entries
+                                  # (0 or unset = show all)
 nodes_order:                      # display order for nodes (set via drag-and-drop in editor)
   - MyNode
   - OtherNode

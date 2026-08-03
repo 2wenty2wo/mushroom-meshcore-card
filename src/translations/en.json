@@ -73,6 +73,8 @@
     "hub_section_title": "Hub: {name} ({key})",
     "max_contact_age": "Maximum contact age (days)",
     "no_hubs_detected": "No MeshCore hubs detected yet. Add the card, then edit to configure.",
-    "node_order_label": "Node Display Order"
+    "node_order_label": "Node Display Order",
+    "show_neighbors": "Show neighbors list",
+    "max_neighbors": "Max neighbors shown (0 = all)"
   }
 }

@@ -47,6 +47,8 @@ export interface NodeConfig {
   humidity_entity?: string;
   illuminance_entity?: string;
   pressure_entity?: string;
+  show_neighbors?: boolean;
+  max_neighbors?: number;
 }
 
 export interface GridOptions {
@@ -109,6 +111,12 @@ export interface TelemetryCell {
 
 export interface HaFormSelector {
   boolean?: Record<string, never>;
+  number?: {
+    min?: number;
+    max?: number;
+    step?: number;
+    mode?: "box" | "slider";
+  };
   entity?: {
     domain?: string;
     include_entities?: string[];
