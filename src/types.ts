@@ -61,6 +61,8 @@ export interface MeshcoreCardConfig {
   hubs?: Record<string, HubConfig | boolean>;
   nodes?: Record<string, NodeConfig | boolean>;
   nodes_order?: string[];
+  map_provider?: string;
+  map_metro?: string;
   grid_options?: GridOptions;
 }
 
@@ -68,6 +70,8 @@ export interface MeshcoreContactCardConfig {
   type?: string;
   max_contact_age_days?: number;
   show_path?: boolean;
+  map_provider?: string;
+  map_metro?: string;
   grid_options?: GridOptions;
 }
 
@@ -110,6 +114,11 @@ export interface TelemetryCell {
 
 export interface HaFormSelector {
   boolean?: Record<string, never>;
+  text?: Record<string, never>;
+  select?: {
+    mode?: "dropdown" | "list";
+    options: { value: string; label: string }[];
+  };
   entity?: {
     domain?: string;
     include_entities?: string[];

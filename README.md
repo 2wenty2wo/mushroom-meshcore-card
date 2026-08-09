@@ -59,7 +59,7 @@ type: custom:meshcore-card
 - **Hub status** — online/offline indicator, node count, hardware model, firmware version
 - **RF parameters** — frequency, bandwidth, spreading factor, TX power
 - **MQTT broker status** — per-broker connection pills (green = connected, red = disconnected)
-- **Hub location** — coordinates chip with a direct link to the [MeshCore Analyzer map](https://analyzer.letsmesh.net)
+- **Hub location** — coordinates chip linking to the [MeshCore Analyzer map](https://analyzer.letsmesh.net) (default) or a [MeshMapper](https://meshmapper.net) regional instance (`map_provider` / `map_metro`)
 - **Remote nodes** — automatically discovered:
   - Online/offline status, RSSI and SNR badges, routing path, last seen time
   - Battery percentage bar with voltage
@@ -94,6 +94,8 @@ nodes:
 nodes_order:                      # display order for nodes (set via drag-and-drop in editor)
   - MyNode
   - OtherNode
+map_provider: meshmapper          # map for location links: analyzer (default) or meshmapper
+map_metro: smf                    # MeshMapper metro subdomain (required with meshmapper)
 grid_options:
   rows: 4                         # fix card height to N dashboard grid rows;
                                   # content that doesn't fit is hidden cleanly
@@ -135,6 +137,8 @@ type: custom:meshcore-contact-card
 type: custom:meshcore-contact-card
 max_contact_age_days: 7           # hide contacts not heard within this many days (default: 7)
 show_path: true                   # show routing path per contact (default: false)
+map_provider: meshmapper          # map for location links: analyzer (default) or meshmapper
+map_metro: smf                    # MeshMapper metro subdomain (required with meshmapper)
 grid_options:
   rows: 4                         # fix card height to N dashboard grid rows
 ```

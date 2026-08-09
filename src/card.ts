@@ -14,6 +14,7 @@ import {
   batteryColor,
   formatUptime,
   escapeHtml,
+  mapLinkUrl,
 } from "./helpers.js";
 import { STYLES } from "./styles.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
@@ -192,7 +193,7 @@ export class MeshcoreCard extends HTMLElement {
     if (!entityId) return "";
     const latF = parseFloat(String(lat)).toFixed(5);
     const lonF = parseFloat(String(lon)).toFixed(5);
-    const url = `https://analyzer.letsmesh.net/map?lat=${latF}&long=${lonF}&zoom=10`;
+    const url = mapLinkUrl(this._config ?? {}, lat, lon);
     return `<div class="loc-row">
       <span class="loc-coords clickable" data-entity="${escapeHtml(entityId)}">📍 ${latF}, ${lonF}</span>
       <a class="map-link" href="${url}" target="_blank" rel="noopener">${escapeHtml(t("card.map_link"))}</a>

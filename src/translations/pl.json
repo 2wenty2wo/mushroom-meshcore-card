@@ -76,6 +76,8 @@
     "max_contact_age": "Maksymalny wiek kontaktu (dni)",
     "no_hubs_detected": "Nie wykryto jeszcze żadnych hubów MeshCore. Dodaj kartę, a następnie edytuj, aby skonfigurować.",
     "node_order_label": "Kolejność wyświetlania węzłów",
-    "show_path": "Pokaż ścieżkę routingu"
+    "show_path": "Pokaż ścieżkę routingu",
+    "map_provider": "Dostawca mapy",
+    "map_metro": "Metro MeshMapper (subdomena, np. smf)"
   }
 }

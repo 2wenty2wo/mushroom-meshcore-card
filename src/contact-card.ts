@@ -1,5 +1,5 @@
 import type { HomeAssistant, MeshcoreContactCardConfig, HaFormElement } from "./types.js";
-import { formatLastSeen, escapeHtml } from "./helpers.js";
+import { formatLastSeen, escapeHtml, mapLinkUrl } from "./helpers.js";
 import { STYLES } from "./styles.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 
@@ -284,7 +284,7 @@ export class MeshcoreContactCard extends HTMLElement {
 
   private _renderRow(c: ContactEntry, t: LocalizeFunc): string {
     const mapUrl = c.lat !== null && c.lon !== null
-      ? `https://analyzer.letsmesh.net/map?lat=${c.lat.toFixed(5)}&long=${c.lon!.toFixed(5)}&zoom=10`
+      ? mapLinkUrl(this._config ?? {}, c.lat, c.lon)
       : null;
 
     // entity_picture URLs and icon names come from HA contact attributes,
@@ -398,19 +398,35 @@ export class MeshcoreContactCardEditor extends HTMLElement {
         selector: { number: { min: 1, max: 365, step: 1, unit_of_measurement: "days", mode: "box" } } as never,
       },
       { name: "show_path", label: t("editor.show_path"), selector: { boolean: {} } },
+      {
+        name: "map_provider",
+        label: t("editor.map_provider"),
+        selector: { select: { mode: "dropdown", options: [
+          { value: "analyzer",   label: "LetsMesh Analyzer" },
+          { value: "meshmapper", label: "MeshMapper" },
+        ] } },
+      },
+      { name: "map_metro", label: t("editor.map_metro"), selector: { text: {} } },
     ];
     form.data = {
       max_contact_age_days: this._config.max_contact_age_days ?? DEFAULT_MAX_AGE_DAYS,
       show_path: this._config.show_path === true,
+      map_provider: this._config.map_provider === "meshmapper" ? "meshmapper" : "analyzer",
+      map_metro: this._config.map_metro ?? "",
     };
     form.computeLabel = (s) => ("label" in s ? s.label : undefined) ?? s.name;
 
     form.addEventListener("value-changed", (e: Event) => {
       const value = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
       const cfg: MeshcoreContactCardConfig = { ...this._config, max_contact_age_days: Number(value["max_contact_age_days"]) };
-      // Only store non-default so the YAML stays minimal.
+      // Only store non-defaults so the YAML stays minimal.
       if (value["show_path"] === true) cfg.show_path = true;
       else delete cfg.show_path;
+      if (value["map_provider"] === "meshmapper") cfg.map_provider = "meshmapper";
+      else delete cfg.map_provider;
+      const metro = String(value["map_metro"] ?? "").trim();
+      if (metro) cfg.map_metro = metro;
+      else delete cfg.map_metro;
       this._config = cfg;
       this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config } }));
     });

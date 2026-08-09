@@ -34,6 +34,7 @@ export class MeshcoreCardEditor extends HTMLElement {
   private _hass?: HomeAssistant;
   private _config?: MeshcoreCardConfig;
   private _discoveryFp = "";
+  private _mapForm: HaFormElement | null = null;
   private _hubForm: HaFormElement | null = null;
   private _nodeList: HTMLElement | null = null;
   private _nodeForms = new Map<string, HaFormElement>();
@@ -197,6 +198,7 @@ export class MeshcoreCardEditor extends HTMLElement {
     const nodes = this._discoverNodes();
 
     if (!hubs.length) {
+      this._mapForm?.remove();   this._mapForm = null;
       this._hubForm?.remove();   this._hubForm = null;
       this._nodeList?.remove();  this._nodeList = null;
       this._nodeForms.clear();
@@ -212,6 +214,44 @@ export class MeshcoreCardEditor extends HTMLElement {
     }
 
     this.querySelector("ha-alert")?.remove();
+
+    // ── Map settings (card-level) ──────────────────────────────────────────
+    if (!this._mapForm) {
+      this._mapForm = document.createElement("ha-form") as HaFormElement;
+      this._mapForm.computeLabel = (s: HaFormSchema) =>
+        ("label" in s ? s.label : undefined) ?? s.name;
+      this._mapForm.addEventListener("value-changed", (e: Event) => {
+        const v = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+        const cfg: MeshcoreCardConfig = { ...this._config };
+        // Only store non-defaults so the YAML stays minimal.
+        if (v["map_provider"] === "meshmapper") cfg.map_provider = "meshmapper";
+        else delete cfg.map_provider;
+        const metro = String(v["map_metro"] ?? "").trim();
+        if (metro) cfg.map_metro = metro;
+        else delete cfg.map_metro;
+        this._dispatchConfig(cfg);
+      });
+      this.appendChild(this._mapForm);
+    }
+    {
+      const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+      this._mapForm.hass = this._hass!;
+      this._mapForm.schema = [
+        {
+          name: "map_provider",
+          label: t("editor.map_provider"),
+          selector: { select: { mode: "dropdown", options: [
+            { value: "analyzer",   label: "LetsMesh Analyzer" },
+            { value: "meshmapper", label: "MeshMapper" },
+          ] } },
+        },
+        { name: "map_metro", label: t("editor.map_metro"), selector: { text: {} } },
+      ];
+      this._mapForm.data = {
+        map_provider: this._config?.map_provider === "meshmapper" ? "meshmapper" : "analyzer",
+        map_metro: this._config?.map_metro ?? "",
+      };
+    }
 
     // ── Hub form ───────────────────────────────────────────────────────────
     if (!this._hubForm) {
