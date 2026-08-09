@@ -83,3 +83,24 @@ export function rssiClass(rssi: string | number | null): ColorClass {
   if (v >= -90) return "yellow";
   return "red";
 }
+
+export interface MapLinkConfig {
+  map_provider?: string;
+  map_metro?: string;
+}
+
+/** Build the external map URL for a coordinate pair. Defaults to the
+ *  LetsMesh Analyzer; `map_provider: meshmapper` + `map_metro` selects a
+ *  MeshMapper regional instance. The metro becomes a subdomain, so it is
+ *  validated to hostname-safe characters — anything else falls back to
+ *  the Analyzer rather than emitting a broken or abusable URL. Note the
+ *  differing longitude params: Analyzer uses `long=`, MeshMapper `lon=`. */
+export function mapLinkUrl(cfg: MapLinkConfig, lat: unknown, lon: unknown): string {
+  const latF = parseFloat(String(lat)).toFixed(5);
+  const lonF = parseFloat(String(lon)).toFixed(5);
+  const metro = (cfg.map_metro ?? "").trim().toLowerCase();
+  if (cfg.map_provider === "meshmapper" && /^[a-z0-9-]{1,20}$/.test(metro)) {
+    return `https://${metro}.meshmapper.net/?lat=${latF}&lon=${lonF}&zoom=10`;
+  }
+  return `https://analyzer.letsmesh.net/map?lat=${latF}&long=${lonF}&zoom=10`;
+}

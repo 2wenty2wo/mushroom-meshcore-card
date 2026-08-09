@@ -34,6 +34,7 @@ export class MeshcoreCardEditor extends HTMLElement {
   private _hass?: HomeAssistant;
   private _config?: MeshcoreCardConfig;
   private _discoveryFp = "";
+  private _mapForm: HaFormElement | null = null;
   private _hubForm: HaFormElement | null = null;
   private _nodeList: HTMLElement | null = null;
   private _nodeForms = new Map<string, HaFormElement>();
@@ -156,6 +157,8 @@ export class MeshcoreCardEditor extends HTMLElement {
       { name: "humidity_entity",    label: t("editor.humidity_entity"),    selector: devSel },
       { name: "illuminance_entity", label: t("editor.illuminance_entity"), selector: devSel },
       { name: "pressure_entity",    label: t("editor.pressure_entity"),    selector: devSel },
+      { name: "show_neighbors",     label: t("editor.show_neighbors"),     selector: { boolean: {} } },
+      { name: "max_neighbors",      label: t("editor.max_neighbors"),      selector: { number: { min: 0, mode: "box" } } },
     ];
   }
 
@@ -170,6 +173,8 @@ export class MeshcoreCardEditor extends HTMLElement {
       humidity_entity:    cfg.humidity_entity    ?? null,
       illuminance_entity: cfg.illuminance_entity ?? null,
       pressure_entity:    cfg.pressure_entity    ?? null,
+      show_neighbors:     cfg.show_neighbors !== false,
+      max_neighbors:      cfg.max_neighbors ?? null,
     };
   }
 
@@ -182,6 +187,10 @@ export class MeshcoreCardEditor extends HTMLElement {
     if (d["humidity_entity"])    obj.humidity_entity    = d["humidity_entity"]    as string;
     if (d["illuminance_entity"]) obj.illuminance_entity = d["illuminance_entity"] as string;
     if (d["pressure_entity"])    obj.pressure_entity    = d["pressure_entity"]    as string;
+    // Only store non-defaults so the YAML stays minimal.
+    if (d["show_neighbors"] === false) obj.show_neighbors = false;
+    const maxN = Number(d["max_neighbors"]);
+    if (!isNaN(maxN) && maxN > 0) obj.max_neighbors = maxN;
     this._dispatchConfig({
       ...this._config,
       nodes: { ...(this._config?.nodes ?? {}), [name]: obj },
@@ -197,6 +206,7 @@ export class MeshcoreCardEditor extends HTMLElement {
     const nodes = this._discoverNodes();
 
     if (!hubs.length) {
+      this._mapForm?.remove();   this._mapForm = null;
       this._hubForm?.remove();   this._hubForm = null;
       this._nodeList?.remove();  this._nodeList = null;
       this._nodeForms.clear();
@@ -212,6 +222,44 @@ export class MeshcoreCardEditor extends HTMLElement {
     }
 
     this.querySelector("ha-alert")?.remove();
+
+    // ── Map settings (card-level) ──────────────────────────────────────────
+    if (!this._mapForm) {
+      this._mapForm = document.createElement("ha-form") as HaFormElement;
+      this._mapForm.computeLabel = (s: HaFormSchema) =>
+        ("label" in s ? s.label : undefined) ?? s.name;
+      this._mapForm.addEventListener("value-changed", (e: Event) => {
+        const v = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+        const cfg: MeshcoreCardConfig = { ...this._config };
+        // Only store non-defaults so the YAML stays minimal.
+        if (v["map_provider"] === "meshmapper") cfg.map_provider = "meshmapper";
+        else delete cfg.map_provider;
+        const metro = String(v["map_metro"] ?? "").trim();
+        if (metro) cfg.map_metro = metro;
+        else delete cfg.map_metro;
+        this._dispatchConfig(cfg);
+      });
+      this.appendChild(this._mapForm);
+    }
+    {
+      const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+      this._mapForm.hass = this._hass!;
+      this._mapForm.schema = [
+        {
+          name: "map_provider",
+          label: t("editor.map_provider"),
+          selector: { select: { mode: "dropdown", options: [
+            { value: "analyzer",   label: "LetsMesh Analyzer" },
+            { value: "meshmapper", label: "MeshMapper" },
+          ] } },
+        },
+        { name: "map_metro", label: t("editor.map_metro"), selector: { text: {} } },
+      ];
+      this._mapForm.data = {
+        map_provider: this._config?.map_provider === "meshmapper" ? "meshmapper" : "analyzer",
+        map_metro: this._config?.map_metro ?? "",
+      };
+    }
 
     // ── Hub form ───────────────────────────────────────────────────────────
     if (!this._hubForm) {

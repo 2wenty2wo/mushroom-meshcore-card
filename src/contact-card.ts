@@ -1,5 +1,5 @@
 import type { HomeAssistant, MeshcoreContactCardConfig, HaFormElement } from "./types.js";
-import { formatLastSeen, escapeHtml } from "./helpers.js";
+import { formatLastSeen, escapeHtml, mapLinkUrl } from "./helpers.js";
 import { STYLES } from "./styles.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 
@@ -153,6 +153,7 @@ interface ContactEntry {
   lon: number | null;
   unknownLocation: boolean;
   online: boolean;
+  path: string | null;
 }
 
 const DEFAULT_MAX_AGE_DAYS = 7;
@@ -188,9 +189,11 @@ export class MeshcoreContactCard extends HTMLElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
+    // out_path changes are attribute-only updates (no state change), so they
+    // must be part of the fingerprint or path changes would never re-render.
     const fp = Object.entries(hass.states)
       .filter(([id]) => /^binary_sensor\.meshcore_.*_contact$/.test(id))
-      .map(([id, s]) => `${id}=${s.state}@${s.last_changed}`)
+      .map(([id, s]) => `${id}=${s.state}@${s.last_changed}:${s.attributes["out_path_len"] ?? ""}:${s.attributes["out_path"] ?? ""}`)
       .join("|");
     if (fp === this._fp) return;
     this._fp = fp;
@@ -208,12 +211,47 @@ export class MeshcoreContactCard extends HTMLElement {
     }
   }
 
+  /** Routing path via out_path/out_path_len contact attributes. Hop hashes
+   *  are the first pubkey byte, so a hop resolves to a contact name only
+   *  when exactly one known contact matches; otherwise the hex is shown. */
+  private _formatPath(
+    a: Record<string, unknown>,
+    prefixNames: Map<string, string[]>,
+    t: LocalizeFunc
+  ): string | null {
+    const len = Number(a["out_path_len"]);
+    if (isNaN(len)) return null;
+    if (len === -1) return t("card.path_flood");
+    if (len === 0) return t("card.path_direct");
+    const hex = String(a["out_path"] ?? "").toLowerCase();
+    if (!/^[0-9a-f]+$/.test(hex)) return null;
+    const hops: string[] = [];
+    for (let i = 0; i < len && i * 2 + 2 <= hex.length; i++) {
+      const hop = hex.slice(i * 2, i * 2 + 2);
+      const names = prefixNames.get(hop);
+      hops.push(names?.length === 1 ? names[0] : hop);
+    }
+    return hops.length ? hops.join(" → ") : null;
+  }
+
   private _discoverContacts(t: LocalizeFunc): ContactEntry[] {
     if (!this._hass) return [];
     const maxAgeDays = this._config?.max_contact_age_days ?? DEFAULT_MAX_AGE_DAYS;
     const cutoff = Date.now() / 1000 - maxAgeDays * 86400;
-    return Object.entries(this._hass.states)
-      .filter(([id]) => /^binary_sensor\.meshcore_.*_contact$/.test(id))
+    const contactStates = Object.entries(this._hass.states)
+      .filter(([id]) => /^binary_sensor\.meshcore_.*_contact$/.test(id));
+
+    const prefixNames = new Map<string, string[]>();
+    for (const [, state] of contactStates) {
+      const a = state.attributes as Record<string, unknown>;
+      const pk = String(a["public_key"] ?? "").toLowerCase();
+      const name = String(a["adv_name"] ?? "");
+      if (!/^[0-9a-f]{2}/.test(pk) || !name) continue;
+      const prefix = pk.slice(0, 2);
+      prefixNames.set(prefix, [...(prefixNames.get(prefix) ?? []), name]);
+    }
+
+    return contactStates
       .map(([entityId, state]): ContactEntry => {
         const a = state.attributes as Record<string, unknown>;
         const now = Date.now() / 1000;
@@ -237,6 +275,7 @@ export class MeshcoreContactCard extends HTMLElement {
           lon:             lon !== null && !isNaN(lon) && lon !== 0 ? lon : null,
           unknownLocation: rawLat != null && rawLon != null && (parseFloat(String(rawLat)) === 0 || parseFloat(String(rawLon)) === 0),
           online:    !["stale", "off", "unavailable", "unknown"].includes(state.state),
+          path:      this._config?.show_path ? this._formatPath(a, prefixNames, t) : null,
         };
       })
       .filter((c) => c.lastAdvert >= cutoff)
@@ -245,7 +284,7 @@ export class MeshcoreContactCard extends HTMLElement {
 
   private _renderRow(c: ContactEntry, t: LocalizeFunc): string {
     const mapUrl = c.lat !== null && c.lon !== null
-      ? `https://analyzer.letsmesh.net/map?lat=${c.lat.toFixed(5)}&long=${c.lon!.toFixed(5)}&zoom=10`
+      ? mapLinkUrl(this._config ?? {}, c.lat, c.lon)
       : null;
 
     // entity_picture URLs and icon names come from HA contact attributes,
@@ -271,6 +310,7 @@ export class MeshcoreContactCard extends HTMLElement {
           <div class="contact-meta">
             ${c.timeSince ? `<span>${escapeHtml(c.timeSince)}</span>` : ""}
             ${mapUrl ? `<a class="meta-loc" href="${mapUrl}" target="_blank" rel="noopener">📍 ${c.lat!.toFixed(5)}, ${c.lon!.toFixed(5)}</a>` : c.unknownLocation ? `<span class="dim">${escapeHtml(t("card.unknown_location"))}</span>` : ""}
+            ${c.path ? `<span>↝ ${escapeHtml(c.path)}</span>` : ""}
           </div>
         </div>
         <div class="contact-right">
@@ -357,15 +397,37 @@ export class MeshcoreContactCardEditor extends HTMLElement {
         label: t("editor.max_contact_age"),
         selector: { number: { min: 1, max: 365, step: 1, unit_of_measurement: "days", mode: "box" } } as never,
       },
+      { name: "show_path", label: t("editor.show_path"), selector: { boolean: {} } },
+      {
+        name: "map_provider",
+        label: t("editor.map_provider"),
+        selector: { select: { mode: "dropdown", options: [
+          { value: "analyzer",   label: "LetsMesh Analyzer" },
+          { value: "meshmapper", label: "MeshMapper" },
+        ] } },
+      },
+      { name: "map_metro", label: t("editor.map_metro"), selector: { text: {} } },
     ];
     form.data = {
       max_contact_age_days: this._config.max_contact_age_days ?? DEFAULT_MAX_AGE_DAYS,
+      show_path: this._config.show_path === true,
+      map_provider: this._config.map_provider === "meshmapper" ? "meshmapper" : "analyzer",
+      map_metro: this._config.map_metro ?? "",
     };
     form.computeLabel = (s) => ("label" in s ? s.label : undefined) ?? s.name;
 
     form.addEventListener("value-changed", (e: Event) => {
       const value = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
-      this._config = { ...this._config, max_contact_age_days: Number(value["max_contact_age_days"]) };
+      const cfg: MeshcoreContactCardConfig = { ...this._config, max_contact_age_days: Number(value["max_contact_age_days"]) };
+      // Only store non-defaults so the YAML stays minimal.
+      if (value["show_path"] === true) cfg.show_path = true;
+      else delete cfg.show_path;
+      if (value["map_provider"] === "meshmapper") cfg.map_provider = "meshmapper";
+      else delete cfg.map_provider;
+      const metro = String(value["map_metro"] ?? "").trim();
+      if (metro) cfg.map_metro = metro;
+      else delete cfg.map_metro;
+      this._config = cfg;
       this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: this._config } }));
     });
 

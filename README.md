@@ -59,12 +59,13 @@ type: custom:meshcore-card
 - **Hub status** — online/offline indicator, node count, hardware model, firmware version
 - **RF parameters** — frequency, bandwidth, spreading factor, TX power
 - **MQTT broker status** — per-broker connection pills (green = connected, red = disconnected)
-- **Hub location** — coordinates chip with a direct link to the [MeshCore Analyzer map](https://analyzer.letsmesh.net)
+- **Hub location** — coordinates chip linking to the [MeshCore Analyzer map](https://analyzer.letsmesh.net) (default) or a [MeshMapper](https://meshmapper.net) regional instance (`map_provider` / `map_metro`)
 - **Remote nodes** — automatically discovered:
   - Online/offline status, RSSI and SNR badges, routing path, last seen time
   - Battery percentage bar with voltage
   - Location map link (resolved from the node's contact advertisement)
   - **Repeater nodes**: TX/RX airtime bars, noise floor, uptime, TX/RX rate, relayed/canceled/duplicate traffic counts, sent/received totals
+  - **Neighbors list** on repeaters, sorted by SNR — hideable or cappable per node (`show_neighbors`, `max_neighbors`)
   - Optional sensor readings: temperature, humidity, illuminance, pressure (configured per node)
 - **Drag-to-reorder** — drag nodes in the visual editor to set display order
 - **Throttled rendering** — updates at most once every 10 seconds
@@ -91,9 +92,14 @@ nodes:
     humidity_entity: sensor.x     # humidity sensor to display (optional)
     illuminance_entity: sensor.x  # illuminance sensor to display (optional)
     pressure_entity: sensor.x     # pressure sensor to display (optional)
+    show_neighbors: true          # show the repeater's neighbors list (default: true)
+    max_neighbors: 10             # cap the neighbors list at N strongest-SNR entries
+                                  # (0 or unset = show all)
 nodes_order:                      # display order for nodes (set via drag-and-drop in editor)
   - MyNode
   - OtherNode
+map_provider: meshmapper          # map for location links: analyzer (default) or meshmapper
+map_metro: smf                    # MeshMapper metro subdomain (required with meshmapper)
 grid_options:
   rows: 4                         # fix card height to N dashboard grid rows;
                                   # content that doesn't fit is hidden cleanly
@@ -126,6 +132,7 @@ type: custom:meshcore-contact-card
 - **Per contact**: icon or entity picture, advertised name, node type badge, time since last heard, online/offline dot
 - **Location** — coordinates link to [MeshCore Analyzer map](https://analyzer.letsmesh.net) when lat/lon are present; shows "Unknown Location" when coordinates are 0,0
 - **Age filter** — contacts older than `max_contact_age_days` are hidden
+- **Routing path** (opt-in) — the hops currently used to reach each contact (`↝ Alice → b2`), with hop hashes resolved to contact names where unambiguous; shows Direct / Flood for 0-hop and flood-routed contacts
 - **Grid-aware clipping** — when placed in a fixed-height grid cell, partially visible rows are hidden cleanly
 
 #### Contact card configuration
@@ -133,6 +140,9 @@ type: custom:meshcore-contact-card
 ```yaml
 type: custom:meshcore-contact-card
 max_contact_age_days: 7           # hide contacts not heard within this many days (default: 7)
+show_path: true                   # show routing path per contact (default: false)
+map_provider: meshmapper          # map for location links: analyzer (default) or meshmapper
+map_metro: smf                    # MeshMapper metro subdomain (required with meshmapper)
 grid_options:
   rows: 4                         # fix card height to N dashboard grid rows
 ```
