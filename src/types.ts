@@ -67,6 +67,7 @@ export interface MeshcoreCardConfig {
 export interface MeshcoreContactCardConfig {
   type?: string;
   max_contact_age_days?: number;
+  show_path?: boolean;
   grid_options?: GridOptions;
 }
 

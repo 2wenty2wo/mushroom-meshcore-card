@@ -126,6 +126,7 @@ type: custom:meshcore-contact-card
 - **Per contact**: icon or entity picture, advertised name, node type badge, time since last heard, online/offline dot
 - **Location** — coordinates link to [MeshCore Analyzer map](https://analyzer.letsmesh.net) when lat/lon are present; shows "Unknown Location" when coordinates are 0,0
 - **Age filter** — contacts older than `max_contact_age_days` are hidden
+- **Routing path** (opt-in) — the hops currently used to reach each contact (`↝ Alice → b2`), with hop hashes resolved to contact names where unambiguous; shows Direct / Flood for 0-hop and flood-routed contacts
 - **Grid-aware clipping** — when placed in a fixed-height grid cell, partially visible rows are hidden cleanly
 
 #### Contact card configuration
@@ -133,6 +134,7 @@ type: custom:meshcore-contact-card
 ```yaml
 type: custom:meshcore-contact-card
 max_contact_age_days: 7           # hide contacts not heard within this many days (default: 7)
+show_path: true                   # show routing path per contact (default: false)
 grid_options:
   rows: 4                         # fix card height to N dashboard grid rows
 ```

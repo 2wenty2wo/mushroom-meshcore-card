@@ -52,7 +52,9 @@
     "snr_fair": "fair",
     "snr_poor": "poor",
     "neighbor_last_seen": "Last seen",
-    "neighbor_contacts": "Connections (48h)"
+    "neighbor_contacts": "Connections (48h)",
+    "path_direct": "Direct",
+    "path_flood": "Flood"
   },
   "time": {
     "s_ago": "{n}s ago",
@@ -73,6 +75,7 @@
     "hub_section_title": "Hub: {name} ({key})",
     "max_contact_age": "Maximum contact age (days)",
     "no_hubs_detected": "No MeshCore hubs detected yet. Add the card, then edit to configure.",
-    "node_order_label": "Node Display Order"
+    "node_order_label": "Node Display Order",
+    "show_path": "Show routing path"
   }
 }
