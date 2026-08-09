@@ -47,6 +47,8 @@ export interface NodeConfig {
   humidity_entity?: string;
   illuminance_entity?: string;
   pressure_entity?: string;
+  show_neighbors?: boolean;
+  max_neighbors?: number;
 }
 
 export interface GridOptions {
@@ -118,6 +120,12 @@ export interface HaFormSelector {
   select?: {
     mode?: "dropdown" | "list";
     options: { value: string; label: string }[];
+  };
+  number?: {
+    min?: number;
+    max?: number;
+    step?: number;
+    mode?: "box" | "slider";
   };
   entity?: {
     domain?: string;

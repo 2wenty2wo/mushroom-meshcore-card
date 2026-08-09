@@ -157,6 +157,8 @@ export class MeshcoreCardEditor extends HTMLElement {
       { name: "humidity_entity",    label: t("editor.humidity_entity"),    selector: devSel },
       { name: "illuminance_entity", label: t("editor.illuminance_entity"), selector: devSel },
       { name: "pressure_entity",    label: t("editor.pressure_entity"),    selector: devSel },
+      { name: "show_neighbors",     label: t("editor.show_neighbors"),     selector: { boolean: {} } },
+      { name: "max_neighbors",      label: t("editor.max_neighbors"),      selector: { number: { min: 0, mode: "box" } } },
     ];
   }
 
@@ -171,6 +173,8 @@ export class MeshcoreCardEditor extends HTMLElement {
       humidity_entity:    cfg.humidity_entity    ?? null,
       illuminance_entity: cfg.illuminance_entity ?? null,
       pressure_entity:    cfg.pressure_entity    ?? null,
+      show_neighbors:     cfg.show_neighbors !== false,
+      max_neighbors:      cfg.max_neighbors ?? null,
     };
   }
 
@@ -183,6 +187,10 @@ export class MeshcoreCardEditor extends HTMLElement {
     if (d["humidity_entity"])    obj.humidity_entity    = d["humidity_entity"]    as string;
     if (d["illuminance_entity"]) obj.illuminance_entity = d["illuminance_entity"] as string;
     if (d["pressure_entity"])    obj.pressure_entity    = d["pressure_entity"]    as string;
+    // Only store non-defaults so the YAML stays minimal.
+    if (d["show_neighbors"] === false) obj.show_neighbors = false;
+    const maxN = Number(d["max_neighbors"]);
+    if (!isNaN(maxN) && maxN > 0) obj.max_neighbors = maxN;
     this._dispatchConfig({
       ...this._config,
       nodes: { ...(this._config?.nodes ?? {}), [name]: obj },
