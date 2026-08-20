@@ -5,8 +5,6 @@ import type {
   NodeConfig,
   HubInfo,
   NodeInfo,
-  TrafficCell,
-  TelemetryCell,
 } from "./types.js";
 import {
   isOnlineState,
@@ -20,6 +18,52 @@ import { STYLES } from "./styles.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 
+interface EntityReading {
+  id: string | null;
+  value: string | null;
+}
+
+interface NodeViewModel {
+  node: NodeInfo;
+  displayName: string;
+  nodeKey: string;
+  online: boolean;
+  isRepeater: boolean;
+  isSensor: boolean;
+  icon: string;
+  primaryEntityId: string | null;
+  lastSeen: string | null;
+  rssi: EntityReading;
+  snr: EntityReading;
+  batteryPct: EntityReading;
+  batteryVoltage: EntityReading;
+  sent: EntityReading;
+  received: EntityReading;
+  temperature: EntityReading;
+  humidity: EntityReading;
+  illuminance: EntityReading;
+  pressure: EntityReading;
+  route: EntityReading;
+  pathLength: EntityReading;
+  uptime: EntityReading;
+  relayed: EntityReading;
+  canceled: EntityReading;
+  duplicate: EntityReading;
+  txAirtime: EntityReading;
+  rxAirtime: EntityReading;
+  noiseFloor: EntityReading;
+  queueLength: EntityReading;
+  txRate: EntityReading;
+  rxRate: EntityReading;
+  spreadingFactor: EntityReading;
+  frequency: EntityReading;
+  bandwidth: EntityReading;
+  txPower: EntityReading;
+  latitude: unknown;
+  longitude: unknown;
+  locationEntityId: string | null;
+}
+
 export class MeshcoreCard extends HTMLElement {
   private _hass?: HomeAssistant;
   private _config?: MeshcoreCardConfig;
@@ -27,6 +71,7 @@ export class MeshcoreCard extends HTMLElement {
   private _lastRender = 0;
   private _renderTimer: ReturnType<typeof setTimeout> | null = null;
   private _trimTimer: ReturnType<typeof requestAnimationFrame> | null = null;
+  private _openDetails = new Set<string>();
 
   constructor() {
     super();
@@ -41,6 +86,14 @@ export class MeshcoreCard extends HTMLElement {
         this.dispatchEvent(event);
       }
     });
+    this.shadowRoot!.addEventListener("toggle", (e: Event) => {
+      const details = e.target as HTMLDetailsElement;
+      const deviceId = details.dataset?.["nodeId"];
+      if (!deviceId || details.tagName !== "DETAILS") return;
+      if (details.open) this._openDetails.add(deviceId);
+      else this._openDetails.delete(deviceId);
+      if (this._config?.grid_options?.rows) this._scheduleTrim(".node-block");
+    }, true);
   }
 
   setConfig(config: MeshcoreCardConfig): void {
@@ -171,9 +224,24 @@ export class MeshcoreCard extends HTMLElement {
 
   // ── Rendering helpers ──────────────────────────────────────────────────────
 
-  private _progressBar(pct: string | number | null, color: string): string {
+  private _reading(id: string | null, numeric = false): EntityReading {
+    const value = this._val(id);
+    if (value === null) return { id, value: null };
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || ["unknown", "unavailable", "none", "null"].includes(normalized)) {
+      return { id, value: null };
+    }
+    if (numeric && !Number.isFinite(Number(value))) return { id, value: null };
+    return { id, value };
+  }
+
+  private _progressBar(
+    pct: string | number | null,
+    color: string,
+    label: string
+  ): string {
     const w = Math.min(100, Math.max(0, Number(pct) || 0));
-    return `<div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${color}"></div></div>`;
+    return `<div class="bar-track" role="progressbar" aria-label="${escapeHtml(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><div class="bar-fill" style="width:${w}%;--bar-color:${color}"></div></div>`;
   }
 
   private _chip(
@@ -184,9 +252,38 @@ export class MeshcoreCard extends HTMLElement {
   ): string {
     if (!id || value === null) return "";
     const blank = value === "unknown" || value === "unavailable";
-    return `<span class="chip ${cls} clickable" data-entity="${escapeHtml(id)}">${
+    const ariaLabel = `${label}${label ? " " : ""}${blank ? "—" : value}`;
+    return `<button type="button" class="chip ${cls} clickable" data-entity="${escapeHtml(id)}" aria-label="${escapeHtml(ariaLabel)}">${
       label ? `<span class="chip-label">${escapeHtml(label)}</span>` : ""
-    }${blank ? "—" : escapeHtml(value)}</span>`;
+    }${blank ? "—" : escapeHtml(value)}</button>`;
+  }
+
+  private _metric(reading: EntityReading, label: string, unit: string): string {
+    if (!reading.id || reading.value === null) return "";
+    const ariaLabel = `${label} ${reading.value}${unit ? ` ${unit}` : ""}`;
+    return `<button type="button" class="node-metric clickable" part="metric" data-entity="${escapeHtml(reading.id)}" aria-label="${escapeHtml(ariaLabel)}">
+      <span class="metric-label">${escapeHtml(label)}</span>
+      <span class="metric-value">${escapeHtml(reading.value)}${unit ? `<span class="metric-unit"> ${escapeHtml(unit)}</span>` : ""}</span>
+    </button>`;
+  }
+
+  private _quickChip(
+    reading: EntityReading,
+    label: string,
+    unit: string,
+    icon: string
+  ): string {
+    if (!reading.id || reading.value === null) return "";
+    const ariaLabel = `${label} ${reading.value}${unit ? ` ${unit}` : ""}`;
+    return `<button type="button" class="quick-chip clickable" part="quick-chip" data-entity="${escapeHtml(reading.id)}" aria-label="${escapeHtml(ariaLabel)}">
+      <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
+      <span>${escapeHtml(reading.value)}${unit ? ` ${escapeHtml(unit)}` : ""}</span>
+    </button>`;
+  }
+
+  private _plainChip(label: string, value: string): string {
+    if (!value) return "";
+    return `<span class="chip"><span class="chip-label">${escapeHtml(label)}</span>${escapeHtml(value)}</span>`;
   }
 
   private _locLink(lat: unknown, lon: unknown, entityId: string | null, t: LocalizeFunc): string {
@@ -195,7 +292,7 @@ export class MeshcoreCard extends HTMLElement {
     const lonF = parseFloat(String(lon)).toFixed(5);
     const url = mapLinkUrl(this._config ?? {}, lat, lon);
     return `<div class="loc-row">
-      <span class="loc-coords clickable" data-entity="${escapeHtml(entityId)}">📍 ${latF}, ${lonF}</span>
+      <button type="button" class="loc-coords clickable" data-entity="${escapeHtml(entityId)}" aria-label="${escapeHtml(t("card.location_section"))} ${latF}, ${lonF}"><ha-icon icon="mdi:map-marker"></ha-icon>${latF}, ${lonF}</button>
       <a class="map-link" href="${url}" target="_blank" rel="noopener">${escapeHtml(t("card.map_link"))}</a>
     </div>`;
   }
@@ -315,14 +412,6 @@ export class MeshcoreCard extends HTMLElement {
     return 'red';
   }
 
-  private _snrDescription(snr: number | null, t: LocalizeFunc): string {
-    if (snr === null || isNaN(snr)) return "";
-    if (snr >= 10) return t("card.snr_excellent");
-    if (snr >= 6) return t("card.snr_good");
-    if (snr >= 0) return t("card.snr_fair");
-    return t("card.snr_poor");
-  }
-
   private _formatNeighborLastSeen(timestamp: number | null): string {
     if (!timestamp) return '?';
     const now = Math.floor(Date.now() / 1000);
@@ -423,7 +512,7 @@ export class MeshcoreCard extends HTMLElement {
               <span class="bar-val clickable" data-entity="${escapeHtml(battPctId)}" style="color:${battCol}">${escapeHtml(battPct)}%</span>
             </span>
           </div>
-          ${this._progressBar(battPct, battCol)}` : ""}
+          ${this._progressBar(battPct, battCol, t("card.battery_label"))}` : ""}
 
         ${showRf ? `
           <div class="section-header">${escapeHtml(t("card.technical_section"))}</div>
@@ -464,7 +553,7 @@ export class MeshcoreCard extends HTMLElement {
 
   // ── Node rendering ─────────────────────────────────────────────────────────
 
-  private _renderNode(node: NodeInfo, t: LocalizeFunc): string {
+  private _buildNodeViewModel(node: NodeInfo, t: LocalizeFunc): NodeViewModel {
     const { name, deviceId, ePrefix, eSuffix } = node;
     const p = (m: string) => this._findEntityByDevice(deviceId, m, ePrefix, eSuffix);
     const nodeCfg = this._nodeCfg(name);
@@ -478,7 +567,6 @@ export class MeshcoreCard extends HTMLElement {
     const routeId   = p("routing_path");
     const advertId  = p("last_advert");
     const battPctId = nodeCfg.battery_entity ?? p("battery_percentage") ?? p("battery_level") ?? p("battery");
-    // const battVId   = nodeCfg.voltage_entity  ?? p("battery_voltage");
     let battVId = nodeCfg.voltage_entity ?? null;
     if (!battVId) {
       battVId = p("battery_voltage");
@@ -486,7 +574,7 @@ export class MeshcoreCard extends HTMLElement {
     if (!battVId && this._hass) {
       for (const [entityId, info] of Object.entries(this._hass.entities)) {
         if (info.device_id !== deviceId) continue;
-        // Match: _bat, _battery_voltage, _bat_ ale nie percentage/level
+        // Match voltage-like battery entities, but not percentage/level entities.
         if (/_bat$|_battery_voltage$|_bat_/i.test(entityId) &&
             !/percentage|level/i.test(entityId)) {
           battVId = entityId;
@@ -513,22 +601,25 @@ export class MeshcoreCard extends HTMLElement {
     const txRateId    = [p("tx_per_minute"), p("tx_rate"), p("messages_per_minute")].find((id) => this._exists(id)) ?? null;
     const rxRateId    = [p("rx_per_minute"), p("rx_rate")].find((id) => this._exists(id)) ?? null;
 
+    // Optional telemetry keeps explicit overrides authoritative, then falls
+    // back to the same device-scoped matching used for MeshCore metrics.
+    const tempId      = nodeCfg.temperature_entity ?? p("temperature");
+    const humidId     = nodeCfg.humidity_entity ?? p("humidity");
+    const illumId     = nodeCfg.illuminance_entity ?? p("illuminance");
+    const pressId     = nodeCfg.pressure_entity ?? p("pressure");
+
     const status  = this._val(statusId);
-    const rssi    = this._val(rssiId);
-    const snr     = this._val(snrId);
-    const pathLen = this._val(pathId);
-    const route   = this._val(routeId);
     const lastAdv = this._val(advertId);
-    const battPct = this._val(battPctId);
-    const battV   = this._val(battVId);
     const rawLat  = locEntityId ? this._attr(locEntityId, "latitude")
                   : contactId  ? this._attr(contactId, "adv_lat") ?? this._attr(contactId, "latitude")
                   : this._val(latId);
     const rawLon  = locEntityId ? this._attr(locEntityId, "longitude")
                   : contactId  ? this._attr(contactId, "adv_lon") ?? this._attr(contactId, "longitude")
                   : this._val(lonId);
-    const lat     = rawLat != null && parseFloat(String(rawLat)) !== 0 ? rawLat : null;
-    const lon     = rawLon != null && parseFloat(String(rawLon)) !== 0 ? rawLon : null;
+    const latNumber = parseFloat(String(rawLat));
+    const lonNumber = parseFloat(String(rawLon));
+    const lat     = rawLat != null && Number.isFinite(latNumber) && latNumber !== 0 ? rawLat : null;
+    const lon     = rawLon != null && Number.isFinite(lonNumber) && lonNumber !== 0 ? rawLon : null;
     const locId   = locEntityId ?? contactId ?? latId;
 
     const successes = this._val(successId);
@@ -564,18 +655,11 @@ export class MeshcoreCard extends HTMLElement {
       online = successes !== null ? Number(successes) > 0 : isOnlineState(status);
     }
 
-    const uptimeRaw = this._val(uptimeId);
-    const uptime = formatUptime(uptimeRaw);
-    const txRate = txRateId ? this._val(txRateId) : null;
-    const rxRate = rxRateId ? this._val(rxRateId) : null;
-
-    // Header badges (SF, freq, power, uptime)
+    // RF settings are retained in the collapsed detail area.
     const sfEntity = p("spreading_factor");
     const freqEntity = p("frequency");
+    const bandwidthEntity = p("bandwidth");
     const txPowerEntity = p("tx_power");
-    const sfVal = sfEntity ? this._val(sfEntity) : null;
-    const freqVal = freqEntity ? this._val(freqEntity) : null;
-    const txPowerVal = txPowerEntity ? this._val(txPowerEntity) : null;
 
     // Node identifier
     let nodeKey = "";
@@ -596,116 +680,181 @@ export class MeshcoreCard extends HTMLElement {
     } else if (displayName.toLowerCase().startsWith("meshcore")) {
       displayName = displayName.substring(8);
     }
-    return `
-      <div class="node-block ${online ? "" : "node-offline"}">
-        <div class="node-header">
-          <div class="node-left">
-            <span class="status-dot ${online ? "dot-online" : "dot-offline"}"></span>
-            <span class="status-text ${online ? "online" : "offline"}">${escapeHtml(online ? t("card.online") : t("card.offline"))}</span>
-            ${uptime ? `<span class="node-header-badge">${escapeHtml(uptime)}</span>` : ""}
-          </div>
-          <div class="node-right">
-            ${sfVal ? `<span class="node-header-badge">SF${escapeHtml(sfVal)}</span>` : ""}
-            ${freqVal ? `<span class="node-header-badge">${parseFloat(freqVal).toFixed(3)} MHz</span>` : ""}
-            ${txPowerVal ? `<span class="node-header-badge">${escapeHtml(txPowerVal)} dBm</span>` : ""}
-            ${isRepeater ? `<span class="type-badge">${escapeHtml(t("card.type_repeater"))}</span>` : isSensor ? `<span class="type-badge">${escapeHtml(t("card.type_sensor"))}</span>` : ""}
-          </div>
-        </div>
+    const uptimeReading = this._reading(uptimeId, true);
+    uptimeReading.value = formatUptime(uptimeReading.value);
+    const batteryVoltage = this._reading(battVId, true);
+    if (batteryVoltage.value !== null && Number(batteryVoltage.value) < 0.001) {
+      batteryVoltage.value = null;
+    }
 
-        <div class="node-title-row">
-          <span class="node-name">${escapeHtml(displayName)}</span>
-          ${nodeKey ? `<span class="node-key dim clickable" data-entity="${escapeHtml(contactId ?? statusId ?? "")}">(${escapeHtml(nodeKey)})</span>` : ""}
-        </div>
+    return {
+      node,
+      displayName: displayName.trim(),
+      nodeKey,
+      online,
+      isRepeater,
+      isSensor,
+      icon: isRepeater ? "mdi:radio-tower" : isSensor ? "mdi:access-point" : "mdi:radio-handheld",
+      primaryEntityId: contactId ?? statusId ?? uptimeId ?? rssiId,
+      lastSeen,
+      rssi: this._reading(rssiId, true),
+      snr: this._reading(snrId, true),
+      batteryPct: this._reading(battPctId, true),
+      batteryVoltage,
+      sent: this._reading(sentId, true),
+      received: this._reading(receivedId, true),
+      temperature: this._reading(tempId, true),
+      humidity: this._reading(humidId, true),
+      illuminance: this._reading(illumId, true),
+      pressure: this._reading(pressId, true),
+      route: this._reading(routeId),
+      pathLength: this._reading(pathId, true),
+      uptime: uptimeReading,
+      relayed: this._reading(relayedId, true),
+      canceled: this._reading(canceledId, true),
+      duplicate: this._reading(dupId, true),
+      txAirtime: this._reading(airtimeId, true),
+      rxAirtime: this._reading(rxAirtimeId, true),
+      noiseFloor: this._reading(noiseId, true),
+      queueLength: this._reading(queueId, true),
+      txRate: this._reading(txRateId, true),
+      rxRate: this._reading(rxRateId, true),
+      spreadingFactor: this._reading(sfEntity, true),
+      frequency: this._reading(freqEntity, true),
+      bandwidth: this._reading(bandwidthEntity, true),
+      txPower: this._reading(txPowerEntity, true),
+      latitude: lat,
+      longitude: lon,
+      locationEntityId: locId,
+    };
+  }
 
-        ${route && !["unknown", "unavailable"].includes(route) ? `<div class="node-route">↝ ${escapeHtml(route)}</div>` : ""}
+  private _renderNodeHeader(vm: NodeViewModel, t: LocalizeFunc): string {
+    const stateLabel = t(vm.online ? "card.online" : "card.offline");
+    const secondary = vm.online
+      ? `${escapeHtml(stateLabel)}${vm.lastSeen ? `<span class="separator" aria-hidden="true">·</span>${escapeHtml(vm.lastSeen)}` : ""}`
+      : vm.lastSeen
+        ? escapeHtml(t("card.last_seen", { time: vm.lastSeen }))
+        : escapeHtml(stateLabel);
+    const typeLabel = vm.isRepeater
+      ? t("card.type_repeater")
+      : vm.isSensor
+        ? t("card.type_sensor")
+        : null;
+    const iconLabel = `${vm.displayName}, ${stateLabel}`;
+    const icon = `<ha-icon icon="${escapeHtml(vm.icon)}"></ha-icon>`;
+    const iconShape = vm.primaryEntityId
+      ? `<button type="button" class="node-icon-shape clickable" part="node-icon" data-entity="${escapeHtml(vm.primaryEntityId)}" aria-label="${escapeHtml(iconLabel)}">${icon}</button>`
+      : `<span class="node-icon-shape" part="node-icon" role="img" aria-label="${escapeHtml(iconLabel)}">${icon}</span>`;
 
-        <!-- RSSI / SNR row -->
-        ${(rssi !== null || snr !== null) ? `
-          <div class="signal-row">
-            ${rssi !== null ? `<div class="signal-item"><span class="signal-label">${escapeHtml(t("card.rssi_label"))}</span><span class="signal-value clickable" data-entity="${escapeHtml(rssiId)}">${escapeHtml(rssi)} dBm</span></div>` : ""}
-            ${snr !== null ? `<div class="signal-item"><span class="signal-label">${escapeHtml(t("card.snr_label"))}</span><span class="signal-value clickable" data-entity="${escapeHtml(snrId)}">${escapeHtml(snr)} dB</span></div>` : ""}
-          </div>` : ""}
+    return `<div class="node-card-header" part="node-header">
+      ${iconShape}
+      <div class="node-heading">
+        <div class="node-name">${escapeHtml(vm.displayName)}</div>
+        <div class="node-secondary">${secondary}</div>
+      </div>
+      <div class="node-badges">
+        ${typeLabel ? `<span class="type-badge">${escapeHtml(typeLabel)}</span>` : ""}
+        <span class="status-pill ${vm.online ? "online" : "offline"}"><span class="status-dot" aria-hidden="true"></span>${escapeHtml(stateLabel)}</span>
+      </div>
+    </div>`;
+  }
 
-        <!-- Battery -->
-        
-        ${battPct !== null && Number(battPct) !== 0 ? `
-          <div class="bar-row">
-            <span class="bar-label">${escapeHtml(t("card.battery_label"))}</span>
-            <span class="bar-label-right">
-              ${battV !== null && parseFloat(String(battV)) >= 0.001 ? `<span class="clickable" data-entity="${escapeHtml(battVId)}">⚡ ${parseFloat(String(battV)).toFixed(3)}V</span>` : ""}
-              <span class="bar-val clickable" data-entity="${escapeHtml(battPctId)}" style="color:${batteryColor(battPct)}">${escapeHtml(battPct)}%</span>
-            </span>
-          </div>
-          ${this._progressBar(battPct, batteryColor(battPct))}` : ""}
+  private _detailChip(reading: EntityReading, label: string, unit = ""): string {
+    if (!reading.id || reading.value === null) return "";
+    return this._chip(reading.id, `${label} `, `${reading.value}${unit}`);
+  }
 
-        ${battV !== null && parseFloat(String(battV)) >= 0.001 && (battPct === null || Number(battPct) === 0) ? `
-          <div class="node-chip-row">
-            ${this._chip(battVId, "⚡ ", parseFloat(String(battV)).toFixed(3) + "V")}
-          </div>` : ""}
+  private _detailSection(title: string, contents: string): string {
+    if (!contents) return "";
+    return `<section class="detail-section"><h4>${escapeHtml(title)}</h4><div class="detail-chips">${contents}</div></section>`;
+  }
 
-        <!-- Traffic section (sent/received) -->
-        ${(this._exists(sentId) || this._exists(receivedId)) ? `
-          <div class="section-header">${escapeHtml(t("card.traffic_section"))}</div>
-          <div class="traffic-grid">
-            ${this._exists(sentId) ? `
-              <div class="traffic-item">
-                <span class="traffic-label">${escapeHtml(t("card.traffic_sent"))}</span>
-                <span class="traffic-value clickable" data-entity="${escapeHtml(sentId)}">${escapeHtml(this._val(sentId) ?? "—")}</span>
-              </div>` : ""}
-            ${this._exists(receivedId) ? `
-              <div class="traffic-item">
-                <span class="traffic-label">${escapeHtml(t("card.traffic_received"))}</span>
-                <span class="traffic-value clickable" data-entity="${escapeHtml(receivedId)}">${escapeHtml(this._val(receivedId) ?? "—")}</span>
-              </div>` : ""}
-          </div>` : ""}
+  private _renderNodeDetails(vm: NodeViewModel, t: LocalizeFunc): string {
+    const technical = [
+      vm.nodeKey ? this._plainChip(`${t("card.node_id")} `, vm.nodeKey) : "",
+      this._detailChip(vm.route, t("card.routing_path")),
+      this._detailChip(vm.pathLength, t("card.path_length")),
+      this._detailChip(vm.uptime, t("card.chip_uptime")),
+      this._detailChip(vm.spreadingFactor, "SF"),
+      this._detailChip(vm.frequency, t("card.frequency"), " MHz"),
+      this._detailChip(vm.bandwidth, t("card.bandwidth"), " kHz"),
+      this._detailChip(vm.txPower, t("card.tx_power"), " dBm"),
+    ].join("");
 
-        <!-- Other traffic stats (relayed, canceled, duplicate) -->
-        ${(this._exists(relayedId) || this._exists(canceledId) || this._exists(dupId)) ? `
-          <div class="advanced-chips">
-            ${this._exists(relayedId) ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(relayedId)}">↺ ${escapeHtml(t("card.traffic_relayed"))}: ${escapeHtml(this._val(relayedId) ?? "—")}</span>` : ""}
-            ${this._exists(canceledId) ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(canceledId)}">✗ ${escapeHtml(t("card.traffic_canceled"))}: ${escapeHtml(this._val(canceledId) ?? "—")}</span>` : ""}
-            ${this._exists(dupId) ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(dupId)}">↻ ${escapeHtml(t("card.traffic_duplicate"))}: ${escapeHtml(this._val(dupId) ?? "—")}</span>` : ""}
-          </div>` : ""}
+    const statistics = [
+      this._detailChip(vm.relayed, t("card.traffic_relayed")),
+      this._detailChip(vm.canceled, t("card.traffic_canceled")),
+      this._detailChip(vm.duplicate, t("card.traffic_duplicate")),
+      this._detailChip(vm.txAirtime, t("card.tx_airtime_label"), "%"),
+      this._detailChip(vm.rxAirtime, t("card.rx_airtime_label"), "%"),
+      this._detailChip(vm.noiseFloor, t("card.chip_noise_floor"), " dBm"),
+      this._detailChip(vm.queueLength, t("card.chip_queue")),
+      this._detailChip(vm.txRate, t("card.chip_tx_rate")),
+      this._detailChip(vm.rxRate, t("card.chip_rx_rate")),
+    ].join("");
 
-        <!-- Advanced repeater stats (airtime, noise, queue, rates) -->
-        ${(isRepeater && (this._exists(airtimeId) || this._exists(rxAirtimeId) || this._exists(noiseId) || this._exists(queueId) || txRate || rxRate)) ? `
-          <div class="advanced-chips">
-            ${this._exists(airtimeId) ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(airtimeId)}">📡 TX air: ${escapeHtml(this._val(airtimeId))}%</span>` : ""}
-            ${this._exists(rxAirtimeId) ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(rxAirtimeId)}">📡 RX air: ${escapeHtml(this._val(rxAirtimeId))}%</span>` : ""}
-            ${this._exists(noiseId) ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(noiseId)}">🔊 Noise: ${escapeHtml(this._val(noiseId))} dBm</span>` : ""}
-            ${this._exists(queueId) ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(queueId)}">📥 Queue: ${escapeHtml(this._val(queueId))}</span>` : ""}
-            ${txRate ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(txRateId)}">📤 TX/min: ${escapeHtml(txRate)}</span>` : ""}
-            ${rxRate ? `<span class="advanced-chip clickable" data-entity="${escapeHtml(rxRateId)}">📥 RX/min: ${escapeHtml(rxRate)}</span>` : ""}
-          </div>` : ""}
+    const telemetry = [
+      this._detailChip(vm.humidity, t("card.telemetry_humidity"), "%"),
+      this._detailChip(vm.illuminance, t("card.telemetry_lux"), " lx"),
+      this._detailChip(vm.pressure, t("card.telemetry_pressure"), " hPa"),
+    ].join("");
 
-        <!-- Location -->
-        ${lat !== null && lon !== null ? `
-          <div class="section-header">${escapeHtml(t("card.location_section"))}</div>
-          ${this._locLink(lat, lon, locId, t)}` : ""}
+    const location = vm.latitude !== null && vm.longitude !== null
+      ? `<section class="detail-section"><h4>${escapeHtml(t("card.location_section"))}</h4>${this._locLink(vm.latitude, vm.longitude, vm.locationEntityId, t)}</section>`
+      : "";
+    const neighbours = this._renderNeighbors(vm.node, t);
+    const body = this._detailSection(t("card.technical_section"), technical)
+      + this._detailSection(t("card.traffic_section"), statistics)
+      + location
+      + this._detailSection(t("card.telemetry_section"), telemetry)
+      + neighbours;
+    if (!body) return "";
 
-        <!-- Telemetry (sensors) -->
-        ${(() => {
-          const tempId  = nodeCfg.temperature_entity ?? null;
-          const humidId = nodeCfg.humidity_entity    ?? null;
-          const illumId = nodeCfg.illuminance_entity ?? null;
-          const pressId = nodeCfg.pressure_entity    ?? null;
-          const teleCells = [
-            { label: t("card.telemetry_temp"),     id: tempId,  unit: "°C" },
-            { label: t("card.telemetry_humidity"), id: humidId, unit: "%" },
-            { label: t("card.telemetry_lux"),      id: illumId, unit: " lx" },
-            { label: t("card.telemetry_pressure"), id: pressId, unit: " hPa" },
-          ].filter(c => this._exists(c.id));
-          if (teleCells.length === 0) return "";
-          return `
-            <div class="section-header">${escapeHtml(t("card.telemetry_section"))}</div>
-            <div class="chip-row">
-              ${teleCells.map(c => this._chip(c.id, c.label + " ", (this._val(c.id) ?? "—") + c.unit)).join("")}
-            </div>`;
-        })()}
+    const open = this._openDetails.has(vm.node.deviceId) ? " open" : "";
+    return `<details class="node-details" part="details" data-node-id="${escapeHtml(vm.node.deviceId)}"${open}>
+      <summary><span>${escapeHtml(t("card.details"))}</span><ha-icon icon="mdi:chevron-down"></ha-icon></summary>
+      <div class="details-content">${body}</div>
+    </details>`;
+  }
 
-        <!-- Neighbors -->
-        ${this._renderNeighbors(node, t)}
-      </div>`;
+  private _renderNode(node: NodeInfo, t: LocalizeFunc): string {
+    const vm = this._buildNodeViewModel(node, t);
+    const part = vm.online ? "node" : "node node-offline";
+    if (!vm.online) {
+      return `<article class="node-block node-offline" part="${part}">${this._renderNodeHeader(vm, t)}</article>`;
+    }
+
+    const metrics = [
+      this._metric(vm.rssi, t("card.rssi_label"), "dBm"),
+      this._metric(vm.snr, t("card.snr_label"), "dB"),
+      this._metric(vm.batteryPct, t("card.battery_label"), "%"),
+    ].join("");
+    const voltage = vm.batteryVoltage.value !== null
+      ? Number(vm.batteryVoltage.value).toFixed(2)
+      : null;
+    const battery = vm.batteryPct.value !== null
+      ? `<div class="battery-block" part="battery">
+          <div class="battery-meta"><span>${escapeHtml(t("card.battery_label"))}</span>${voltage && vm.batteryVoltage.id ? `<button type="button" class="battery-voltage clickable" data-entity="${escapeHtml(vm.batteryVoltage.id)}" aria-label="${escapeHtml(t("card.battery_voltage"))} ${voltage} V">${voltage} V</button>` : ""}</div>
+          ${this._progressBar(vm.batteryPct.value, batteryColor(vm.batteryPct.value), t("card.battery_label"))}
+        </div>`
+      : "";
+    const quickChips = [
+      this._quickChip(vm.sent, t("card.traffic_sent"), "", "mdi:arrow-up"),
+      this._quickChip(vm.received, t("card.traffic_received"), "", "mdi:arrow-down"),
+      this._quickChip(vm.temperature, t("card.telemetry_temp"), "°C", "mdi:thermometer"),
+      vm.batteryPct.value === null
+        ? this._quickChip(vm.batteryVoltage, t("card.battery_voltage"), "V", "mdi:flash")
+        : "",
+    ].join("");
+
+    return `<article class="node-block" part="${part}">
+      ${this._renderNodeHeader(vm, t)}
+      ${metrics ? `<div class="metrics-grid" part="metrics">${metrics}</div>` : ""}
+      ${battery}
+      ${quickChips ? `<div class="quick-chip-row">${quickChips}</div>` : ""}
+      ${this._renderNodeDetails(vm, t)}
+    </article>`;
   }
 
   private _renderNeighbors(node: NodeInfo, t: LocalizeFunc): string {
@@ -737,22 +886,20 @@ export class MeshcoreCard extends HTMLElement {
     const neighborRows = shownNeighbors.map(n => {
       const snr = parseFloat(n.snr).toFixed(1);
       const snrClass = this._getSnrClass(snr);
-      const snrDesc = this._snrDescription(parseFloat(n.snr), t);
       const timeString = this._formatNeighborLastSeen(n.lastSeen);
       const rawSeen = n.rawSeen || null;
       const lastSeenLabel = t("card.neighbor_last_seen") || "Last seen";
       const contactsLabel = t("card.neighbor_contacts") || "Connections (48h)";
+      const nameEntityId = n.contactEntityId || n.snrId;
+      const name = nameEntityId
+        ? `<button type="button" class="neighbor-name clickable" data-entity="${escapeHtml(nameEntityId)}">${escapeHtml(n.name)}</button>`
+        : `<span class="neighbor-name">${escapeHtml(n.name)}</span>`;
       
       return `
         <div class="neighbor-row">
           <div class="neighbor-main">
-            <span class="neighbor-name ${n.contactEntityId ? 'clickable' : ''}" 
-              ${n.contactEntityId ? `data-entity="${escapeHtml(n.contactEntityId)}"` : 
-                (n.snrId ? `data-entity="${escapeHtml(n.snrId)}"` : '')}>
-              ${escapeHtml(n.name)}
-            </span>
-            <span class="neighbor-snr ${snrClass} clickable" 
-                data-entity="${escapeHtml(n.snrId || '')}">📡 ${escapeHtml(snr)} dB</span>
+            ${name}
+            <button type="button" class="neighbor-snr ${snrClass} clickable" data-entity="${escapeHtml(n.snrId || "")}" aria-label="${escapeHtml(t("card.snr_label"))} ${escapeHtml(snr)} dB"><ha-icon icon="mdi:signal"></ha-icon>${escapeHtml(snr)} dB</button>
           </div>
           <div class="neighbor-stats">
             <span class="neighbor-stat">🕒 ${escapeHtml(lastSeenLabel)}: ${escapeHtml(timeString)}</span>
@@ -766,7 +913,7 @@ export class MeshcoreCard extends HTMLElement {
       <div class="neighbors-section">
         <div class="neighbors-header">
           <span>${escapeHtml(t("card.neighbors_label") || "Neighbors")}</span>
-          <span class="count-badge" style="font-size:10px">${neighborsWithSnr.length}</span>
+          <span class="count-badge">${neighborsWithSnr.length}</span>
         </div>
         <div class="neighbors-list">
           ${neighborRows}
@@ -846,7 +993,7 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   static getConfigElement(): HTMLElement {
-    return document.createElement("meshcore-card-editor");
+    return document.createElement("mushroom-meshcore-card-editor");
   }
 
   static getStubConfig(): MeshcoreCardConfig {

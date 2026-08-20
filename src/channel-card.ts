@@ -233,7 +233,7 @@ export class MeshcoreChannelCard extends HTMLElement {
   }
 
   static getConfigElement(): HTMLElement {
-    return document.createElement("meshcore-channel-card-editor");
+    return document.createElement("mushroom-meshcore-channel-card-editor");
   }
 
   static getStubConfig(): MeshcoreChannelCardConfig {

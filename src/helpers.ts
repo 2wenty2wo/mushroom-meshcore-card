@@ -49,10 +49,10 @@ export function formatLastSeen(
 
 export function batteryColor(pct: string | number | null): string {
   const v = Number(pct);
-  if (isNaN(v)) return "var(--secondary-text-color)";
-  if (v >= 50) return "var(--success-color, #4caf50)";
-  if (v >= 20) return "var(--warning-color, #ff9800)";
-  return "var(--error-color, #f44336)";
+  if (isNaN(v)) return "var(--mushroom-meshcore-muted-color, var(--secondary-text-color))";
+  if (v >= 50) return "var(--mushroom-meshcore-success-color, var(--success-color, #4caf50))";
+  if (v >= 20) return "var(--mushroom-meshcore-warning-color, var(--warning-color, #ff9800))";
+  return "var(--mushroom-meshcore-danger-color, var(--error-color, #f44336))";
 }
 
 export type ColorClass = "green" | "yellow" | "red" | "dim";

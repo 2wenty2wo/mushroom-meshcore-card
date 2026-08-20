@@ -1,7 +1,12 @@
 {
-  "name": "meshcore-card",
+  "name": "mushroom-meshcore-card",
   "version": "0.4.2",
-  "description": "Home Assistant Lovelace card for MeshCore mesh radio network",
+  "description": "Mushroom-inspired Home Assistant Lovelace cards for MeshCore",
+  "homepage": "https://github.com/2wenty2wo/mushroom-meshcore-card",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/2wenty2wo/mushroom-meshcore-card.git"
+  },
   "license": "MIT",
   "scripts": {
     "build": "rollup -c rollup.config.mjs",

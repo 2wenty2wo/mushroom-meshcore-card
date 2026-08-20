@@ -361,7 +361,7 @@ export class MeshcoreContactCard extends HTMLElement {
   }
 
   static getConfigElement(): HTMLElement {
-    return document.createElement("meshcore-contact-card-editor");
+    return document.createElement("mushroom-meshcore-contact-card-editor");
   }
 
   static getStubConfig(): MeshcoreContactCardConfig {

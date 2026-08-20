@@ -35,7 +35,7 @@ jobs:
       - name: Upload bundle to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/meshcore-card.js
+          files: dist/mushroom-meshcore-card.js
           # Tags containing a hyphen (e.g. v1.0.0-beta) are treated as
           # prereleases per semver convention. Stable tags (v1.0.0) keep
           # the action's default `make_latest: legacy`, which lets GitHub

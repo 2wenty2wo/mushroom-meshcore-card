@@ -5,51 +5,51 @@ import { MeshcoreChannelCard, MeshcoreChannelCardEditor } from "./channel-card.j
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
-if (!customElements.get("meshcore-card")) {
-  customElements.define("meshcore-card", MeshcoreCard);
+if (!customElements.get("mushroom-meshcore-card")) {
+  customElements.define("mushroom-meshcore-card", MeshcoreCard);
 }
-if (!customElements.get("meshcore-card-editor")) {
-  customElements.define("meshcore-card-editor", MeshcoreCardEditor);
+if (!customElements.get("mushroom-meshcore-card-editor")) {
+  customElements.define("mushroom-meshcore-card-editor", MeshcoreCardEditor);
 }
-if (!customElements.get("meshcore-contact-card")) {
-  customElements.define("meshcore-contact-card", MeshcoreContactCard);
+if (!customElements.get("mushroom-meshcore-contact-card")) {
+  customElements.define("mushroom-meshcore-contact-card", MeshcoreContactCard);
 }
-if (!customElements.get("meshcore-contact-card-editor")) {
-  customElements.define("meshcore-contact-card-editor", MeshcoreContactCardEditor);
+if (!customElements.get("mushroom-meshcore-contact-card-editor")) {
+  customElements.define("mushroom-meshcore-contact-card-editor", MeshcoreContactCardEditor);
 }
 
 window.customCards = window.customCards || [];
-if (!window.customCards.find((c) => c.type === "meshcore-card")) {
+if (!window.customCards.find((c) => c.type === "mushroom-meshcore-card")) {
   window.customCards.push({
-    type: "meshcore-card",
-    name: "MeshCore Card",
-    description: "Displays node statistics from the MeshCore integration",
+    type: "mushroom-meshcore-card",
+    name: "Mushroom MeshCore Card",
+    description: "Displays MeshCore hubs and nodes in a Mushroom-inspired layout",
     preview: true,
-    documentationURL: "https://github.com/jpettitt/meshcore-card",
+    documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
   });
 }
-if (!window.customCards.find((c) => c.type === "meshcore-contact-card")) {
+if (!window.customCards.find((c) => c.type === "mushroom-meshcore-contact-card")) {
   window.customCards.push({
-    type: "meshcore-contact-card",
-    name: "MeshCore Contact Card",
+    type: "mushroom-meshcore-contact-card",
+    name: "Mushroom MeshCore Contact Card",
     description: "Lists all MeshCore contact nodes sorted by most recently heard",
     preview: true,
-    documentationURL: "https://github.com/jpettitt/meshcore-card",
+    documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
   });
 }
 
-if (!customElements.get("meshcore-channel-card")) {
-  customElements.define("meshcore-channel-card", MeshcoreChannelCard);
+if (!customElements.get("mushroom-meshcore-channel-card")) {
+  customElements.define("mushroom-meshcore-channel-card", MeshcoreChannelCard);
 }
-if (!customElements.get("meshcore-channel-card-editor")) {
-  customElements.define("meshcore-channel-card-editor", MeshcoreChannelCardEditor);
+if (!customElements.get("mushroom-meshcore-channel-card-editor")) {
+  customElements.define("mushroom-meshcore-channel-card-editor", MeshcoreChannelCardEditor);
 }
-if (!window.customCards.find((c) => c.type === "meshcore-channel-card")) {
+if (!window.customCards.find((c) => c.type === "mushroom-meshcore-channel-card")) {
   window.customCards.push({
-    type: "meshcore-channel-card",
-    name: "MeshCore Channel Card",
+    type: "mushroom-meshcore-channel-card",
+    name: "Mushroom MeshCore Channel Card",
     description: "Shows active MeshCore channels by hub",
     preview: true,
-    documentationURL: "https://github.com/jpettitt/meshcore-card",
+    documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
   });
 }

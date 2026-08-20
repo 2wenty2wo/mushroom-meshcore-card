@@ -1,187 +1,153 @@
-# MeshCore Card
+# Mushroom MeshCore Card
 
-Custom [Home Assistant](https://www.home-assistant.io/) Lovelace cards that display hub, node, contact, and channel statistics from the [MeshCore](https://meshcore.co.uk) mesh radio network integration.
+Mushroom-inspired [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
 
-[![GitHub Release](https://img.shields.io/github/release/jpettitt/meshcore-card.svg?style=for-the-badge)](https://github.com/jpettitt/meshcore-card/releases)
-[![License](https://img.shields.io/github/license/jpettitt/meshcore-card.svg?style=for-the-badge)](LICENSE)
+This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card). It keeps the original card's automatic MeshCore discovery and configuration model while presenting remote nodes and repeaters in a compact, theme-aware layout that fits naturally beside Mushroom Cards.
+
+[![GitHub Release](https://img.shields.io/github/release/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
+[![License](https://img.shields.io/github/license/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](LICENSE)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
-[![Maintenance](https://img.shields.io/maintenance/yes/2026?style=for-the-badge)](https://github.com/jpettitt/meshcore-card)
-
-[![Add Repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jpettitt&repository=meshcore-card&category=plugin)
-
-![MeshCore Hub Card screenshot](screenshot.png)
-![MeshCore Node Card screenshot](screenshot2.png)
-![MeshCore Contact Card screenshot](contact-card-screenshot.png)
-![MeshCore Chanel Card screenshot](chanel-card-screenshot.png)
-
----
 
 ## Requirements
 
-- **Home Assistant** 2023.x or later
-- **[MeshCore Integration](https://github.com/meshcore-dev/meshcore-ha)** — must be installed and configured. The cards read hub, node, and contact data directly from the devices and entities registered by this integration.
+- Home Assistant 2023.x or later
+- [MeshCore Integration](https://github.com/meshcore-dev/meshcore-ha), installed and configured
 
----
+Mushroom and Card Mod are optional. The card uses their public theme conventions when available but has Home Assistant fallbacks and works independently.
 
 ## Installation
 
-### HACS (recommended)
+### HACS
 
-1. Open **HACS** → **Frontend**
-2. Click the ⋮ menu → **Custom repositories**
-3. Add `https://github.com/jpettitt/meshcore-card` with category **Dashboard**
-4. Search for **MeshCore Card** and install it
-5. Reload your browser
+1. Open **HACS → Frontend**.
+2. Open the ⋮ menu and choose **Custom repositories**.
+3. Add `https://github.com/2wenty2wo/mushroom-meshcore-card` as a **Dashboard** repository.
+4. Install **Mushroom MeshCore Card**.
+5. Reload the browser.
+
+[![Add Repository](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=2wenty2wo&repository=mushroom-meshcore-card&category=plugin)
 
 ### Manual
 
-1. Download `meshcore-card.js` from the latest [GitHub Release](https://github.com/jpettitt/meshcore-card/releases)
-2. Copy it to `config/www/meshcore-card.js`
-3. In Home Assistant go to **Settings → Dashboards → Resources** and add `/local/meshcore-card.js` as a JavaScript module
-4. Reload your browser
+1. Download `mushroom-meshcore-card.js` from the latest [release](https://github.com/2wenty2wo/mushroom-meshcore-card/releases).
+2. Copy it to `config/www/mushroom-meshcore-card.js`.
+3. Add `/local/mushroom-meshcore-card.js` under **Settings → Dashboards → Resources** as a JavaScript module.
+4. Reload the browser.
 
----
+## Use alongside the original card
 
-## Cards
-
-This package provides three card types.
-
-### `custom:meshcore-card` — Hub & Node Card
-
-Displays all MeshCore hubs and their remote nodes, automatically discovered from the HA device and entity registry.
+The fork deliberately uses different resource and custom-element names, so both packages can be loaded at the same time:
 
 ```yaml
-type: custom:meshcore-card
+resources:
+  - url: /hacsfiles/meshcore-card/meshcore-card.js
+    type: module
+  - url: /hacsfiles/mushroom-meshcore-card/mushroom-meshcore-card.js
+    type: module
 ```
 
-#### Features
+Use `custom:meshcore-card` for upstream and `custom:mushroom-meshcore-card` for this fork. Existing upstream configuration remains compatible after changing the card `type`.
 
-- **Hub status** — online/offline indicator, node count, hardware model, firmware version
-- **RF parameters** — frequency, bandwidth, spreading factor, TX power
-- **MQTT broker status** — per-broker connection pills (green = connected, red = disconnected)
-- **Hub location** — coordinates chip linking to the [MeshCore Analyzer map](https://analyzer.letsmesh.net) (default) or a [MeshMapper](https://meshmapper.net) regional instance (`map_provider` / `map_metro`)
-- **Remote nodes** — automatically discovered:
-  - Online/offline status, RSSI and SNR badges, routing path, last seen time
-  - Battery percentage bar with voltage
-  - Location map link (resolved from the node's contact advertisement)
-  - **Repeater nodes**: TX/RX airtime bars, noise floor, uptime, TX/RX rate, relayed/canceled/duplicate traffic counts, sent/received totals
-  - **Neighbors list** on repeaters, sorted by SNR — hideable or cappable per node (`show_neighbors`, `max_neighbors`)
-  - Optional sensor readings: temperature, humidity, illuminance, pressure (configured per node)
-- **Drag-to-reorder** — drag nodes in the visual editor to set display order
-- **Throttled rendering** — updates at most once every 10 seconds
-
-#### Configuration
-
-All options are available through the visual editor or in YAML.
+## Main card
 
 ```yaml
-type: custom:meshcore-card
+type: custom:mushroom-meshcore-card
+```
+
+With no additional YAML, the card discovers MeshCore hubs and remote devices from Home Assistant's entity and device registries.
+
+Remote nodes show a compact header, online state, last-seen age, RSSI, SNR, battery, voltage, sent/received traffic, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Offline nodes collapse to their identity, status, type, and last-seen age instead of displaying unavailable metrics.
+
+### Configuration
+
+All existing options remain available through YAML and the visual editor:
+
+```yaml
+type: custom:mushroom-meshcore-card
 hubs:
-  55733c:                         # hub identified by public key prefix
-    enabled: true                 # show/hide this hub (default: true)
-    battery_entity: sensor.x      # override auto-detected battery % entity
-    voltage_entity: sensor.x      # override auto-detected voltage entity
+  55733c:
+    enabled: true
+    battery_entity: sensor.example_battery
+    voltage_entity: sensor.example_voltage
 nodes:
-  MyNode:                         # node identified by name
-    enabled: true                 # show/hide this node (default: true)
-    battery_entity: sensor.x      # override auto-detected battery % entity
-    voltage_entity: sensor.x      # override auto-detected voltage entity
-    location_entity: sensor.x     # override location source (entity with latitude/longitude
-                                  # attributes, scoped to all meshcore entities)
-    temperature_entity: sensor.x  # temperature sensor to display (optional)
-    humidity_entity: sensor.x     # humidity sensor to display (optional)
-    illuminance_entity: sensor.x  # illuminance sensor to display (optional)
-    pressure_entity: sensor.x     # pressure sensor to display (optional)
-    show_neighbors: true          # show the repeater's neighbors list (default: true)
-    max_neighbors: 10             # cap the neighbors list at N strongest-SNR entries
-                                  # (0 or unset = show all)
-nodes_order:                      # display order for nodes (set via drag-and-drop in editor)
-  - MyNode
-  - OtherNode
-map_provider: meshmapper          # map for location links: analyzer (default) or meshmapper
-map_metro: smf                    # MeshMapper metro subdomain (required with meshmapper)
+  Spring Farm:
+    enabled: true
+    battery_entity: sensor.example_battery
+    voltage_entity: sensor.example_voltage
+    location_entity: sensor.example_location
+    temperature_entity: sensor.example_temperature
+    humidity_entity: sensor.example_humidity
+    illuminance_entity: sensor.example_illuminance
+    pressure_entity: sensor.example_pressure
+    show_neighbors: true
+    max_neighbors: 10
+nodes_order:
+  - Spring Farm
+  - Oakdale
+map_provider: meshmapper
+map_metro: smf
 grid_options:
-  rows: 4                         # fix card height to N dashboard grid rows;
-                                  # content that doesn't fit is hidden cleanly
+  rows: 4
 ```
 
-**Shorthand:** `true` / `false` can be used instead of a full object to simply show or hide:
+The per-hub and per-node entries also accept `true` or `false` as show/hide shorthand. Entity overrides are optional; automatic, device-scoped matching remains the default.
+
+## Contact card
 
 ```yaml
-hubs:
-  55733c: true
-  aabbcc: false
-nodes:
-  JPP: true
-  YubaMonitor: false
-```
-
----
-
-### `custom:meshcore-contact-card` — Contact Card
-
-Lists all `binary_sensor.meshcore_*_contact` entities sorted by most recently heard advertisement.
-
-```yaml
-type: custom:meshcore-contact-card
-```
-
-#### Contact card features
-
-- **Contact list** — sorted by `last_advert` descending (most recently heard first)
-- **Per contact**: icon or entity picture, advertised name, node type badge, time since last heard, online/offline dot
-- **Location** — coordinates link to [MeshCore Analyzer map](https://analyzer.letsmesh.net) when lat/lon are present; shows "Unknown Location" when coordinates are 0,0
-- **Age filter** — contacts older than `max_contact_age_days` are hidden
-- **Routing path** (opt-in) — the hops currently used to reach each contact (`↝ Alice → b2`), with hop hashes resolved to contact names where unambiguous; shows Direct / Flood for 0-hop and flood-routed contacts
-- **Grid-aware clipping** — when placed in a fixed-height grid cell, partially visible rows are hidden cleanly
-
-#### Contact card configuration
-
-```yaml
-type: custom:meshcore-contact-card
-max_contact_age_days: 7           # hide contacts not heard within this many days (default: 7)
-show_path: true                   # show routing path per contact (default: false)
-map_provider: meshmapper          # map for location links: analyzer (default) or meshmapper
-map_metro: smf                    # MeshMapper metro subdomain (required with meshmapper)
+type: custom:mushroom-meshcore-contact-card
+max_contact_age_days: 7
+show_path: true
+map_provider: meshmapper
+map_metro: smf
 grid_options:
-  rows: 4                         # fix card height to N dashboard grid rows
+  rows: 4
 ```
 
----
+The contact card discovers `binary_sensor.meshcore_*_contact` entities, sorts them by the most recent advertisement, and preserves its location and optional routing-path support.
 
-### `custom:meshcore-channel-card` — Channel Card
-
-Lists all active MeshCore message channels (`binary_sensor.meshcore_*_messages` entities) sorted by channel index.
+## Channel card
 
 ```yaml
-type: custom:meshcore-channel-card
-```
-
-#### Channel card features
-
-- **Channel list** — sorted by channel index
-- **Per channel**: green dot when active, hub name, channel name
-- **Grid-aware clipping** — when placed in a fixed-height grid cell, partially visible rows are hidden cleanly
-
-#### Channel card configuration
-
-```yaml
-type: custom:meshcore-channel-card
+type: custom:mushroom-meshcore-channel-card
 grid_options:
-  rows: 4                         # fix card height to N dashboard grid rows
+  rows: 4
 ```
 
----
+The channel card discovers MeshCore message-channel entities and sorts them by channel index.
 
-## Localization
+## Theme and Card Mod compatibility
 
-The cards are localized into **English**, **French**, **Dutch**, **German**, and **Polish**. The active Home Assistant language is used automatically.
+The cards inherit Mushroom variables such as `--mush-card-primary-font-size`, `--mush-card-secondary-font-size`, `--mush-chip-height`, `--mush-chip-border-radius`, and `--mush-icon-size`, with Home Assistant theme fallbacks.
 
-> **Note:** French, Dutch, German, and Polish translations are community- or machine-generated. If you spot an error or awkward phrasing, pull requests with corrections are very welcome!
+The main surface also exposes scoped variables that can be set from a theme or Card Mod:
 
-To add a new language or correct an existing one, see [`src/translations/`](src/translations/) and [`scripts/translate.mjs`](scripts/translate.mjs).
+```css
+--mushroom-meshcore-card-padding
+--mushroom-meshcore-node-spacing
+--mushroom-meshcore-node-radius
+--mushroom-meshcore-surface
+--mushroom-meshcore-success-color
+--mushroom-meshcore-warning-color
+--mushroom-meshcore-danger-color
+```
 
----
+Card Mod is never required for the core layout or state styling.
+
+## Localisation
+
+The cards use the active Home Assistant language and include English, French, Dutch, German, and Polish translations.
+
+## Development
+
+```bash
+npm ci
+npm run typecheck
+npm run check-translations
+npm run build
+```
+
+The production bundle is written to `dist/mushroom-meshcore-card.js`.
 
 ## License
 

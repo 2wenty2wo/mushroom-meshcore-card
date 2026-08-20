@@ -5,9 +5,9 @@ import json from "@rollup/plugin-json";
 export default {
   input: "src/index.ts",
   output: {
-    file: "dist/meshcore-card.js",
+    file: "dist/mushroom-meshcore-card.js",
     format: "iife",
-    name: "MeshcoreCardBundle",
+    name: "MushroomMeshcoreCardBundle",
     sourcemap: false,
   },
   plugins: [
