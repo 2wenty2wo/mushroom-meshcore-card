@@ -731,11 +731,12 @@ export class MeshcoreCard extends HTMLElement {
 
   private _renderNodeHeader(vm: NodeViewModel, t: LocalizeFunc): string {
     const stateLabel = t(vm.online ? "card.online" : "card.offline");
-    const secondary = vm.online
-      ? `${escapeHtml(stateLabel)}${vm.lastSeen ? `<span class="separator" aria-hidden="true">·</span>${escapeHtml(vm.lastSeen)}` : ""}`
-      : vm.lastSeen
-        ? escapeHtml(t("card.last_seen", { time: vm.lastSeen }))
-        : escapeHtml(stateLabel);
+    const lastSeen = vm.lastSeen
+      ? vm.online
+        ? escapeHtml(vm.lastSeen)
+        : escapeHtml(t("card.last_seen", { time: vm.lastSeen }))
+      : "";
+    const secondary = `${escapeHtml(stateLabel)}${lastSeen ? `<span class="separator" aria-hidden="true">·</span>${lastSeen}` : ""}`;
     const typeLabel = vm.isRepeater
       ? t("card.type_repeater")
       : vm.isSensor
@@ -753,10 +754,7 @@ export class MeshcoreCard extends HTMLElement {
         <div class="node-name">${escapeHtml(vm.displayName)}</div>
         <div class="node-secondary">${secondary}</div>
       </div>
-      <div class="node-badges">
-        ${typeLabel ? `<span class="type-badge">${escapeHtml(typeLabel)}</span>` : ""}
-        <span class="status-pill ${vm.online ? "online" : "offline"}"><span class="status-dot" aria-hidden="true"></span>${escapeHtml(stateLabel)}</span>
-      </div>
+      ${typeLabel ? `<div class="node-badges"><span class="type-badge">${escapeHtml(typeLabel)}</span></div>` : ""}
     </div>`;
   }
 

@@ -7,64 +7,86 @@ const CHANNEL_STYLES: string = `
   .channel-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--mush-spacing, 10px);
   }
 
   .channel-row {
     display: flex;
+    min-height: 56px;
     align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    border-radius: 18px;
-    background: rgba(128, 128, 128, 0.04);
-    backdrop-filter: blur(4px);
-    border: 1px solid rgba(128, 128, 128, 0.1);
-    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    gap: var(--mush-spacing, 10px);
+    padding: var(--mush-spacing, 10px);
+    border: var(--ha-card-border-width, 1px) solid var(--mushroom-meshcore-border-color);
+    border-radius: var(--mushroom-meshcore-control-radius);
+    background: var(--mushroom-meshcore-surface);
+    transition: filter 280ms ease-out;
     cursor: pointer;
   }
-  .channel-row:hover {
-    transform: translateY(-1px);
-    background: rgba(128, 128, 128, 0.07);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  .channel-row:hover { filter: brightness(0.97); }
+  .channel-row:active { filter: brightness(0.94); }
+
+  .channel-icon {
+    display: flex;
+    width: var(--mushroom-meshcore-icon-size);
+    height: var(--mushroom-meshcore-icon-size);
+    flex: 0 0 var(--mushroom-meshcore-icon-size);
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--mushroom-meshcore-icon-radius);
+    font-size: var(--mushroom-meshcore-icon-size);
+    transition: background-color 280ms ease-out, color 280ms ease-in-out;
+  }
+  .channel-icon ha-icon {
+    --mdc-icon-size: var(--mushroom-meshcore-icon-symbol-size);
+  }
+  .channel-icon.active {
+    background: rgba(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80)), 0.2);
+    color: var(--mushroom-meshcore-success-color);
+  }
+  .channel-icon.inactive {
+    background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05);
+    color: var(--mushroom-meshcore-muted-color);
+  }
+
+  .channel-info {
+    flex: 1;
+    min-width: 0;
   }
 
   .channel-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
+    width: var(--mushroom-meshcore-badge-size);
+    height: var(--mushroom-meshcore-badge-size);
     flex-shrink: 0;
+    border-radius: var(--mushroom-meshcore-badge-radius);
   }
   .channel-dot.active {
-    background: var(--mesh-green);
-    box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-    animation: channel-pulse-glow 2s ease-in-out infinite;
+    background: var(--mushroom-meshcore-success-color);
   }
   .channel-dot.inactive {
-    background: var(--secondary-text-color);
-    opacity: 0.4;
-  }
-
-  @keyframes channel-pulse-glow {
-    0%, 100% { box-shadow: 0 0 4px rgba(74, 222, 128, 0.4); }
-    50% { box-shadow: 0 0 12px rgba(74, 222, 128, 0.8); }
+    background: var(--mushroom-meshcore-muted-color);
+    opacity: 0.55;
   }
 
   .channel-hub {
-    font-weight: 500;
+    overflow: hidden;
     color: var(--secondary-text-color);
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
+    text-overflow: ellipsis;
     white-space: nowrap;
-    flex-shrink: 0;
-    font-size: 12px;
-    letter-spacing: -0.01em;
   }
 
   .channel-name {
-    font-weight: 600;
-    font-size: 0.95rem;
-    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
     color: var(--primary-text-color);
+    font-size: var(--mushroom-meshcore-primary-font-size);
+    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 `;
 
@@ -131,6 +153,16 @@ export class MeshcoreChannelCard extends HTMLElement {
         this.dispatchEvent(event);
       }
     });
+    this.shadowRoot!.addEventListener("keydown", (e: Event) => {
+      const keyboardEvent = e as KeyboardEvent;
+      if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
+      const target = e.target as Element;
+      const el = target.closest("[data-entity]") as HTMLElement | null;
+      if (el && target === el) {
+        keyboardEvent.preventDefault();
+        el.click();
+      }
+    });
   }
 
   setConfig(config: MeshcoreChannelCardConfig): void {
@@ -184,10 +216,13 @@ export class MeshcoreChannelCard extends HTMLElement {
 
   private _renderRow(ch: ChannelEntry): string {
     return `
-      <div class="channel-row" data-entity="${escapeHtml(ch.entityId)}">
-        <span class="channel-dot ${ch.active ? "active" : "inactive"}"></span>
-        <span class="channel-hub">${escapeHtml(ch.hubName)}</span>
-        <span class="channel-name">${escapeHtml(ch.channelName)}</span>
+      <div class="channel-row" role="button" tabindex="0" aria-label="${escapeHtml(`${ch.channelName} — ${ch.hubName}`)}" data-entity="${escapeHtml(ch.entityId)}">
+        <div class="channel-icon ${ch.active ? "active" : "inactive"}"><ha-icon icon="mdi:message-text"></ha-icon></div>
+        <div class="channel-info">
+          <div class="channel-name">${escapeHtml(ch.channelName)}</div>
+          <div class="channel-hub">${escapeHtml(ch.hubName)}</div>
+        </div>
+        <span class="channel-dot ${ch.active ? "active" : "inactive"}" aria-hidden="true"></span>
       </div>`;
   }
 
