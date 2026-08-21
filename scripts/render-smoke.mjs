@@ -2,15 +2,37 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 class FakeShadowRoot {
-  innerHTML = "";
+  _innerHTML = "";
+  tileInfos = [];
   listeners = new Map();
+
+  set innerHTML(value) {
+    this._innerHTML = value;
+    this.tileInfos = Array.from(value.matchAll(/<ha-tile-info>([\s\S]*?)<\/ha-tile-info>/g), ([, contents]) => ({
+      primary: undefined,
+      secondary: undefined,
+      querySelector: (selector) => {
+        const slot = selector.includes("primary") ? "primary" : "secondary";
+        const match = contents.match(new RegExp(`<span slot="${slot}">([\\s\\S]*?)<\\/span>`));
+        return match ? { textContent: match[1] } : null;
+      },
+    }));
+  }
+
+  get innerHTML() {
+    return this._innerHTML;
+  }
 
   addEventListener(type, listener) {
     this.listeners.set(type, listener);
   }
 
-  querySelector() {
-    return null;
+  querySelector(selector) {
+    return selector === "ha-tile-info" ? this.tileInfos[0] ?? null : null;
+  }
+
+  querySelectorAll(selector) {
+    return selector === "ha-tile-info" ? this.tileInfos : [];
   }
 }
 
@@ -71,6 +93,7 @@ globalThis.customElements = {
   get: (name) => registry.get(name),
   define: (name, constructor) => registry.set(name, constructor),
 };
+customElements.define("ha-tile-info", class extends FakeHTMLElement {});
 globalThis.window = { customCards: [] };
 globalThis.document = {
   createElement: (tagName) => new FakeHTMLElement(tagName),
@@ -179,6 +202,8 @@ assert.equal((hub.body.match(/<ha-card/g) ?? []).length, 1);
 assert.match(hub.body, /<ha-tile-icon>/);
 assert.match(hub.body, /<ha-tile-info>/);
 assert.match(hub.body, /Test Hub/);
+assert.equal(hub.card.shadowRoot.querySelector("ha-tile-info").primary, "test hub");
+assert.match(hub.card.shadowRoot.querySelector("ha-tile-info").secondary, /^Online · 55733c$/);
 assert.doesNotMatch(hub.body, /class="node-block/);
 assert.doesNotMatch(hub.body, />HUBS</);
 
@@ -186,6 +211,8 @@ const onlineNode = render({ target: { type: "node", id: "Spring Farm" } });
 assert.equal((onlineNode.body.match(/<ha-card/g) ?? []).length, 1);
 assert.match(onlineNode.body, /Spring Farm/);
 assert.match(onlineNode.body, /Online/);
+assert.equal(onlineNode.card.shadowRoot.querySelector("ha-tile-info").primary, "Spring Farm");
+assert.match(onlineNode.card.shadowRoot.querySelector("ha-tile-info").secondary, /^Online/);
 assert.match(onlineNode.body, /class="metrics-grid/);
 assert.match(onlineNode.body, />RSSI</);
 assert.doesNotMatch(onlineNode.body, />Repeater</);
@@ -231,7 +258,8 @@ onlineNode.card.shadowRoot.listeners.get("toggle")({
   target: { tagName: "DETAILS", dataset: { nodeId: "node-device" }, open: true },
 });
 onlineNode.card.setConfig({ target: { type: "node", id: "Spring Farm" } });
-assert.match(onlineNode.card.shadowRoot.innerHTML, /<details class="node-details trim-section"[^>]* open>/);
+assert.match(onlineNode.card.shadowRoot.innerHTML, /<details class="node-details"[^>]* open>/);
+assert.match(onlineNode.card.shadowRoot.innerHTML, /<div class="details-content trim-section">/);
 
 const MainEditor = registry.get("mushroom-meshcore-card-editor");
 assert.ok(MainEditor, "main-card editor is registered");

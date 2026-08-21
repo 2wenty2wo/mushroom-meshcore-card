@@ -819,9 +819,9 @@ export class MeshcoreCard extends HTMLElement {
     if (!body) return "";
 
     const open = this._openDetails.has(vm.node.deviceId) ? " open" : "";
-    return `<details class="node-details trim-section" part="details" data-node-id="${escapeHtml(vm.node.deviceId)}"${open}>
+    return `<details class="node-details" part="details" data-node-id="${escapeHtml(vm.node.deviceId)}"${open}>
       <summary><span>${escapeHtml(t("card.details"))}</span><ha-icon icon="mdi:chevron-down"></ha-icon></summary>
-      <div class="details-content">${body}</div>
+      <div class="details-content trim-section">${body}</div>
     </details>`;
   }
 
@@ -975,7 +975,26 @@ export class MeshcoreCard extends HTMLElement {
     const constrained = typeof this._config?.grid_options?.rows === "number";
     const cls = constrained ? "device-card grid-rows" : "device-card";
     this.shadowRoot!.innerHTML = `<style>${STYLES}</style><ha-card class="${cls}">${body}</ha-card>`;
+    this._hydrateTileInfo();
     if (constrained) this._scheduleTrim(".trim-section");
+  }
+
+  private _hydrateTileInfo(): void {
+    const applyProperties = (): void => {
+      for (const info of Array.from(this.shadowRoot!.querySelectorAll("ha-tile-info"))) {
+        const primary = info.querySelector<HTMLElement>('[slot="primary"]')?.textContent ?? "";
+        const secondary = info.querySelector<HTMLElement>('[slot="secondary"]')?.textContent ?? "";
+        const tileInfo = info as HTMLElement & { primary: string; secondary: string };
+        tileInfo.primary = primary;
+        tileInfo.secondary = secondary;
+      }
+    };
+
+    if (customElements.get("ha-tile-info")) {
+      applyProperties();
+    } else {
+      void customElements.whenDefined?.("ha-tile-info").then(applyProperties);
+    }
   }
 
   private _scheduleTrim(rowSelector: string): void {
