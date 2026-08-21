@@ -24,7 +24,6 @@ interface EntityReading {
 interface NodeViewModel {
   node: NodeInfo;
   displayName: string;
-  nodeKey: string;
   online: boolean;
   isRepeater: boolean;
   isSensor: boolean;
@@ -304,11 +303,6 @@ export class MeshcoreCard extends HTMLElement {
       <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
       <span>${escapeHtml(reading.value)}${unit ? ` ${escapeHtml(unit)}` : ""}</span>
     </button>`;
-  }
-
-  private _plainChip(label: string, value: string): string {
-    if (!value) return "";
-    return `<span class="chip"><span class="chip-label">${escapeHtml(label)}</span>${escapeHtml(value)}</span>`;
   }
 
   private _locLink(lat: unknown, lon: unknown, entityId: string | null, t: LocalizeFunc): string {
@@ -682,18 +676,6 @@ export class MeshcoreCard extends HTMLElement {
     const bandwidthEntity = p("bandwidth");
     const txPowerEntity = p("tx_power");
 
-    // Node identifier
-    let nodeKey = "";
-    if (contactId) {
-      const advId = this._attr(contactId, "adv_id");
-      if (advId) nodeKey = String(advId);
-    }
-    if (!nodeKey && statusId) {
-      const advId = this._attr(statusId, "adv_id");
-      if (advId) nodeKey = String(advId);
-    }
-    if (!nodeKey && deviceId) nodeKey = deviceId.slice(-6);
-
     // Clean display name: remove leading "MeshCore " or "MeshCore"
     let displayName = name.replace(/_/g, " ");
     if (displayName.toLowerCase().startsWith("meshcore ")) {
@@ -711,7 +693,6 @@ export class MeshcoreCard extends HTMLElement {
     return {
       node,
       displayName: displayName.trim(),
-      nodeKey,
       online,
       isRepeater,
       isSensor,
@@ -779,10 +760,8 @@ export class MeshcoreCard extends HTMLElement {
 
   private _renderNodeDetails(vm: NodeViewModel, t: LocalizeFunc): string {
     const technical = [
-      vm.nodeKey ? this._plainChip(`${t("card.node_id")} `, vm.nodeKey) : "",
       this._detailChip(vm.route, t("card.routing_path")),
       this._detailChip(vm.pathLength, t("card.path_length")),
-      this._detailChip(vm.uptime, t("card.chip_uptime")),
       this._detailChip(vm.spreadingFactor, "SF"),
       this._detailChip(vm.frequency, t("card.frequency"), " MHz"),
       this._detailChip(vm.bandwidth, t("card.bandwidth"), " kHz"),
@@ -795,7 +774,6 @@ export class MeshcoreCard extends HTMLElement {
       this._detailChip(vm.duplicate, t("card.traffic_duplicate")),
       this._detailChip(vm.txAirtime, t("card.tx_airtime_label"), "%"),
       this._detailChip(vm.rxAirtime, t("card.rx_airtime_label"), "%"),
-      this._detailChip(vm.noiseFloor, t("card.chip_noise_floor"), " dBm"),
       this._detailChip(vm.queueLength, t("card.chip_queue")),
       this._detailChip(vm.txRate, t("card.chip_tx_rate")),
       this._detailChip(vm.rxRate, t("card.chip_rx_rate")),
@@ -838,14 +816,20 @@ export class MeshcoreCard extends HTMLElement {
     const metrics = [
       this._metric(vm.rssi, t("card.rssi_label"), "dBm"),
       this._metric(vm.snr, t("card.snr_label"), "dB"),
-      this._metric(vm.batteryPct, t("card.battery_label"), "%"),
+      this._metric(vm.noiseFloor, t("card.noise_floor_label"), "dBm"),
     ].join("");
     const voltage = vm.batteryVoltage.value !== null
       ? Number(vm.batteryVoltage.value).toFixed(2)
       : null;
     const battery = vm.batteryPct.value !== null
       ? `<div class="battery-block" part="battery">
-          <div class="battery-meta"><span>${escapeHtml(t("card.battery_label"))}</span>${voltage && vm.batteryVoltage.id ? `<button type="button" class="battery-voltage clickable" data-entity="${escapeHtml(vm.batteryVoltage.id)}" aria-label="${escapeHtml(t("card.battery_voltage"))} ${voltage} V">${voltage} V</button>` : ""}</div>
+          <div class="battery-meta">
+            <span>${escapeHtml(t("card.battery_label"))}</span>
+            <span class="battery-values">
+              ${vm.batteryPct.id ? `<button type="button" class="battery-percentage clickable" data-entity="${escapeHtml(vm.batteryPct.id)}" aria-label="${escapeHtml(t("card.battery_label"))} ${escapeHtml(vm.batteryPct.value)}%">${escapeHtml(vm.batteryPct.value)}%</button>` : ""}
+              ${voltage && vm.batteryVoltage.id ? `<button type="button" class="battery-voltage clickable" data-entity="${escapeHtml(vm.batteryVoltage.id)}" aria-label="${escapeHtml(t("card.battery_voltage"))} ${voltage} V">${voltage} V</button>` : ""}
+            </span>
+          </div>
           ${this._progressBar(vm.batteryPct.value, batteryColor(vm.batteryPct.value), t("card.battery_label"))}
         </div>`
       : "";
@@ -853,6 +837,7 @@ export class MeshcoreCard extends HTMLElement {
       this._quickChip(vm.sent, t("card.traffic_sent"), "", "mdi:arrow-up"),
       this._quickChip(vm.received, t("card.traffic_received"), "", "mdi:arrow-down"),
       this._quickChip(vm.temperature, t("card.telemetry_temp"), "°C", "mdi:thermometer"),
+      this._quickChip(vm.uptime, t("card.uptime_label"), "", "mdi:timer-outline"),
       vm.batteryPct.value === null
         ? this._quickChip(vm.batteryVoltage, t("card.battery_voltage"), "V", "mdi:flash")
         : "",
@@ -968,12 +953,16 @@ export class MeshcoreCard extends HTMLElement {
     }
     const vm = this._buildNodeViewModel(node, t);
     this._cardSize = vm.online ? 5 : 1;
-    this._setBody(this._renderNode(node, t, vm));
+    this._setBody(this._renderNode(node, t, vm), !vm.online);
   }
 
-  private _setBody(body: string): void {
+  private _setBody(body: string, offlineNode = false): void {
     const constrained = typeof this._config?.grid_options?.rows === "number";
-    const cls = constrained ? "device-card grid-rows" : "device-card";
+    const cls = [
+      "device-card",
+      constrained ? "grid-rows" : "",
+      offlineNode ? "offline-node-card" : "",
+    ].filter(Boolean).join(" ");
     this.shadowRoot!.innerHTML = `<style>${STYLES}</style><ha-card class="${cls}">${body}</ha-card>`;
     this._hydrateTileInfo();
     if (constrained) this._scheduleTrim(".trim-section");
