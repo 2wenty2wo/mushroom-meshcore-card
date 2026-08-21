@@ -19,11 +19,22 @@ const CONTACT_STYLES: string = `
     border: var(--ha-card-border-width, 1px) solid var(--mushroom-meshcore-border-color);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);
+  }
+
+  .contact-action {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: var(--mush-spacing, 10px);
+    padding: 0;
+    background: transparent;
+    text-align: start;
     transition: filter 280ms ease-out;
     cursor: pointer;
   }
-  .contact-row:hover { filter: brightness(0.97); }
-  .contact-row:active { filter: brightness(0.94); }
+  .contact-action:hover { filter: brightness(0.97); }
+  .contact-action:active { filter: brightness(0.94); }
 
   .contact-icon {
     display: flex;
@@ -137,16 +148,6 @@ export class MeshcoreContactCard extends HTMLElement {
           entityId: el.dataset["entity"],
         };
         this.dispatchEvent(event);
-      }
-    });
-    this.shadowRoot!.addEventListener("keydown", (e: Event) => {
-      const keyboardEvent = e as KeyboardEvent;
-      if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
-      const target = e.target as Element;
-      const el = target.closest("[data-entity]") as HTMLElement | null;
-      if (el && target === el) {
-        keyboardEvent.preventDefault();
-        el.click();
       }
     });
   }
@@ -266,26 +267,29 @@ export class MeshcoreContactCard extends HTMLElement {
     const safeIcon = /^[a-z0-9_-]+:[a-z0-9_-]+$/i.test(c.icon) ? c.icon : "mdi:account";
 
     return `
-      <div class="contact-row" role="button" tabindex="0" aria-label="${escapeHtml(c.advName)}" data-entity="${escapeHtml(c.entityId)}">
-        <div class="contact-icon ${c.online ? "online" : "offline"}">
+      <div class="contact-row">
+        <button class="contact-action" type="button" aria-label="${escapeHtml(c.advName)}" data-entity="${escapeHtml(c.entityId)}">
+          <div class="contact-icon ${c.online ? "online" : "offline"}">
           ${safePicture
             ? `<img src="${escapeHtml(safePicture)}" alt="">`
             : `<ha-icon icon="${escapeHtml(safeIcon)}"></ha-icon>`}
-        </div>
-        <div class="contact-info">
-          <div class="contact-header">
-            <span class="contact-name">${escapeHtml(c.advName)}</span>
-            ${c.nodeType ? `<span class="type-badge">${escapeHtml(c.nodeType)}</span>` : ""}
           </div>
-          <div class="contact-meta">
-            ${c.timeSince ? `<span>${escapeHtml(c.timeSince)}</span>` : ""}
-            ${mapUrl ? `<a class="meta-loc" href="${mapUrl}" target="_blank" rel="noopener">📍 ${c.lat!.toFixed(5)}, ${c.lon!.toFixed(5)}</a>` : c.unknownLocation ? `<span class="dim">${escapeHtml(t("card.unknown_location"))}</span>` : ""}
-            ${c.path ? `<span>↝ ${escapeHtml(c.path)}</span>` : ""}
+          <div class="contact-info">
+            <div class="contact-header">
+              <span class="contact-name">${escapeHtml(c.advName)}</span>
+              ${c.nodeType ? `<span class="type-badge">${escapeHtml(c.nodeType)}</span>` : ""}
+            </div>
+            <div class="contact-meta">
+              ${c.timeSince ? `<span>${escapeHtml(c.timeSince)}</span>` : ""}
+              ${!mapUrl && c.unknownLocation ? `<span class="dim">${escapeHtml(t("card.unknown_location"))}</span>` : ""}
+              ${c.path ? `<span>↝ ${escapeHtml(c.path)}</span>` : ""}
+            </div>
           </div>
-        </div>
-        <div class="contact-right">
-          <span class="status-dot ${c.online ? "dot-online" : "dot-offline"}"></span>
-        </div>
+          <div class="contact-right">
+            <span class="status-dot ${c.online ? "dot-online" : "dot-offline"}"></span>
+          </div>
+        </button>
+        ${mapUrl ? `<a class="meta-loc" href="${mapUrl}" target="_blank" rel="noopener">📍 ${c.lat!.toFixed(5)}, ${c.lon!.toFixed(5)}</a>` : ""}
       </div>`;
   }
 

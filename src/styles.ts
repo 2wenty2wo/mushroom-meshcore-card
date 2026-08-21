@@ -26,10 +26,10 @@ export const STYLES: string = `
     --mushroom-meshcore-card-background: var(--ha-card-background, var(--card-background-color, white));
     --mushroom-meshcore-surface: var(--secondary-background-color, rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05));
     --mushroom-meshcore-border-color: var(--ha-card-border-color, var(--divider-color, rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.12)));
-    --mushroom-meshcore-success-color: rgb(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80)));
-    --mushroom-meshcore-warning-color: rgb(var(--mush-rgb-warning, var(--rgb-warning, 255, 152, 0)));
-    --mushroom-meshcore-danger-color: rgb(var(--mush-rgb-danger, var(--rgb-danger, 244, 67, 54)));
-    --mushroom-meshcore-info-color: rgb(var(--mush-rgb-info, var(--rgb-info, 3, 169, 244)));
+    --mushroom-meshcore-success-color: var(--success-color, rgb(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80))));
+    --mushroom-meshcore-warning-color: var(--warning-color, rgb(var(--mush-rgb-warning, var(--rgb-warning, 255, 152, 0))));
+    --mushroom-meshcore-danger-color: var(--error-color, rgb(var(--mush-rgb-danger, var(--rgb-danger, 244, 67, 54))));
+    --mushroom-meshcore-info-color: var(--info-color, rgb(var(--mush-rgb-info, var(--rgb-info, 3, 169, 244))));
     --mushroom-meshcore-muted-color: var(--secondary-text-color, #727272);
     --mushroom-meshcore-node-radius: var(--ha-card-border-radius, 12px);
     --mushroom-meshcore-card-padding: var(--mush-spacing, 10px);
