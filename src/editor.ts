@@ -1,44 +1,47 @@
 import type {
   HomeAssistant,
   MeshcoreCardConfig,
-  HubConfig,
-  NodeConfig,
+  MeshcoreCardTarget,
   HubInfo,
   NodeInfo,
   HaFormSchema,
-  HaFormExpandableSchema,
   HaFormElement,
   HaAlertElement,
 } from "./types.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
 import { makeLocalize } from "./localize.js";
 
-interface EditorHubInfo extends HubInfo {}
-interface EditorNodeInfo extends NodeInfo {}
-
-const NODE_EDITOR_STYLES = `
-  .node-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; }
-  .node-list-label { font-size: 12px; font-weight: 500; color: var(--secondary-text-color);
-    text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 16px 0; }
-  .node-row { display: flex; align-items: flex-start; gap: 4px;
-    background: var(--card-background-color, var(--ha-card-background));
-    border: 1px solid var(--divider-color); border-radius: 8px; overflow: hidden; }
-  .node-row.drag-over { outline: 2px solid var(--primary-color); }
-  .drag-handle { flex-shrink: 0; padding: 14px 4px 0 8px;
-    color: var(--secondary-text-color); cursor: grab; touch-action: none; }
-  .drag-handle:active { cursor: grabbing; }
-  .node-panel { flex: 1; min-width: 0; }
+const EDITOR_STYLES = `
+  .meshcore-editor { display: flex; flex-direction: column; gap: 8px; }
+  ha-alert { display: block; margin: 8px 0; }
 `;
+
+const DEVICE_SETTING_KEYS = [
+  "battery_entity",
+  "voltage_entity",
+  "location_entity",
+  "temperature_entity",
+  "humidity_entity",
+  "illuminance_entity",
+  "pressure_entity",
+  "show_neighbors",
+  "max_neighbors",
+] as const;
+
+const ENTITY_SETTING_KEYS = [
+  "battery_entity",
+  "voltage_entity",
+  "location_entity",
+  "temperature_entity",
+  "humidity_entity",
+  "illuminance_entity",
+  "pressure_entity",
+] as const;
 
 export class MeshcoreCardEditor extends HTMLElement {
   private _hass?: HomeAssistant;
   private _config?: MeshcoreCardConfig;
   private _discoveryFp = "";
-  private _mapForm: HaFormElement | null = null;
-  private _hubForm: HaFormElement | null = null;
-  private _nodeList: HTMLElement | null = null;
-  private _nodeForms = new Map<string, HaFormElement>();
-  private _expandedNodes = new Set<string>();
 
   setConfig(config: MeshcoreCardConfig): void {
     this._config = { ...config };
@@ -47,100 +50,177 @@ export class MeshcoreCardEditor extends HTMLElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
-    if (this._hubForm) this._hubForm.hass = hass;
-    for (const form of this._nodeForms.values()) form.hass = hass;
-    const hubs  = this._discoverHubs();
+    this.querySelectorAll<HaFormElement>("ha-form").forEach((form) => {
+      form.hass = hass;
+    });
+    const hubs = this._discoverHubs();
     const nodes = this._discoverNodes();
-    const fp = hubs.map((h) => h.pubkey).join(",") + "|" + nodes.map((n) => n.name).join(",");
+    const fp = hubs.map((hub) => `${hub.pubkey}:${hub.name}`).join(",")
+      + "|"
+      + nodes.map((node) => `${node.deviceId}:${node.name}`).join(",");
     if (fp !== this._discoveryFp) {
       this._discoveryFp = fp;
       this._renderEditor();
     }
   }
 
-  // ── Discovery ──────────────────────────────────────────────────────────────
-
-  private _discoverHubs(): EditorHubInfo[] {
-    if (!this._hass) return [];
-    return discoverHubs(this._hass).map((h) => ({ ...h, name: h.name.replace(/_/g, " ") }));
+  private _discoverHubs(): HubInfo[] {
+    return this._hass ? discoverHubs(this._hass) : [];
   }
 
-  private _discoverNodes(): EditorNodeInfo[] {
-    if (!this._hass) return [];
-    return discoverNodes(this._hass);
+  private _discoverNodes(): NodeInfo[] {
+    return this._hass ? discoverNodes(this._hass) : [];
   }
 
-  // ── Config helpers ─────────────────────────────────────────────────────────
-
-  private _getCfgObj(kind: "hub" | "node", key: string): HubConfig | NodeConfig {
-    const map = kind === "hub" ? (this._config?.hubs ?? {}) : (this._config?.nodes ?? {});
-    const v = map[key];
-    if (v && typeof v === "object") return { ...v } as HubConfig | NodeConfig;
-    return { enabled: v !== false };
+  private _targetValue(target: MeshcoreCardTarget | undefined): string {
+    return target ? JSON.stringify(target) : "";
   }
 
-  private _dispatchConfig(cfg: MeshcoreCardConfig): void {
-    this._config = cfg;
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg } }));
-  }
-
-  // ── Hub schema / data ──────────────────────────────────────────────────────
-
-  private _hubSchema(hubs: EditorHubInfo[]): HaFormSchema[] {
-    const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
-    const dcSel = (ids: string[], dc: string) =>
-      (ids.length
-        ? { entity: { include_entities: ids, device_class: dc } }
-        : { entity: { domain: "sensor", device_class: dc } }) as never;
-
-    return hubs.map((h) => {
-      const ids = Object.keys(this._hass?.states ?? {}).filter((id) => id.includes(h.pubkey));
-      return {
-        type: "expandable",
-        name: `hub__${h.pubkey}`,
-        title: t("editor.hub_section_title", { name: h.name, key: h.pubkey }),
-        schema: [
-          { name: "enabled",        label: t("editor.show_this_hub"),  selector: { boolean: {} } },
-          { name: "battery_entity", label: t("editor.battery_entity"), selector: dcSel(ids, "battery") },
-          { name: "voltage_entity", label: t("editor.voltage_entity"), selector: dcSel(ids, "voltage") },
-        ],
-      } as HaFormExpandableSchema;
-    });
-  }
-
-  private _hubData(hubs: EditorHubInfo[]): Record<string, unknown> {
-    const data: Record<string, unknown> = {};
-    for (const hub of hubs) {
-      const cfg = this._getCfgObj("hub", hub.pubkey) as HubConfig;
-      data[`hub__${hub.pubkey}`] = {
-        enabled:        cfg.enabled !== false,
-        battery_entity: cfg.battery_entity ?? null,
-        voltage_entity: cfg.voltage_entity ?? null,
-      };
+  private _parseTarget(value: unknown): MeshcoreCardTarget | undefined {
+    if (typeof value !== "string" || !value) return undefined;
+    try {
+      const parsed = JSON.parse(value) as Partial<MeshcoreCardTarget>;
+      if (
+        (parsed.type === "hub" || parsed.type === "node") &&
+        typeof parsed.id === "string" &&
+        parsed.id
+      ) {
+        return { type: parsed.type, id: parsed.id };
+      }
+    } catch {
+      // Invalid select values are treated as no target.
     }
-    return data;
+    return undefined;
   }
 
-  // ── Node schema / data ─────────────────────────────────────────────────────
+  private _sameTarget(
+    a: MeshcoreCardTarget | undefined,
+    b: MeshcoreCardTarget | undefined
+  ): boolean {
+    return a?.type === b?.type && a?.id === b?.id;
+  }
 
-  private _nodeSchema(n: EditorNodeInfo): HaFormSchema[] {
-    const t  = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+  private _dispatchConfig(config: MeshcoreCardConfig): void {
+    this._config = config;
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config } }));
+  }
+
+  private _clearDeviceSettings(config: MeshcoreCardConfig): void {
+    for (const key of DEVICE_SETTING_KEYS) delete config[key];
+  }
+
+  private _removeLegacyFields(config: MeshcoreCardConfig): void {
+    const legacy = config as MeshcoreCardConfig & Record<string, unknown>;
+    delete legacy["hubs"];
+    delete legacy["nodes"];
+    delete legacy["nodes_order"];
+  }
+
+  private _targetOptions(
+    hubs: HubInfo[],
+    nodes: NodeInfo[]
+  ): { value: string; label: string }[] {
+    const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+    return [
+      ...hubs.map((hub) => ({
+        value: this._targetValue({ type: "hub", id: hub.pubkey }),
+        label: t("editor.target_hub", {
+          name: hub.name.replace(/_/g, " "),
+          id: hub.pubkey,
+        }),
+      })),
+      ...nodes.map((node) => ({
+        value: this._targetValue({ type: "node", id: node.name }),
+        label: t("editor.target_node", { name: node.name.replace(/_/g, " ") }),
+      })),
+    ];
+  }
+
+  private _targetForm(hubs: HubInfo[], nodes: NodeInfo[]): HaFormElement {
+    const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+    const form = document.createElement("ha-form") as HaFormElement;
+    form.hass = this._hass!;
+    form.computeLabel = (schema) => ("label" in schema ? schema.label : undefined) ?? schema.name;
+    form.schema = [
+      {
+        name: "target",
+        label: t("editor.target_device"),
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: this._targetOptions(hubs, nodes),
+          },
+        },
+      },
+    ];
+    form.data = { target: this._targetValue(this._config?.target) };
+    form.addEventListener("value-changed", (event: Event) => {
+      const value = (event as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+      const target = this._parseTarget(value["target"]);
+      const config: MeshcoreCardConfig = { ...this._config };
+      if (!this._sameTarget(config.target, target)) this._clearDeviceSettings(config);
+      if (target) config.target = target;
+      else delete config.target;
+      this._removeLegacyFields(config);
+      this._dispatchConfig(config);
+      this._renderEditor();
+    });
+    return form;
+  }
+
+  private _selectedNode(): NodeInfo | undefined {
+    const target = this._config?.target;
+    if (target?.type !== "node") return undefined;
+    return this._discoverNodes().find((node) => node.name === target.id);
+  }
+
+  private _settingsSchema(target: MeshcoreCardTarget): HaFormSchema[] {
+    const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+    const mapSchema: HaFormSchema[] = [
+      {
+        name: "map_provider",
+        label: t("editor.map_provider"),
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "analyzer", label: "LetsMesh Analyzer" },
+              { value: "meshmapper", label: "MeshMapper" },
+            ],
+          },
+        },
+      },
+      { name: "map_metro", label: t("editor.map_metro"), selector: { text: {} } },
+    ];
+
+    if (target.type === "hub") {
+      const ids = Object.keys(this._hass?.states ?? {}).filter((id) => id.includes(target.id));
+      const dcSel = (deviceClass: string) =>
+        (ids.length
+          ? { entity: { include_entities: ids, device_class: deviceClass } }
+          : { entity: { domain: "sensor", device_class: deviceClass } }) as never;
+      return [
+        { name: "battery_entity", label: t("editor.battery_entity"), selector: dcSel("battery") },
+        { name: "voltage_entity", label: t("editor.voltage_entity"), selector: dcSel("voltage") },
+        ...mapSchema,
+      ];
+    }
+
+    const node = this._selectedNode();
     const meshcoreIds = this._hass?.entities
       ? Object.entries(this._hass.entities)
           .filter(([, info]) => info.platform === "meshcore")
           .map(([id]) => id)
       : [];
-    const ids = this._hass?.entities
+    const ids = node && this._hass?.entities
       ? Object.entries(this._hass.entities)
-          .filter(([, info]) => info.device_id === n.deviceId)
+          .filter(([, info]) => info.device_id === node.deviceId)
           .map(([id]) => id)
       : [];
-    // Strict device_class filter for well-standardised entities
-    const dcSel = (dc: string) =>
+    const dcSel = (deviceClass: string) =>
       (ids.length
-        ? { entity: { include_entities: ids, device_class: dc } }
-        : { entity: { domain: "sensor", device_class: dc } }) as never;
-    // Device-scoped selector without device_class — for sensors that may only have state_class: measurement
+        ? { entity: { include_entities: ids, device_class: deviceClass } }
+        : { entity: { domain: "sensor", device_class: deviceClass } }) as never;
     const devSel = ids.length
       ? { entity: { include_entities: ids } }
       : { entity: { domain: "sensor" } };
@@ -149,283 +229,97 @@ export class MeshcoreCardEditor extends HTMLElement {
       : { entity: { domain: "sensor" } };
 
     return [
-      { name: "enabled",            label: t("editor.show_this_node"),     selector: { boolean: {} } },
-      { name: "battery_entity",     label: t("editor.battery_entity"),     selector: dcSel("battery") },
-      { name: "voltage_entity",     label: t("editor.voltage_entity"),     selector: dcSel("voltage") },
-      { name: "location_entity",    label: t("editor.location_entity"),    selector: locSel },
+      { name: "battery_entity", label: t("editor.battery_entity"), selector: dcSel("battery") },
+      { name: "voltage_entity", label: t("editor.voltage_entity"), selector: dcSel("voltage") },
+      { name: "location_entity", label: t("editor.location_entity"), selector: locSel },
       { name: "temperature_entity", label: t("editor.temperature_entity"), selector: devSel },
-      { name: "humidity_entity",    label: t("editor.humidity_entity"),    selector: devSel },
+      { name: "humidity_entity", label: t("editor.humidity_entity"), selector: devSel },
       { name: "illuminance_entity", label: t("editor.illuminance_entity"), selector: devSel },
-      { name: "pressure_entity",    label: t("editor.pressure_entity"),    selector: devSel },
-      { name: "show_neighbors",     label: t("editor.show_neighbors"),     selector: { boolean: {} } },
-      { name: "max_neighbors",      label: t("editor.max_neighbors"),      selector: { number: { min: 0, mode: "box" } } },
+      { name: "pressure_entity", label: t("editor.pressure_entity"), selector: devSel },
+      { name: "show_neighbors", label: t("editor.show_neighbors"), selector: { boolean: {} } },
+      { name: "max_neighbors", label: t("editor.max_neighbors"), selector: { number: { min: 0, mode: "box" } } },
+      ...mapSchema,
     ];
   }
 
-  private _nodeData(n: EditorNodeInfo): Record<string, unknown> {
-    const cfg = this._getCfgObj("node", n.name) as NodeConfig;
-    return {
-      enabled:            cfg.enabled !== false,
-      battery_entity:     cfg.battery_entity     ?? null,
-      voltage_entity:     cfg.voltage_entity     ?? null,
-      location_entity:    cfg.location_entity    ?? null,
-      temperature_entity: cfg.temperature_entity ?? null,
-      humidity_entity:    cfg.humidity_entity    ?? null,
-      illuminance_entity: cfg.illuminance_entity ?? null,
-      pressure_entity:    cfg.pressure_entity    ?? null,
-      show_neighbors:     cfg.show_neighbors !== false,
-      max_neighbors:      cfg.max_neighbors ?? null,
+  private _settingsData(target: MeshcoreCardTarget): Record<string, unknown> {
+    const config = this._config ?? {};
+    const data: Record<string, unknown> = {
+      battery_entity: config.battery_entity ?? null,
+      voltage_entity: config.voltage_entity ?? null,
+      map_provider: config.map_provider === "meshmapper" ? "meshmapper" : "analyzer",
+      map_metro: config.map_metro ?? "",
     };
+    if (target.type === "node") {
+      data["location_entity"] = config.location_entity ?? null;
+      data["temperature_entity"] = config.temperature_entity ?? null;
+      data["humidity_entity"] = config.humidity_entity ?? null;
+      data["illuminance_entity"] = config.illuminance_entity ?? null;
+      data["pressure_entity"] = config.pressure_entity ?? null;
+      data["show_neighbors"] = config.show_neighbors !== false;
+      data["max_neighbors"] = config.max_neighbors ?? null;
+    }
+    return data;
   }
 
-  private _nodeFormDataToConfig(name: string, d: Record<string, unknown>): void {
-    const obj: NodeConfig = { enabled: d["enabled"] !== false };
-    if (d["battery_entity"])     obj.battery_entity     = d["battery_entity"]     as string;
-    if (d["voltage_entity"])     obj.voltage_entity     = d["voltage_entity"]     as string;
-    if (d["location_entity"])    obj.location_entity    = d["location_entity"]    as string;
-    if (d["temperature_entity"]) obj.temperature_entity = d["temperature_entity"] as string;
-    if (d["humidity_entity"])    obj.humidity_entity    = d["humidity_entity"]    as string;
-    if (d["illuminance_entity"]) obj.illuminance_entity = d["illuminance_entity"] as string;
-    if (d["pressure_entity"])    obj.pressure_entity    = d["pressure_entity"]    as string;
-    // Only store non-defaults so the YAML stays minimal.
-    if (d["show_neighbors"] === false) obj.show_neighbors = false;
-    const maxN = Number(d["max_neighbors"]);
-    if (!isNaN(maxN) && maxN > 0) obj.max_neighbors = maxN;
-    this._dispatchConfig({
-      ...this._config,
-      nodes: { ...(this._config?.nodes ?? {}), [name]: obj },
+  private _settingsForm(target: MeshcoreCardTarget): HaFormElement {
+    const form = document.createElement("ha-form") as HaFormElement;
+    form.hass = this._hass!;
+    form.computeLabel = (schema) => ("label" in schema ? schema.label : undefined) ?? schema.name;
+    form.schema = this._settingsSchema(target);
+    form.data = this._settingsData(target);
+    form.addEventListener("value-changed", (event: Event) => {
+      const value = (event as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+      const config: MeshcoreCardConfig = { ...this._config };
+      for (const key of ENTITY_SETTING_KEYS) {
+        const entityId = value[key];
+        if (typeof entityId === "string" && entityId) config[key] = entityId;
+        else delete config[key];
+      }
+      if (target.type === "node" && value["show_neighbors"] === false) {
+        config.show_neighbors = false;
+      } else {
+        delete config.show_neighbors;
+      }
+      const maxNeighbors = Number(value["max_neighbors"]);
+      if (target.type === "node" && Number.isFinite(maxNeighbors) && maxNeighbors > 0) {
+        config.max_neighbors = maxNeighbors;
+      } else {
+        delete config.max_neighbors;
+      }
+      if (value["map_provider"] === "meshmapper") config.map_provider = "meshmapper";
+      else delete config.map_provider;
+      const metro = String(value["map_metro"] ?? "").trim();
+      if (metro) config.map_metro = metro;
+      else delete config.map_metro;
+      this._removeLegacyFields(config);
+      this._dispatchConfig(config);
     });
+    return form;
   }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   private _renderEditor(): void {
     if (!this._config) return;
+    while (this.lastChild) this.removeChild(this.lastChild);
 
-    const hubs  = this._discoverHubs();
+    const style = document.createElement("style");
+    style.textContent = EDITOR_STYLES;
+    this.appendChild(style);
+
+    const container = document.createElement("div");
+    container.className = "meshcore-editor";
+    const hubs = this._discoverHubs();
     const nodes = this._discoverNodes();
-
-    if (!hubs.length) {
-      this._mapForm?.remove();   this._mapForm = null;
-      this._hubForm?.remove();   this._hubForm = null;
-      this._nodeList?.remove();  this._nodeList = null;
-      this._nodeForms.clear();
-      if (!this.querySelector("ha-alert")) {
-        while (this.lastChild) this.removeChild(this.lastChild);
-        const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
-        const alert = document.createElement("ha-alert") as HaAlertElement;
-        alert.alertType = "info";
-        alert.textContent = t("editor.no_hubs_detected");
-        this.appendChild(alert);
-      }
-      return;
-    }
-
-    this.querySelector("ha-alert")?.remove();
-
-    // ── Map settings (card-level) ──────────────────────────────────────────
-    if (!this._mapForm) {
-      this._mapForm = document.createElement("ha-form") as HaFormElement;
-      this._mapForm.computeLabel = (s: HaFormSchema) =>
-        ("label" in s ? s.label : undefined) ?? s.name;
-      this._mapForm.addEventListener("value-changed", (e: Event) => {
-        const v = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
-        const cfg: MeshcoreCardConfig = { ...this._config };
-        // Only store non-defaults so the YAML stays minimal.
-        if (v["map_provider"] === "meshmapper") cfg.map_provider = "meshmapper";
-        else delete cfg.map_provider;
-        const metro = String(v["map_metro"] ?? "").trim();
-        if (metro) cfg.map_metro = metro;
-        else delete cfg.map_metro;
-        this._dispatchConfig(cfg);
-      });
-      this.appendChild(this._mapForm);
-    }
-    {
+    if (!hubs.length && !nodes.length) {
       const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
-      this._mapForm.hass = this._hass!;
-      this._mapForm.schema = [
-        {
-          name: "map_provider",
-          label: t("editor.map_provider"),
-          selector: { select: { mode: "dropdown", options: [
-            { value: "analyzer",   label: "LetsMesh Analyzer" },
-            { value: "meshmapper", label: "MeshMapper" },
-          ] } },
-        },
-        { name: "map_metro", label: t("editor.map_metro"), selector: { text: {} } },
-      ];
-      this._mapForm.data = {
-        map_provider: this._config?.map_provider === "meshmapper" ? "meshmapper" : "analyzer",
-        map_metro: this._config?.map_metro ?? "",
-      };
+      const alert = document.createElement("ha-alert") as HaAlertElement;
+      alert.alertType = "info";
+      alert.textContent = t("editor.no_devices_detected");
+      container.appendChild(alert);
+    } else {
+      container.appendChild(this._targetForm(hubs, nodes));
+      if (this._config.target) container.appendChild(this._settingsForm(this._config.target));
     }
-
-    // ── Hub form ───────────────────────────────────────────────────────────
-    if (!this._hubForm) {
-      this._hubForm = document.createElement("ha-form") as HaFormElement;
-      this._hubForm.computeLabel = (s: HaFormSchema) =>
-        ("label" in s ? s.label : undefined) ?? ("title" in s ? s.title : undefined) ?? s.name;
-      this._hubForm.addEventListener("value-changed", (e: Event) => {
-        const value = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
-        const h = this._discoverHubs();
-        const cfg: MeshcoreCardConfig = { ...this._config };
-        for (const hub of h) {
-          const d = (value[`hub__${hub.pubkey}`] ?? {}) as Record<string, unknown>;
-          const obj: HubConfig = { enabled: d["enabled"] !== false };
-          if (d["battery_entity"]) obj.battery_entity = d["battery_entity"] as string;
-          if (d["voltage_entity"]) obj.voltage_entity = d["voltage_entity"] as string;
-          cfg.hubs = { ...(cfg.hubs ?? {}), [hub.pubkey]: obj };
-        }
-        this._dispatchConfig(cfg);
-      });
-      this.appendChild(this._hubForm);
-    }
-    this._hubForm.hass   = this._hass!;
-    this._hubForm.schema = this._hubSchema(hubs);
-    this._hubForm.data   = this._hubData(hubs);
-
-    // ── Node list ──────────────────────────────────────────────────────────
-    if (!this.querySelector("style.node-editor-styles")) {
-      const style = document.createElement("style");
-      style.className = "node-editor-styles";
-      style.textContent = NODE_EDITOR_STYLES;
-      this.appendChild(style);
-    }
-
-    if (!this._nodeList) {
-      this._nodeList = document.createElement("div");
-      this._nodeList.className = "node-list";
-      const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
-      if (nodes.length > 1) {
-        const label = document.createElement("div");
-        label.className = "node-list-label";
-        label.textContent = t("editor.node_order_label");
-        this._nodeList.prepend(label);
-      }
-      this.appendChild(this._nodeList);
-    }
-
-    const order = this._config?.nodes_order ?? [];
-    const sortedNodes = [...nodes].sort((a, b) => {
-      const ia = order.indexOf(a.name);
-      const ib = order.indexOf(b.name);
-      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-    });
-
-    // Remove rows for nodes that no longer exist
-    for (const name of [...this._nodeForms.keys()]) {
-      if (!nodes.find((n) => n.name === name)) {
-        this._nodeList.querySelector(`[data-name="${CSS.escape(name)}"]`)?.remove();
-        this._nodeForms.delete(name);
-      }
-    }
-
-    // Build/update rows in sorted order
-    for (const node of sortedNodes) {
-      let row = this._nodeList.querySelector<HTMLElement>(`.node-row[data-name="${CSS.escape(node.name)}"]`);
-
-      if (!row) {
-        row = this._createNodeRow(node);
-      }
-
-      // Ensure expansion panel reflects tracked expanded state
-      const panel = row.querySelector("ha-expansion-panel") as (HTMLElement & { expanded?: boolean }) | null;
-      if (panel) panel.expanded = this._expandedNodes.has(node.name);
-
-      // Update form schema/data
-      const form = this._nodeForms.get(node.name)!;
-      form.hass   = this._hass!;
-      form.schema = this._nodeSchema(node);
-      form.data   = this._nodeData(node);
-
-      // Move to end to match sorted order (no-op if already in order)
-      this._nodeList.appendChild(row);
-    }
-  }
-
-  private _createNodeRow(node: EditorNodeInfo): HTMLElement {
-    const row = document.createElement("div");
-    row.className = "node-row";
-    row.dataset["name"] = node.name;
-
-    // Drag handle
-    const handle = document.createElement("ha-icon") as HTMLElement;
-    handle.className = "drag-handle";
-    (handle as HTMLElement & { icon?: string }).icon = "mdi:drag-vertical";
-    row.appendChild(handle);
-
-    // Expansion panel
-    const panel = document.createElement("ha-expansion-panel") as HTMLElement & {
-      expanded?: boolean;
-      header?: string;
-    };
-    panel.className = "node-panel";
-    panel.setAttribute("header", node.name.replace(/_/g, " "));
-    panel.expanded = this._expandedNodes.has(node.name);
-    panel.addEventListener("expanded-changed", (e: Event) => {
-      const expanded = (e as CustomEvent<{ value: boolean }>).detail.value;
-      if (expanded) this._expandedNodes.add(node.name);
-      else          this._expandedNodes.delete(node.name);
-    });
-
-    // Per-node ha-form inside the panel
-    const form = document.createElement("ha-form") as HaFormElement;
-    form.hass         = this._hass!;
-    form.schema       = this._nodeSchema(node);
-    form.data         = this._nodeData(node);
-    form.computeLabel = (s: HaFormSchema) =>
-      ("label" in s ? s.label : undefined) ?? s.name;
-    form.addEventListener("value-changed", (e: Event) => {
-      e.stopPropagation(); // prevent bubbling into hub form
-      const value = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
-      this._nodeFormDataToConfig(node.name, value);
-    });
-    this._nodeForms.set(node.name, form);
-    panel.appendChild(form);
-    row.appendChild(panel);
-
-    // Drag-and-drop on the row (only initiated from handle)
-    row.setAttribute("draggable", "true");
-    row.addEventListener("dragstart", (e: DragEvent) => {
-      if (!(e.target as Element).closest(".drag-handle")) { e.preventDefault(); return; }
-      row!.style.opacity = "0.4";
-      e.dataTransfer?.setData("text/plain", node.name);
-    });
-    row.addEventListener("dragend",  () => { row!.style.opacity = ""; this._clearDragOver(); });
-    row.addEventListener("dragover", (e) => { e.preventDefault(); row!.classList.add("drag-over"); });
-    row.addEventListener("dragleave", () => row!.classList.remove("drag-over"));
-    row.addEventListener("drop", (e) => {
-      e.preventDefault();
-      const fromName = e.dataTransfer?.getData("text/plain") ?? "";
-      if (!fromName || fromName === node.name) return;
-      this._reorder(fromName, node.name);
-    });
-
-    return row;
-  }
-
-  private _clearDragOver(): void {
-    this._nodeList?.querySelectorAll(".drag-over").forEach((el) => el.classList.remove("drag-over"));
-  }
-
-  private _reorder(fromName: string, toName: string): void {
-    const nodes = this._discoverNodes();
-    const order = this._config?.nodes_order ?? nodes.map((n) => n.name);
-    const filled = nodes.map((n) => n.name).map((name) => order.includes(name) ? name : name);
-    // Build full order list ensuring all nodes are present
-    const allNames = nodes.map((n) => n.name);
-    const current = allNames.sort((a, b) => {
-      const ia = order.indexOf(a); const ib = order.indexOf(b);
-      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-    });
-    void filled;
-    const from = current.indexOf(fromName);
-    const to   = current.indexOf(toName);
-    if (from === -1 || to === -1) return;
-    const newOrder = [...current];
-    const [moved] = newOrder.splice(from, 1);
-    newOrder.splice(to, 0, moved);
-    this._dispatchConfig({ ...this._config, nodes_order: newOrder });
+    this.appendChild(container);
   }
 }

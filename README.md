@@ -1,8 +1,8 @@
 # Mushroom MeshCore Card
 
-Mushroom-styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
+Mushroom- and Tile-styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
 
-This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card). It keeps the original card's automatic MeshCore discovery and configuration model while presenting remote nodes and repeaters with current Mushroom primitives and theme defaults.
+This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card). It keeps automatic, device-scoped MeshCore discovery while presenting each selected hub or remote node as an independent Home Assistant card.
 
 [![GitHub Release](https://img.shields.io/github/release/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
 [![License](https://img.shields.io/github/license/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](LICENSE)
@@ -46,51 +46,59 @@ resources:
     type: module
 ```
 
-Use `custom:meshcore-card` for upstream and `custom:mushroom-meshcore-card` for this fork. Existing upstream configuration remains compatible after changing the card `type`.
+Use `custom:meshcore-card` for upstream and `custom:mushroom-meshcore-card` for this fork. The resources coexist safely, but the main cards use different configuration models.
 
 ## Main card
 
 ```yaml
 type: custom:mushroom-meshcore-card
+target:
+  type: node
+  id: Spring Farm
 ```
 
-With no additional YAML, the card discovers MeshCore hubs and remote devices from Home Assistant's entity and device registries.
+Each main-card instance displays one selected hub or remote node. Add the card through the dashboard editor, select a MeshCore device, and repeat for every device you want to place independently.
 
-Remote nodes show a compact header, online state, last-seen age, RSSI, SNR, battery, voltage, sent/received traffic, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Offline nodes collapse to their identity, status, type, and last-seen age instead of displaying unavailable metrics.
+Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, battery, voltage, sent/received traffic, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Offline nodes collapse to their identity and last-seen status instead of displaying unavailable metrics.
 
 ### Configuration
 
-All existing options remain available through YAML and the visual editor:
+The visual editor exposes only the settings relevant to the selected device. Entity overrides remain optional because device-scoped automatic matching is the default.
 
 ```yaml
 type: custom:mushroom-meshcore-card
-hubs:
-  55733c:
-    enabled: true
-    battery_entity: sensor.example_battery
-    voltage_entity: sensor.example_voltage
-nodes:
-  Spring Farm:
-    enabled: true
-    battery_entity: sensor.example_battery
-    voltage_entity: sensor.example_voltage
-    location_entity: sensor.example_location
-    temperature_entity: sensor.example_temperature
-    humidity_entity: sensor.example_humidity
-    illuminance_entity: sensor.example_illuminance
-    pressure_entity: sensor.example_pressure
-    show_neighbors: true
-    max_neighbors: 10
-nodes_order:
-  - Spring Farm
-  - Oakdale
+target:
+  type: node
+  id: Spring Farm
+battery_entity: sensor.example_battery
+voltage_entity: sensor.example_voltage
+location_entity: sensor.example_location
+temperature_entity: sensor.example_temperature
+humidity_entity: sensor.example_humidity
+illuminance_entity: sensor.example_illuminance
+pressure_entity: sensor.example_pressure
+show_neighbors: true
+max_neighbors: 10
 map_provider: meshmapper
 map_metro: smf
 grid_options:
   rows: 4
 ```
 
-The per-hub and per-node entries also accept `true` or `false` as show/hide shorthand. Entity overrides are optional; automatic, device-scoped matching remains the default.
+Hub cards use the same public card type:
+
+```yaml
+type: custom:mushroom-meshcore-card
+target:
+  type: hub
+  id: 55733c
+battery_entity: sensor.example_battery
+voltage_entity: sensor.example_voltage
+```
+
+### Migrating grouped main cards
+
+The grouped `hubs`, `nodes`, and `nodes_order` fields are no longer rendered. Duplicate or add the main card once per device, select its target in the visual editor, and move any applicable entity overrides to the flat fields shown above. A card without a valid `target` displays a migration prompt rather than selecting a device automatically.
 
 ## Contact card
 
@@ -118,7 +126,7 @@ The channel card discovers MeshCore message-channel entities and sorts them by c
 
 ## Theme and Card Mod compatibility
 
-The current [Mushroom source](https://github.com/piitaya/lovelace-mushroom) and its [theme definitions](https://github.com/piitaya/lovelace-mushroom/blob/main/src/utils/theme.ts) are the source of truth for presentation. The mirrored fallback defaults are 10px spacing; a 36px icon shape with a `0.667em` (24px) symbol; 36px-high chips with a 19px radius and 8px spacing; `14px/500/20px/0.1px` primary text; `12px/400/16px/0.4px` secondary text; 42px-high controls with a 12px radius; and 16px circular badges.
+The main device header uses Home Assistant's native Tile icon and information primitives. The current [Mushroom source](https://github.com/piitaya/lovelace-mushroom) and its [theme definitions](https://github.com/piitaya/lovelace-mushroom/blob/main/src/utils/theme.ts) remain the source of truth for the composite metrics, chips, and controls below it.
 
 The cards inherit Mushroom variables such as `--mush-card-primary-font-size`, `--mush-card-secondary-font-size`, `--mush-chip-height`, `--mush-chip-border-radius`, and `--mush-icon-size`, with Home Assistant theme fallbacks. The community [Mushroom Card Mod guide](https://community.home-assistant.io/t/mushroom-cards-card-mod-styling-config-guide/600472) is a useful customization reference, but its selectors and examples are version-sensitive.
 
@@ -126,8 +134,6 @@ The main surface also exposes scoped variables that can be set from a theme or C
 
 ```css
 --mushroom-meshcore-card-padding
---mushroom-meshcore-node-spacing
---mushroom-meshcore-node-radius
 --mushroom-meshcore-surface
 --mushroom-meshcore-success-color
 --mushroom-meshcore-warning-color
@@ -147,6 +153,7 @@ npm ci
 npm run typecheck
 npm run check-translations
 npm run build
+npm run test:render
 ```
 
 The production bundle is written to `dist/mushroom-meshcore-card.js`.

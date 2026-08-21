@@ -6,6 +6,8 @@
     "hub_name": "Hub: {name}",
     "nodes_count": "◈ {n} Knoten",
     "empty_hubs": "Keine MeshCore-Hubs gefunden.<br>Prüfen Sie, ob die MeshCore-Integration installiert ist.",
+    "select_device_prompt": "Wählen Sie im Karteneditor ein MeshCore-Gerät aus. Bestehende Übersichtskonfigurationen müssen in eine Karte pro Gerät aufgeteilt werden.",
+    "target_not_found": "Das ausgewählte MeshCore-Gerät „{id}“ wurde nicht gefunden.",
     "empty_contacts": "Keine MeshCore-Kontaktknoten gefunden.<br>Prüfen Sie, ob die MeshCore-Integration installiert ist.",
     "map_link": "Karte ↗",
     "unknown_location": "Unbekannter Standort",
@@ -72,6 +74,10 @@
     "d_ago": "vor {n}d"
   },
   "editor": {
+    "target_device": "MeshCore-Gerät",
+    "target_hub": "Hub — {name} ({id})",
+    "target_node": "Knoten — {name}",
+    "no_devices_detected": "Noch keine MeshCore-Geräte erkannt. Prüfen Sie die MeshCore-Integration und bearbeiten Sie die Karte anschließend erneut.",
     "show_this_hub": "Diesen Hub anzeigen",
     "show_this_node": "Diesen Knoten anzeigen",
     "battery_entity": "Batterie % Entität (leer = Auto-Erkennung)",

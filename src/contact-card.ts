@@ -308,7 +308,7 @@ export class MeshcoreContactCard extends HTMLElement {
   }
 
   private _setBody(body: string): void {
-    const constrained = !!this._config?.grid_options?.rows;
+    const constrained = typeof this._config?.grid_options?.rows === "number";
     const cls = constrained ? " class=\"grid-rows\"" : "";
     this.shadowRoot!.innerHTML = `<style>${STYLES}${CONTACT_STYLES}</style><ha-card${cls}>${body}</ha-card>`;
     if (constrained) this._scheduleTrim(".contact-row");

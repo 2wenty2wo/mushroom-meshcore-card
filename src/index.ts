@@ -22,8 +22,8 @@ window.customCards = window.customCards || [];
 if (!window.customCards.find((c) => c.type === "mushroom-meshcore-card")) {
   window.customCards.push({
     type: "mushroom-meshcore-card",
-    name: "Mushroom MeshCore Card",
-    description: "Displays MeshCore hubs and nodes in a Mushroom-styled layout",
+    name: "Mushroom MeshCore Device Card",
+    description: "Displays one selected MeshCore hub or remote node in a Tile-style layout",
     preview: true,
     documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
   });

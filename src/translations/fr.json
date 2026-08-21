@@ -6,6 +6,8 @@
     "hub_name": "Hub : {name}",
     "nodes_count": "◈ {n} Nœuds",
     "empty_hubs": "Aucun hub MeshCore trouvé.<br>Vérifiez que l'intégration MeshCore est installée.",
+    "select_device_prompt": "Sélectionnez un appareil MeshCore dans l’éditeur de carte. Les anciennes vues d’ensemble doivent être divisées en une carte par appareil.",
+    "target_not_found": "L’appareil MeshCore sélectionné « {id} » est introuvable.",
     "empty_contacts": "Aucun nœud de contact MeshCore trouvé.<br>Vérifiez que l'intégration MeshCore est installée.",
     "map_link": "Carte ↗",
     "unknown_location": "Localisation inconnue",
@@ -72,6 +74,10 @@
     "d_ago": "il y a {n}j"
   },
   "editor": {
+    "target_device": "Appareil MeshCore",
+    "target_hub": "Hub — {name} ({id})",
+    "target_node": "Nœud — {name}",
+    "no_devices_detected": "Aucun appareil MeshCore détecté. Vérifiez l’intégration MeshCore, puis modifiez de nouveau la carte.",
     "show_this_hub": "Afficher ce hub",
     "show_this_node": "Afficher ce nœud",
     "battery_entity": "Entité % batterie (vide = auto-détection)",

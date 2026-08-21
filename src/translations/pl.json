@@ -6,6 +6,8 @@
     "hub_name": "Hub: {name}",
     "nodes_count": "◈ {n} Węzłów",
     "empty_hubs": "Nie znaleziono hubów MeshCore.<br>Sprawdź, czy integracja MeshCore jest zainstalowana.",
+    "select_device_prompt": "Wybierz urządzenie MeshCore w edytorze karty. Istniejące konfiguracje przeglądu należy podzielić na osobne karty dla każdego urządzenia.",
+    "target_not_found": "Nie znaleziono wybranego urządzenia MeshCore „{id}”.",
     "empty_contacts": "Nie znaleziono węzłów kontaktowych MeshCore.<br>Sprawdź, czy integracja MeshCore jest zainstalowana.",
     "map_link": "Mapa ↗",
     "unknown_location": "Nieznana lokalizacja",
@@ -72,6 +74,10 @@
     "d_ago": "{n} dni temu"
   },
   "editor": {
+    "target_device": "Urządzenie MeshCore",
+    "target_hub": "Hub — {name} ({id})",
+    "target_node": "Węzeł — {name}",
+    "no_devices_detected": "Nie wykryto jeszcze urządzeń MeshCore. Sprawdź integrację MeshCore, a następnie ponownie edytuj kartę.",
     "show_this_hub": "Pokaż ten hub",
     "show_this_node": "Pokaż ten węzeł",
     "battery_entity": "Encja baterii % (puste = automatyczne wykrywanie)",

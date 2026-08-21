@@ -32,14 +32,22 @@ export interface HomeAssistant {
 
 // ── Card config types ─────────────────────────────────────────────────────────
 
-export interface HubConfig {
-  enabled?: boolean;
-  battery_entity?: string;
-  voltage_entity?: string;
+export type MeshcoreCardTarget =
+  | { type: "hub"; id: string }
+  | { type: "node"; id: string };
+
+export interface GridOptions {
+  rows?: number | "auto";
+  columns?: number | "full";
+  min_rows?: number;
+  max_rows?: number;
+  min_columns?: number;
+  max_columns?: number;
 }
 
-export interface NodeConfig {
-  enabled?: boolean;
+export interface MeshcoreCardConfig {
+  type?: string;
+  target?: MeshcoreCardTarget;
   battery_entity?: string;
   voltage_entity?: string;
   location_entity?: string;
@@ -49,20 +57,6 @@ export interface NodeConfig {
   pressure_entity?: string;
   show_neighbors?: boolean;
   max_neighbors?: number;
-}
-
-export interface GridOptions {
-  rows?: number;
-  columns?: number;
-  min_rows?: number;
-  max_rows?: number;
-}
-
-export interface MeshcoreCardConfig {
-  type?: string;
-  hubs?: Record<string, HubConfig | boolean>;
-  nodes?: Record<string, NodeConfig | boolean>;
-  nodes_order?: string[];
   map_provider?: string;
   map_metro?: string;
   grid_options?: GridOptions;

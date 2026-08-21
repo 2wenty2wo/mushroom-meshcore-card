@@ -31,9 +31,7 @@ export const STYLES: string = `
     --mushroom-meshcore-danger-color: var(--error-color, rgb(var(--mush-rgb-danger, var(--rgb-danger, 244, 67, 54))));
     --mushroom-meshcore-info-color: var(--info-color, rgb(var(--mush-rgb-info, var(--rgb-info, 3, 169, 244))));
     --mushroom-meshcore-muted-color: var(--secondary-text-color, #727272);
-    --mushroom-meshcore-node-radius: var(--ha-card-border-radius, 12px);
     --mushroom-meshcore-card-padding: var(--mush-spacing, 10px);
-    --mushroom-meshcore-node-spacing: var(--mush-spacing, 10px);
 
     /* Compatibility aliases for the retained hub/contact/channel layouts. */
     --mesh-green: var(--mushroom-meshcore-success-color);
@@ -55,6 +53,8 @@ export const STYLES: string = `
     background: var(--mushroom-meshcore-card-background);
     border-radius: var(--ha-card-border-radius, 12px);
   }
+
+  ha-card.device-card { padding: 0; }
 
   button {
     min-width: 0;
@@ -86,87 +86,96 @@ export const STYLES: string = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
-  .nodes-section { margin-top: 10px; }
-
-  .node-block {
-    padding: var(--mush-spacing, 10px);
-    margin: 0 0 var(--mushroom-meshcore-node-spacing);
-    overflow: hidden;
-    border: var(--ha-card-border-width, 1px) solid var(--mushroom-meshcore-border-color);
-    border-radius: var(--mushroom-meshcore-node-radius);
-    background: var(--mushroom-meshcore-surface);
-    box-shadow: none;
+  /* Native Tile header shared by hub and node cards. */
+  .device-header-row {
+    display: flex;
+    min-height: 56px;
+    align-items: center;
+    padding: 0 var(--mush-spacing, 10px);
   }
 
-  .node-block:last-child { margin-bottom: 0; }
-
-  /* Mushroom-style remote-node header. */
-  .node-card-header {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+  .device-header {
+    display: flex;
+    min-width: 0;
+    min-height: 56px;
+    flex: 1;
     align-items: center;
     gap: var(--mush-spacing, 10px);
+    padding: 0;
+    background: transparent;
+    text-align: left;
   }
 
-  .node-icon-shape {
+  .device-icon-shape {
     display: inline-flex;
-    width: var(--mushroom-meshcore-icon-size);
-    height: var(--mushroom-meshcore-icon-size);
-    flex: 0 0 var(--mushroom-meshcore-icon-size);
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
     align-items: center;
     justify-content: center;
-    font-size: var(--mushroom-meshcore-icon-size);
-    border-radius: var(--mushroom-meshcore-icon-radius);
-    color: var(--mushroom-meshcore-success-color);
+    border-radius: var(--ha-tile-icon-border-radius, var(--ha-border-radius-pill, 50%));
     background: rgba(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80)), 0.2);
-    transition: background-color 280ms ease-out, color 280ms ease-in-out;
   }
 
-  .node-icon-shape ha-icon {
-    --mdc-icon-size: var(--mushroom-meshcore-icon-symbol-size);
+  .device-icon-shape ha-tile-icon {
+    --tile-icon-color: var(--mushroom-meshcore-success-color);
+    flex: 0 0 36px;
   }
 
-  .node-offline .node-icon-shape {
-    color: var(--mushroom-meshcore-muted-color);
-    background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05);
+  .device-header-row.offline .device-icon-shape {
+    background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.08);
   }
 
-  .node-heading { min-width: 0; }
+  .device-header-row.offline .device-icon-shape ha-tile-icon {
+    --tile-icon-color: var(--mushroom-meshcore-muted-color);
+  }
 
-  .node-name {
+  /* Progressive fallback while Home Assistant upgrades the custom elements. */
+  .device-icon-shape ha-tile-icon:not(:defined) {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    color: var(--tile-icon-color);
+  }
+
+  .device-icon-shape ha-tile-icon > ha-icon {
+    display: flex;
+    line-height: 0;
+    --mdc-icon-size: 24px;
+  }
+
+  .device-header ha-tile-info {
+    display: block;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .device-header ha-tile-info > [slot="primary"],
+  .device-header ha-tile-info > [slot="secondary"] {
+    display: block;
     overflow: hidden;
-    color: var(--primary-text-color, #212121);
-    font-size: var(--mushroom-meshcore-primary-font-size);
-    font-weight: var(--mushroom-meshcore-primary-font-weight);
-    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
-    line-height: var(--mushroom-meshcore-primary-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .node-secondary {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 5px;
-    overflow: hidden;
+  .device-header ha-tile-info > [slot="primary"] {
+    font-size: var(--mushroom-meshcore-primary-font-size);
+    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
+  }
+
+  .device-header ha-tile-info > [slot="secondary"] {
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: var(--mushroom-meshcore-secondary-font-weight);
     letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
     line-height: var(--mushroom-meshcore-secondary-line-height);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
-  .separator { opacity: 0.65; }
-
-  .node-badges {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--mushroom-meshcore-chip-spacing);
-  }
+  .device-body { padding: 0 var(--mush-spacing, 10px) var(--mush-spacing, 10px); }
 
   .type-badge,
   .count-badge,
@@ -207,7 +216,7 @@ export const STYLES: string = `
     justify-content: center;
     padding: var(--mush-spacing, 10px);
     border-radius: var(--mushroom-meshcore-control-radius);
-    background: var(--mushroom-meshcore-card-background);
+    background: var(--mushroom-meshcore-surface);
     text-align: left;
   }
 
@@ -370,20 +379,7 @@ export const STYLES: string = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
-  /* Retained hub presentation, now using the shared tokens. */
-  .node-header,
-  .node-left,
-  .node-right,
-  .node-title-row {
-    display: flex;
-    align-items: center;
-  }
-
-  .node-header { justify-content: space-between; gap: var(--mush-spacing, 10px); }
-  .node-left, .node-right { gap: 8px; flex-wrap: wrap; }
-  .node-title-row { gap: 8px; flex-wrap: wrap; margin: var(--mush-spacing, 10px) 0 5px; }
-
-  .node-header > .node-left > .status-dot,
+  /* Retained contact-card status primitive. */
   .contact-right .status-dot {
     display: inline-block;
     width: var(--mushroom-meshcore-badge-size);
@@ -393,33 +389,18 @@ export const STYLES: string = `
 
   .dot-online { background: var(--mushroom-meshcore-success-color); }
   .dot-offline { background: var(--mushroom-meshcore-muted-color); opacity: 0.55; }
-  .status-text {
-    font-size: var(--mushroom-meshcore-primary-font-size);
-    font-weight: var(--mushroom-meshcore-primary-font-weight);
-    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
-    line-height: var(--mushroom-meshcore-primary-line-height);
-  }
-  .status-text.online { color: var(--mushroom-meshcore-success-color); }
-  .status-text.offline { color: var(--mushroom-meshcore-muted-color); }
-
-  .hub-name {
-    font-size: var(--mushroom-meshcore-primary-font-size);
-    font-weight: var(--mushroom-meshcore-primary-font-weight);
-    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
-    line-height: var(--mushroom-meshcore-primary-line-height);
-  }
   .hw-info {
-    margin: 3px 0 6px;
+    margin: 0 0 8px;
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: var(--mushroom-meshcore-secondary-font-weight);
     letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
-  .node-key {
-    overflow-wrap: anywhere;
-    font-family: var(--code-font-family, monospace);
-    font-size: 11px;
+  .inline-entity {
+    padding: 0;
+    background: transparent;
+    color: inherit;
   }
   .dim { color: var(--secondary-text-color, #727272); opacity: 0.7; }
   .rf-row, .mqtt-row, .chip-row { margin: 8px 0; }
@@ -445,7 +426,7 @@ export const STYLES: string = `
   .neighbor-row {
     padding: var(--mush-spacing, 10px);
     border-radius: var(--mushroom-meshcore-control-radius);
-    background: var(--mushroom-meshcore-card-background);
+    background: var(--mushroom-meshcore-surface);
   }
   .neighbor-main {
     display: flex;
@@ -508,8 +489,9 @@ export const STYLES: string = `
   ha-card.grid-rows { height: 100%; overflow: hidden; }
 
   @media (max-width: 420px) {
-    .node-card-header { grid-template-columns: auto minmax(0, 1fr); }
-    .node-badges { grid-column: 2; justify-content: flex-start; }
+    .device-header-row { align-items: flex-start; padding-top: 10px; padding-bottom: 10px; }
+    .device-header { min-height: 36px; }
+    .device-header-row > .count-badge { height: 32px; padding: 0 7px; }
     .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .node-metric { padding: 7px; }
   }

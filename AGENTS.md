@@ -10,9 +10,9 @@ This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve
 
 - `src/index.ts` registers the three cards and their card-picker metadata.
 - `src/discovery.ts` contains registry-based MeshCore hub, node, contact, channel, and entity discovery. Treat this as stable backend logic; do not rewrite it for presentation work.
-- `src/card.ts` owns the main hub/node card, configuration, throttled rendering, and more-info interactions.
+- `src/card.ts` owns the single-target hub/node card, configuration, throttled rendering, and more-info interactions.
 - `src/styles.ts` contains shared card styling and Mushroom/HA theme-token mappings.
-- `src/editor.ts` provides the visual editor used by the cards.
+- `src/editor.ts` provides the target-first visual editor for the main card.
 - `src/contact-card.ts` and `src/channel-card.ts` provide the related cards.
 - `src/helpers.ts`, `src/types.ts`, `src/localize.ts`, and `src/translations/` provide shared helpers, types, and localisation.
 
@@ -31,10 +31,12 @@ Use `mushroom-meshcore-card` consistently for package, HACS, resource, bundle, w
 
 Do not register legacy `meshcore-*` aliases: they collide with upstream. Legacy names may appear only in explicit upstream attribution or migration documentation. Bundle-local TypeScript class and config names do not need mechanical renaming.
 
-## Compatibility requirements
+## Main-card configuration contract
 
-- Minimal configuration must remain `type: custom:mushroom-meshcore-card` with automatic discovery.
-- Preserve the existing YAML schema and configuration precedence, including hubs, nodes, entity overrides, ordering, map settings, neighbours, and grid options.
+- Each `custom:mushroom-meshcore-card` instance renders exactly one required `target`: `{ type: "hub", id: <pubkey> }` or `{ type: "node", id: <discovered name> }`.
+- A missing or unresolved target must render a localised configuration/migration prompt. Never silently choose the first discovered device or restore the legacy grouped overview.
+- Keep per-device entity overrides flat on the card config. The grouped `hubs`, `nodes`, and `nodes_order` fields are legacy and intentionally ignored.
+- Preserve target selection, flat entity overrides, map settings, neighbours, and grid options through the visual editor and YAML.
 - Preserve registry/device-scoped entity matching, localisation, visual editors, more-info actions, fixed-grid clipping, and the 10-second render throttle.
 - Do not require users to manually configure every telemetry entity.
 - Do not add Mushroom or Card Mod as a runtime dependency. Card Mod customisation may be supported through stable CSS variables, classes, or parts, but core styling must work independently.
@@ -45,6 +47,8 @@ Do not register legacy `meshcore-*` aliases: they collide with upstream. Legacy 
 - Follow Mushroom's design language using published `--mush-*` variables with sensible Home Assistant fallbacks.
 - Avoid theme-specific hard-coded colours. Use HA text, surface, border, and semantic status variables.
 - Use restrained status colour, compact typography, rounded surfaces, circular icon shapes, and responsive metric layouts.
+- Use Home Assistant's native Tile icon and information primitives for the single-device header, with a safe local fallback while those custom elements upgrade.
+- The outer `ha-card` is the only device surface; do not reintroduce grouped section headings or nested per-device card borders.
 - Offline nodes should collapse to a short status summary rather than show unavailable metrics.
 - Treat `unknown`, `unavailable`, empty, and invalid numeric metric states as absent.
 - Keep raw RSSI and SNR visible. Do not invent RF quality labels or undocumented thresholds.
@@ -90,6 +94,7 @@ npm ci
 npm run typecheck
 npm run check-translations
 npm run build
+npm run test:render
 git diff --check
 ```
 
@@ -99,7 +104,7 @@ Before handing off a change:
 
 1. Check for TypeScript, translation, and build errors.
 2. Audit registrations, editor tags, card-picker entries, metadata, workflows, and README examples for naming collisions.
-3. Review the diff for accidental changes to discovery, configuration precedence, throttling, sanitisation, map handling, neighbours, or contact/channel behaviour.
+3. Review the diff for accidental changes to discovery, target/override handling, throttling, sanitisation, map handling, neighbours, or contact/channel behaviour.
 4. Test both missing/unavailable metrics and representative online/offline node states when rendering changes are involved.
 
 ## Working-tree discipline
