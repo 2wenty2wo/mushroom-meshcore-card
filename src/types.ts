@@ -28,6 +28,40 @@ export interface HomeAssistant {
   themes: Record<string, unknown>;
   language: string;
   locale: { language: string };
+  callService?: (
+    domain: string,
+    service: string,
+    data?: Record<string, unknown>,
+    target?: ActionTarget
+  ) => Promise<unknown> | void;
+}
+
+// ── Action config types (Mushroom/Tile-compatible subset) ─────────────────────
+
+export interface ActionTarget {
+  entity_id?: string | string[];
+  device_id?: string | string[];
+  area_id?: string | string[];
+}
+
+export interface ActionConfig {
+  action:
+    | "more-info"
+    | "navigate"
+    | "url"
+    | "perform-action"
+    | "call-service"
+    | "none";
+  navigation_path?: string;
+  url_path?: string;
+  /** "domain.service" — newer HA name. */
+  perform_action?: string;
+  /** "domain.service" — legacy call-service name. */
+  service?: string;
+  data?: Record<string, unknown>;
+  service_data?: Record<string, unknown>;
+  target?: ActionTarget;
+  confirmation?: boolean | { text?: string };
 }
 
 // ── Card config types ─────────────────────────────────────────────────────────
@@ -48,6 +82,17 @@ export interface GridOptions {
 export interface MeshcoreCardConfig {
   type?: string;
   target?: MeshcoreCardTarget;
+  name?: string;
+  icon?: string;
+  icon_color?: string;
+  tap_action?: ActionConfig;
+  hold_action?: ActionConfig;
+  double_tap_action?: ActionConfig;
+  hide_battery?: boolean;
+  hide_metrics?: boolean;
+  hide_quick_stats?: boolean;
+  hide_details?: boolean;
+  details_default_open?: boolean;
   battery_entity?: string;
   voltage_entity?: string;
   location_entity?: string;
@@ -111,6 +156,9 @@ export interface TelemetryCell {
 export interface HaFormSelector {
   boolean?: Record<string, never>;
   text?: Record<string, never>;
+  icon?: Record<string, never>;
+  ui_color?: { include_none?: boolean; default_color?: string };
+  ui_action?: { default_action?: string };
   select?: {
     mode?: "dropdown" | "list";
     options: { value: string; label: string }[];
@@ -137,6 +185,9 @@ export interface HaFormExpandableSchema {
   type: "expandable";
   name: string;
   title: string;
+  icon?: string;
+  flatten?: boolean;
+  expanded?: boolean;
   schema: HaFormFieldSchema[];
 }
 

@@ -4,7 +4,7 @@
     "section_nodes": "REMOTE NODES",
     "section_contacts": "CONTACTS",
     "hub_name": "Hub: {name}",
-    "nodes_count": "◈ {n} Nodes",
+    "nodes_count": "{n} Nodes",
     "empty_hubs": "No MeshCore hubs found.<br>Check the MeshCore integration is installed.",
     "select_device_prompt": "Select a MeshCore device in the card editor. Existing overview configurations must be split into one card per device.",
     "target_not_found": "The selected MeshCore device “{id}” was not found.",
@@ -37,7 +37,7 @@
     "telemetry_pressure": "Pressure",
     "section_channels": "CHANNELS",
     "empty_channels": "No MeshCore channels found.<br>Check the MeshCore integration is installed.",
-    "neighbors_label": "NEIGHBORS",
+    "neighbors_label": "Neighbors",
     "no_neighbors_info": "No information about neighbors",
     "online": "Online",
     "offline": "Offline",
@@ -64,7 +64,8 @@
     "frequency": "Frequency",
     "bandwidth": "Bandwidth",
     "tx_power": "TX power",
-    "battery_voltage": "Battery voltage"
+    "battery_voltage": "Battery voltage",
+    "confirm_action": "Are you sure?"
   },
   "time": {
     "s_ago": "{n}s ago",
@@ -94,6 +95,22 @@
     "max_neighbors": "Max neighbors shown (0 = all)",
     "show_path": "Show routing path",
     "map_provider": "Map provider",
-    "map_metro": "MeshMapper metro (subdomain, e.g. smf)"
+    "map_metro": "MeshMapper metro (subdomain, e.g. smf)",
+    "section_appearance": "Appearance",
+    "section_interactions": "Interactions",
+    "section_entities": "Entity overrides",
+    "section_behavior": "Neighbors & map",
+    "section_map": "Map",
+    "name_label": "Name",
+    "icon_label": "Icon",
+    "icon_color_label": "Icon color",
+    "hide_battery": "Hide battery",
+    "hide_metrics": "Hide signal metrics",
+    "hide_quick_stats": "Hide quick stats",
+    "hide_details": "Hide details section",
+    "details_default_open": "Expand details by default",
+    "tap_action": "Tap action",
+    "hold_action": "Hold action",
+    "double_tap_action": "Double tap action"
   }
 }

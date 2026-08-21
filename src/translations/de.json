@@ -4,7 +4,7 @@
     "section_nodes": "ENTFERNTE KNOTEN",
     "section_contacts": "KONTAKTE",
     "hub_name": "Hub: {name}",
-    "nodes_count": "◈ {n} Knoten",
+    "nodes_count": "{n} Knoten",
     "empty_hubs": "Keine MeshCore-Hubs gefunden.<br>Prüfen Sie, ob die MeshCore-Integration installiert ist.",
     "select_device_prompt": "Wählen Sie im Karteneditor ein MeshCore-Gerät aus. Bestehende Übersichtskonfigurationen müssen in eine Karte pro Gerät aufgeteilt werden.",
     "target_not_found": "Das ausgewählte MeshCore-Gerät „{id}“ wurde nicht gefunden.",
@@ -64,7 +64,8 @@
     "frequency": "Frequenz",
     "bandwidth": "Bandbreite",
     "tx_power": "Sendeleistung",
-    "battery_voltage": "Batteriespannung"
+    "battery_voltage": "Batteriespannung",
+    "confirm_action": "Sind Sie sicher?"
   },
   "time": {
     "s_ago": "vor {n}s",
@@ -94,6 +95,22 @@
     "max_neighbors": "Max. angezeigte Nachbarn (0 = alle)",
     "show_path": "Routing-Pfad anzeigen",
     "map_provider": "Kartenanbieter",
-    "map_metro": "MeshMapper-Metro (Subdomain, z. B. smf)"
+    "map_metro": "MeshMapper-Metro (Subdomain, z. B. smf)",
+    "section_appearance": "Darstellung",
+    "section_interactions": "Interaktionen",
+    "section_entities": "Entitäts-Überschreibungen",
+    "section_behavior": "Nachbarn & Karte",
+    "section_map": "Karte",
+    "name_label": "Name",
+    "icon_label": "Symbol",
+    "icon_color_label": "Symbolfarbe",
+    "hide_battery": "Batterie ausblenden",
+    "hide_metrics": "Signalmetriken ausblenden",
+    "hide_quick_stats": "Kurzstatistiken ausblenden",
+    "hide_details": "Detailbereich ausblenden",
+    "details_default_open": "Details standardmäßig ausklappen",
+    "tap_action": "Aktion beim Antippen",
+    "hold_action": "Aktion beim Halten",
+    "double_tap_action": "Aktion bei Doppeltippen"
   }
 }

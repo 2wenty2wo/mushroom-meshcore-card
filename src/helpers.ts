@@ -84,6 +84,33 @@ export function rssiClass(rssi: string | number | null): ColorClass {
   return "red";
 }
 
+// Named colors accepted by icon_color, matching HA's ui_color selector and
+// Mushroom's icon_color option. They resolve through HA's global `--<name>-color`
+// theme properties; anything else passes through as a raw CSS color.
+const NAMED_COLORS = new Set([
+  "red", "pink", "purple", "deep-purple", "indigo", "blue", "light-blue",
+  "cyan", "teal", "green", "light-green", "lime", "yellow", "amber", "orange",
+  "deep-orange", "brown", "light-grey", "grey", "dark-grey", "blue-grey",
+  "black", "white", "disabled",
+]);
+
+/** Resolve a configured color to a CSS value, or null when it is not a
+ *  recognizably safe color. The result is interpolated into an inline
+ *  `style` attribute, so raw passthrough is limited to strict color
+ *  syntax — HTML escaping alone cannot stop CSS declaration injection
+ *  via characters like `;` in an arbitrary string. */
+export function computeCssColor(color: string): string | null {
+  const c = color.trim();
+  const lower = c.toLowerCase();
+  if (lower === "primary") return "var(--primary-color)";
+  if (lower === "accent") return "var(--accent-color)";
+  if (NAMED_COLORS.has(lower)) return `var(--${lower}-color)`;
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c)) return c;
+  if (/^[a-z]+$/i.test(c)) return lower; // CSS named colors, e.g. rebeccapurple
+  if (/^(?:rgb|rgba|hsl|hsla)\(\s*[0-9a-z.,%\s/-]*\s*\)$/i.test(c)) return c;
+  return null;
+}
+
 export interface MapLinkConfig {
   map_provider?: string;
   map_metro?: string;

@@ -11,7 +11,9 @@ import {
   formatUptime,
   escapeHtml,
   mapLinkUrl,
+  computeCssColor,
 } from "./helpers.js";
+import { handleAction, hasAction } from "./actions.js";
 import { STYLES } from "./styles.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
@@ -67,23 +69,45 @@ export class MeshcoreCard extends HTMLElement {
   private _fp: string | null = null;
   private _lastRender = 0;
   private _renderTimer: ReturnType<typeof setTimeout> | null = null;
+  private _tickTimer: ReturnType<typeof setInterval> | null = null;
   private _trimTimer: ReturnType<typeof requestAnimationFrame> | null = null;
+  private _holdTimer: ReturnType<typeof setTimeout> | null = null;
+  private _holdFired = false;
+  private _tapTimer: ReturnType<typeof setTimeout> | null = null;
   private _openDetails = new Set<string>();
+  private _detailsSeeded = false;
   private _cardSize = 1;
 
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this.shadowRoot!.addEventListener("click", (e: Event) => {
-      const el = (e.target as Element).closest("[data-entity]") as HTMLElement | null;
+      const target = e.target as Element;
+      const header = target.closest?.("[data-action-scope]") as HTMLElement | null;
+      if (header) {
+        this._onHeaderClick(header);
+        return;
+      }
+      const el = target.closest("[data-entity]") as HTMLElement | null;
       if (el?.dataset["entity"]) {
-        const event = new Event("hass-more-info", { bubbles: true, composed: true });
-        (event as Event & { detail: { entityId: string } }).detail = {
-          entityId: el.dataset["entity"],
-        };
-        this.dispatchEvent(event);
+        handleAction(this, this._hass, { action: "more-info" }, el.dataset["entity"]);
       }
     });
+    this.shadowRoot!.addEventListener("pointerdown", (e: Event) => {
+      if (!hasAction(this._config?.hold_action)) return;
+      const header = (e.target as Element).closest?.("[data-action-scope]") as HTMLElement | null;
+      if (!header) return;
+      this._holdFired = false;
+      this._clearHoldTimer();
+      this._holdTimer = setTimeout(() => {
+        this._holdTimer = null;
+        this._holdFired = true;
+        handleAction(this, this._hass, this._config?.hold_action, header.dataset["entity"] ?? null, this._confirmText());
+      }, 500);
+    });
+    for (const type of ["pointerup", "pointercancel"]) {
+      this.shadowRoot!.addEventListener(type, () => this._clearHoldTimer());
+    }
     this.shadowRoot!.addEventListener("toggle", (e: Event) => {
       const details = e.target as HTMLDetailsElement;
       const deviceId = details.dataset?.["nodeId"];
@@ -96,23 +120,110 @@ export class MeshcoreCard extends HTMLElement {
     }, true);
   }
 
+  connectedCallback(): void {
+    // Relative timestamps ("5m ago", neighbor last-seen) go stale without
+    // state changes; refresh them on a slow tick while the card is on screen.
+    if (this._tickTimer === null) {
+      this._tickTimer = setInterval(() => {
+        if (this._hass && this._config) this._render();
+      }, 60000);
+    }
+  }
+
+  disconnectedCallback(): void {
+    if (this._tickTimer !== null) {
+      clearInterval(this._tickTimer);
+      this._tickTimer = null;
+    }
+    if (this._renderTimer !== null) {
+      clearTimeout(this._renderTimer);
+      this._renderTimer = null;
+    }
+    if (this._trimTimer !== null) {
+      cancelAnimationFrame(this._trimTimer);
+      this._trimTimer = null;
+    }
+    this._clearHoldTimer();
+    if (this._tapTimer !== null) {
+      clearTimeout(this._tapTimer);
+      this._tapTimer = null;
+    }
+  }
+
+  private _clearHoldTimer(): void {
+    if (this._holdTimer !== null) {
+      clearTimeout(this._holdTimer);
+      this._holdTimer = null;
+    }
+  }
+
+  private _confirmText(): string {
+    const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+    return t("card.confirm_action");
+  }
+
+  private _onHeaderClick(header: HTMLElement): void {
+    if (this._holdFired) {
+      this._holdFired = false;
+      return;
+    }
+    const entityId = header.dataset["entity"] ?? null;
+    const doubleTap = this._config?.double_tap_action;
+    if (hasAction(doubleTap)) {
+      // Disambiguate single vs double tap the way Mushroom's action handler
+      // does: delay the tap briefly and let a second click within the window
+      // upgrade it.
+      if (this._tapTimer !== null) {
+        clearTimeout(this._tapTimer);
+        this._tapTimer = null;
+        handleAction(this, this._hass, doubleTap, entityId, this._confirmText());
+      } else {
+        this._tapTimer = setTimeout(() => {
+          this._tapTimer = null;
+          handleAction(this, this._hass, this._config?.tap_action, entityId, this._confirmText());
+        }, 250);
+      }
+      return;
+    }
+    handleAction(this, this._hass, this._config?.tap_action, entityId, this._confirmText());
+  }
+
   setConfig(config: MeshcoreCardConfig): void {
-    const previousTarget = this._config?.target;
+    const previous = this._config;
     this._config = { ...config };
     if (
-      previousTarget &&
-      (previousTarget.type !== config.target?.type || previousTarget.id !== config.target?.id)
+      previous?.target &&
+      (previous.target.type !== config.target?.type || previous.target.id !== config.target?.id)
     ) {
       this._openDetails.clear();
+      this._detailsSeeded = false;
+    }
+    if (previous?.details_default_open !== config.details_default_open) {
+      this._detailsSeeded = false;
     }
     this._fp = null; // force re-render on config change
     this._render();
   }
 
+  private _overrideEntityIds(): Set<string> {
+    const c = this._config;
+    const ids = [
+      c?.battery_entity,
+      c?.voltage_entity,
+      c?.location_entity,
+      c?.temperature_entity,
+      c?.humidity_entity,
+      c?.illuminance_entity,
+      c?.pressure_entity,
+    ].filter((id): id is string => !!id);
+    return new Set(ids);
+  }
+
   set hass(hass: HomeAssistant) {
     this._hass = hass;
+    const overrides = this._overrideEntityIds();
     const fp = Object.entries(hass.states)
-      .filter(([id]) => id.includes("meshcore"))
+      .filter(([id]) => id.includes("meshcore") || overrides.has(id))
       .map(([id, s]) => `${id}=${s.state}@${s.last_changed}`)
       .join("|");
     if (fp === this._fp) return;
@@ -225,22 +336,44 @@ export class MeshcoreCard extends HTMLElement {
     primaryEntityId: string | null,
     trailing = ""
   ): string {
+    const cfg = this._config;
+    const name = cfg?.name || displayName;
+    const iconName = cfg?.icon || icon;
     const stateClass = online ? "online" : "offline";
-    const label = secondary ? `${displayName}, ${secondary}` : displayName;
-    const tag = primaryEntityId ? "button" : "div";
-    const attributes = primaryEntityId
-      ? `type="button" data-entity="${escapeHtml(primaryEntityId)}" aria-label="${escapeHtml(label)}"`
+    const label = secondary ? `${name}, ${secondary}` : name;
+    const interactive =
+      !!primaryEntityId ||
+      hasAction(cfg?.tap_action) ||
+      hasAction(cfg?.hold_action) ||
+      hasAction(cfg?.double_tap_action);
+    const tag = interactive ? "button" : "div";
+    const attributes = interactive
+      ? `type="button" data-action-scope="header"${
+          primaryEntityId ? ` data-entity="${escapeHtml(primaryEntityId)}"` : ""
+        } aria-label="${escapeHtml(label)}"`
       : `role="group" aria-label="${escapeHtml(label)}"`;
 
+    // icon_color only recolors the online state; offline keeps the muted
+    // Tile treatment so state stays readable at a glance.
+    const colorCss = online && cfg?.icon_color ? computeCssColor(cfg.icon_color) : null;
+    const shapeStyle = colorCss
+      ? ` style="background:color-mix(in srgb, ${escapeHtml(colorCss)} 20%, transparent);--mushroom-meshcore-icon-override-color:${escapeHtml(colorCss)}"`
+      : "";
+    const badge = online
+      ? ""
+      : `<span class="icon-badge" aria-hidden="true"><ha-icon icon="mdi:signal-off"></ha-icon></span>`;
+
     return `<div class="device-header-row ${stateClass}" part="device-header">
-      <${tag} class="device-header ${primaryEntityId ? "clickable" : ""}" ${attributes}>
-        <span class="device-icon-shape" aria-hidden="true">
+      <${tag} class="device-header ${interactive ? "clickable" : ""}" ${attributes}>
+        ${interactive ? "<ha-ripple></ha-ripple>" : ""}
+        <span class="device-icon-shape" aria-hidden="true"${shapeStyle}>
           <ha-tile-icon>
-            <ha-icon slot="icon" icon="${escapeHtml(icon)}"></ha-icon>
+            <ha-icon slot="icon" icon="${escapeHtml(iconName)}"></ha-icon>
           </ha-tile-icon>
+          ${badge}
         </span>
         <ha-tile-info>
-          <span slot="primary">${escapeHtml(displayName)}</span>
+          <span slot="primary">${escapeHtml(name)}</span>
           ${secondary ? `<span slot="secondary">${escapeHtml(secondary)}</span>` : ""}
         </ha-tile-info>
       </${tag}>
@@ -277,7 +410,7 @@ export class MeshcoreCard extends HTMLElement {
     if (!id || value === null) return "";
     const blank = value === "unknown" || value === "unavailable";
     const ariaLabel = `${label}${label ? " " : ""}${blank ? "—" : value}`;
-    return `<button type="button" class="chip ${cls} clickable" data-entity="${escapeHtml(id)}" aria-label="${escapeHtml(ariaLabel)}">${
+    return `<button type="button" class="chip ${cls} clickable" data-entity="${escapeHtml(id)}" aria-label="${escapeHtml(ariaLabel)}"><ha-ripple></ha-ripple>${
       label ? `<span class="chip-label">${escapeHtml(label)}</span>` : ""
     }${blank ? "—" : escapeHtml(value)}</button>`;
   }
@@ -286,6 +419,7 @@ export class MeshcoreCard extends HTMLElement {
     if (!reading.id || reading.value === null) return "";
     const ariaLabel = `${label} ${reading.value}${unit ? ` ${unit}` : ""}`;
     return `<button type="button" class="node-metric clickable" part="metric" data-entity="${escapeHtml(reading.id)}" aria-label="${escapeHtml(ariaLabel)}">
+      <ha-ripple></ha-ripple>
       <span class="metric-label">${escapeHtml(label)}</span>
       <span class="metric-value">${escapeHtml(reading.value)}${unit ? `<span class="metric-unit"> ${escapeHtml(unit)}</span>` : ""}</span>
     </button>`;
@@ -300,6 +434,7 @@ export class MeshcoreCard extends HTMLElement {
     if (!reading.id || reading.value === null) return "";
     const ariaLabel = `${label} ${reading.value}${unit ? ` ${unit}` : ""}`;
     return `<button type="button" class="quick-chip clickable" part="quick-chip" data-entity="${escapeHtml(reading.id)}" aria-label="${escapeHtml(ariaLabel)}">
+      <ha-ripple></ha-ripple>
       <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
       <span>${escapeHtml(reading.value)}${unit ? ` ${escapeHtml(unit)}` : ""}</span>
     </button>`;
@@ -453,16 +588,67 @@ export class MeshcoreCard extends HTMLElement {
     return `${days}d`;
   }
 
+  // ── Shared body primitives ─────────────────────────────────────────────────
+
+  /** Node-card battery block, shared by hub and node bodies. */
+  private _batteryBlock(
+    pct: EntityReading,
+    voltageReading: EntityReading,
+    t: LocalizeFunc
+  ): string {
+    if (pct.value === null) return "";
+    const voltage = voltageReading.value !== null
+      ? Number(voltageReading.value).toFixed(2)
+      : null;
+    return `<div class="battery-block" part="battery">
+          <div class="battery-meta">
+            <span>${escapeHtml(t("card.battery_label"))}</span>
+            <span class="battery-values">
+              ${pct.id ? `<button type="button" class="battery-percentage clickable" data-entity="${escapeHtml(pct.id)}" aria-label="${escapeHtml(t("card.battery_label"))} ${escapeHtml(pct.value)}%">${escapeHtml(pct.value)}%</button>` : ""}
+              ${voltage && voltageReading.id ? `<button type="button" class="battery-voltage clickable" data-entity="${escapeHtml(voltageReading.id)}" aria-label="${escapeHtml(t("card.battery_voltage"))} ${voltage} V">${voltage} V</button>` : ""}
+            </span>
+          </div>
+          ${this._progressBar(pct.value, batteryColor(pct.value), t("card.battery_label"))}
+        </div>`;
+  }
+
+  /** Quick-chip-styled static fact (no backing entity, not clickable). */
+  private _staticChip(value: unknown, icon: string): string {
+    if (!value) return "";
+    return `<span class="quick-chip" part="quick-chip">
+      <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
+      <span>${escapeHtml(value)}</span>
+    </span>`;
+  }
+
+  /** Collapsed Details disclosure shared by hub and node bodies. */
+  private _renderDetailsDisclosure(key: string, body: string, t: LocalizeFunc): string {
+    if (!body || this._config?.hide_details) return "";
+    const open = this._openDetails.has(key) ? " open" : "";
+    return `<details class="node-details" part="details" data-node-id="${escapeHtml(key)}"${open}>
+      <summary class="clickable"><ha-ripple></ha-ripple><span>${escapeHtml(t("card.details"))}</span><ha-icon icon="mdi:chevron-down"></ha-icon></summary>
+      <div class="details-content trim-section">${body}</div>
+    </details>`;
+  }
+
+  private _seedDetails(key: string): void {
+    if (this._config?.details_default_open && !this._detailsSeeded) {
+      this._detailsSeeded = true;
+      this._openDetails.add(key);
+    }
+  }
+
   // ── Hub rendering ──────────────────────────────────────────────────────────
 
   private _renderHub(hub: HubInfo, t: LocalizeFunc): string {
     const { pubkey, name } = hub;
     const e = (m: string) => this._hubEntity(pubkey, name, m);
+    const cfg = this._config;
 
     const statusId  = e("node_status");
     const countId   = hub.nodeCountEntity;
-    const battPctId = this._config?.battery_entity ?? e("battery_percentage");
-    const battVId   = this._config?.voltage_entity  ?? e("battery_voltage");
+    const battPctId = cfg?.battery_entity ?? e("battery_percentage");
+    const battVId   = cfg?.voltage_entity  ?? e("battery_voltage");
     const freqId    = e("frequency");
     const bwId      = e("bandwidth");
     const sfId      = e("spreading_factor");
@@ -477,8 +663,8 @@ export class MeshcoreCard extends HTMLElement {
       .sort();
 
     const status    = this._val(statusId) ?? "unknown";
-    const battPct   = this._reading(battPctId, true).value;
-    const battV     = this._reading(battVId, true).value;
+    const battPct   = this._reading(battPctId, true);
+    const battV     = this._reading(battVId, true);
     const nodeCount = this._reading(countId, true).value;
     const freq      = this._reading(freqId, true).value;
     const bw        = this._reading(bwId, true).value;
@@ -487,12 +673,14 @@ export class MeshcoreCard extends HTMLElement {
     const lat       = this._reading(latId, true).value;
     const lon       = this._reading(lonId, true).value;
 
+    // Preserve the long-standing "no battery on mains-powered hubs" behavior.
+    if (battPct.value !== null && Number(battPct.value) === 0) battPct.value = null;
+    if (battV.value !== null && parseFloat(battV.value) < 0.001) battV.value = null;
+
     const hwModel  = this._attr(statusId, "hw_model") || this._attr(countId, "hw_model");
     const firmware = this._attr(statusId, "firmware_version") || this._attr(countId, "firmware_version");
 
-    const online  = isOnlineState(status);
-    const battCol = batteryColor(battPct);
-    const showRf  = freq || bw || sf || txPow;
+    const online = isOnlineState(status);
 
     // Clean hub name (remove MeshCore if present)
     let displayName = name.replace(/_/g, " ");
@@ -505,7 +693,7 @@ export class MeshcoreCard extends HTMLElement {
 
     const secondary = `${online ? t("card.online") : t("card.offline")} · ${pubkey}`;
     const nodeCountChip = nodeCount !== null
-      ? `<button type="button" class="count-badge clickable" data-entity="${escapeHtml(countId)}" aria-label="${escapeHtml(t("card.nodes_count", { n: nodeCount }))}">${escapeHtml(t("card.nodes_count", { n: nodeCount }))}</button>`
+      ? `<button type="button" class="count-badge clickable" data-entity="${escapeHtml(countId)}" aria-label="${escapeHtml(t("card.nodes_count", { n: nodeCount }))}"><ha-ripple></ha-ripple>${escapeHtml(t("card.nodes_count", { n: nodeCount }))}</button>`
       : "";
     const header = this._renderDeviceHeader(
       displayName.trim(),
@@ -516,53 +704,50 @@ export class MeshcoreCard extends HTMLElement {
       nodeCountChip
     );
 
+    const battery = cfg?.hide_battery ? "" : this._batteryBlock(battPct, battV, t);
+    const quickChips = cfg?.hide_quick_stats
+      ? ""
+      : [
+          this._staticChip(hwModel, "mdi:chip"),
+          this._staticChip(firmware, "mdi:memory"),
+        ].join("");
+
+    const technical = [
+      freq  ? this._chip(freqId, "", `${parseFloat(freq).toFixed(3)} MHz`) : "",
+      bw    ? this._chip(bwId, "", `${bw} kHz`) : "",
+      sf    ? this._chip(sfId, "", `SF${sf}`) : "",
+      txPow ? this._chip(txPowId, "", `${txPow} dBm`) : "",
+    ].join("");
+
+    const mqtt = mqttIds.map((id) => {
+      const v   = this._val(id);
+      const lbl = (this._attr(id, "server") as string | null) ||
+        ((this._attr(id, "friendly_name") as string | null) || id)
+          .replace(/meshcore\s+\w+\s*/i, "")
+          .replace(/_/g, " ")
+          .trim();
+      return this._chip(id, "", lbl, v ? "mqtt-ok" : "mqtt-err");
+    }).join("");
+
+    const other = [
+      this._exists(ch1VId) ? this._chip(ch1VId, t("card.chip_ch1"), (this._val(ch1VId) ?? "—") + "V") : "",
+      this._exists(rateLimId) ? this._chip(rateLimId, t("card.chip_rate"), (this._val(rateLimId) ?? "—") + " tok") : "",
+    ].join("");
+
+    const location = lat !== null && lon !== null
+      ? `<section class="detail-section"><h4>${escapeHtml(t("card.location_section"))}</h4>${this._locLink(lat, lon, latId, t)}</section>`
+      : "";
+
+    const detailsBody = this._detailSection(t("card.technical_section"), technical)
+      + location
+      + this._detailSection(t("card.mqtt_section"), mqtt)
+      + this._detailSection(t("card.other_section"), other);
+
     return `${header}
       <div class="device-body ${online ? "" : "node-offline"}">
-        ${hwModel || firmware ? `<div class="hw-info trim-section">${[hwModel, firmware].filter(Boolean).map((s) => escapeHtml(s)).join(" • ")}</div>` : ""}
-
-        ${battPct !== null && Number(battPct) !== 0 ? `
-          <div class="bar-row trim-section">
-            <span class="bar-label">${escapeHtml(t("card.battery_label"))}</span>
-            <span class="bar-label-right">
-              ${battV !== null && parseFloat(battV) >= 0.001 && battVId ? `<button type="button" class="inline-entity clickable" data-entity="${escapeHtml(battVId)}">⚡ ${parseFloat(battV).toFixed(3)}V</button>` : ""}
-              ${battPctId ? `<button type="button" class="bar-val inline-entity clickable" data-entity="${escapeHtml(battPctId)}" style="color:${battCol}">${escapeHtml(battPct)}%</button>` : ""}
-            </span>
-          </div>
-          <div class="trim-section">${this._progressBar(battPct, battCol, t("card.battery_label"))}</div>` : ""}
-
-        ${showRf ? `
-          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.technical_section"))}</div>
-          <div class="rf-row">
-            ${freq ? `<span class="rf-chip clickable" data-entity="${escapeHtml(freqId)}">${parseFloat(freq).toFixed(3)} MHz</span>` : ""}
-            ${bw   ? `<span class="rf-chip clickable" data-entity="${escapeHtml(bwId)}">${escapeHtml(bw)} kHz</span>` : ""}
-            ${sf   ? `<span class="rf-chip clickable" data-entity="${escapeHtml(sfId)}">SF${escapeHtml(sf)}</span>` : ""}
-            ${txPow ? `<span class="rf-chip clickable" data-entity="${escapeHtml(txPowId)}">${escapeHtml(txPow)} dBm</span>` : ""}
-          </div></section>` : ""}
-
-        ${lat !== null && lon !== null ? `
-          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.location_section"))}</div>
-          ${this._locLink(lat, lon, latId, t)}</section>` : ""}
-
-        ${mqttIds.length ? `
-          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.mqtt_section"))}</div>
-          <div class="mqtt-row">
-            ${mqttIds.map((id) => {
-              const v   = this._val(id);
-              const lbl = (this._attr(id, "server") as string | null) ||
-                ((this._attr(id, "friendly_name") as string | null) || id)
-                  .replace(/meshcore\s+\w+\s*/i, "")
-                  .replace(/_/g, " ")
-                  .trim();
-              return `<span class="mqtt-pill ${v ? "ok" : "err"} clickable" data-entity="${escapeHtml(id)}">${escapeHtml(lbl)}</span>`;
-            }).join("")}
-          </div></section>` : ""}
-
-        ${(this._exists(rateLimId) || this._exists(ch1VId)) ? `
-          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.other_section"))}</div>
-          <div class="chip-row">
-            ${this._exists(ch1VId) ? this._chip(ch1VId, t("card.chip_ch1"), (this._val(ch1VId) ?? "—") + "V") : ""}
-            ${this._exists(rateLimId) ? this._chip(rateLimId, t("card.chip_rate"), (this._val(rateLimId) ?? "—") + " tok") : ""}
-          </div></section>` : ""}
+        ${battery ? `<div class="trim-section">${battery}</div>` : ""}
+        ${quickChips ? `<div class="quick-chip-row trim-section">${quickChips}</div>` : ""}
+        ${this._renderDetailsDisclosure(pubkey, detailsBody, t)}
       </div>
     `;
   }
@@ -794,13 +979,7 @@ export class MeshcoreCard extends HTMLElement {
       + location
       + this._detailSection(t("card.telemetry_section"), telemetry)
       + neighbours;
-    if (!body) return "";
-
-    const open = this._openDetails.has(vm.node.deviceId) ? " open" : "";
-    return `<details class="node-details" part="details" data-node-id="${escapeHtml(vm.node.deviceId)}"${open}>
-      <summary><span>${escapeHtml(t("card.details"))}</span><ha-icon icon="mdi:chevron-down"></ha-icon></summary>
-      <div class="details-content trim-section">${body}</div>
-    </details>`;
+    return this._renderDetailsDisclosure(vm.node.deviceId, body, t);
   }
 
   private _renderNode(
@@ -813,32 +992,21 @@ export class MeshcoreCard extends HTMLElement {
       return this._renderNodeHeader(vm, t);
     }
 
-    const metrics = [
+    const cfg = this._config;
+    const metrics = cfg?.hide_metrics ? "" : [
       this._metric(vm.rssi, t("card.rssi_label"), "dBm"),
       this._metric(vm.snr, t("card.snr_label"), "dB"),
       this._metric(vm.noiseFloor, t("card.noise_floor_label"), "dBm"),
     ].join("");
-    const voltage = vm.batteryVoltage.value !== null
-      ? Number(vm.batteryVoltage.value).toFixed(2)
-      : null;
-    const battery = vm.batteryPct.value !== null
-      ? `<div class="battery-block" part="battery">
-          <div class="battery-meta">
-            <span>${escapeHtml(t("card.battery_label"))}</span>
-            <span class="battery-values">
-              ${vm.batteryPct.id ? `<button type="button" class="battery-percentage clickable" data-entity="${escapeHtml(vm.batteryPct.id)}" aria-label="${escapeHtml(t("card.battery_label"))} ${escapeHtml(vm.batteryPct.value)}%">${escapeHtml(vm.batteryPct.value)}%</button>` : ""}
-              ${voltage && vm.batteryVoltage.id ? `<button type="button" class="battery-voltage clickable" data-entity="${escapeHtml(vm.batteryVoltage.id)}" aria-label="${escapeHtml(t("card.battery_voltage"))} ${voltage} V">${voltage} V</button>` : ""}
-            </span>
-          </div>
-          ${this._progressBar(vm.batteryPct.value, batteryColor(vm.batteryPct.value), t("card.battery_label"))}
-        </div>`
-      : "";
-    const quickChips = [
+    const battery = cfg?.hide_battery
+      ? ""
+      : this._batteryBlock(vm.batteryPct, vm.batteryVoltage, t);
+    const quickChips = cfg?.hide_quick_stats ? "" : [
       this._quickChip(vm.sent, t("card.traffic_sent"), "", "mdi:arrow-up"),
       this._quickChip(vm.received, t("card.traffic_received"), "", "mdi:arrow-down"),
       this._quickChip(vm.temperature, t("card.telemetry_temp"), "°C", "mdi:thermometer"),
       this._quickChip(vm.uptime, t("card.uptime_label"), "", "mdi:timer-outline"),
-      vm.batteryPct.value === null
+      vm.batteryPct.value === null && !cfg?.hide_battery
         ? this._quickChip(vm.batteryVoltage, t("card.battery_voltage"), "V", "mdi:flash")
         : "",
     ].join("");
@@ -893,11 +1061,11 @@ export class MeshcoreCard extends HTMLElement {
         <div class="neighbor-row">
           <div class="neighbor-main">
             ${name}
-            <button type="button" class="neighbor-snr ${snrClass} clickable" data-entity="${escapeHtml(n.snrId || "")}" aria-label="${escapeHtml(t("card.snr_label"))} ${escapeHtml(snr)} dB"><ha-icon icon="mdi:signal"></ha-icon>${escapeHtml(snr)} dB</button>
+            <button type="button" class="neighbor-snr ${snrClass} clickable" data-entity="${escapeHtml(n.snrId || "")}" aria-label="${escapeHtml(t("card.snr_label"))} ${escapeHtml(snr)} dB"><ha-ripple></ha-ripple><ha-icon icon="mdi:signal"></ha-icon>${escapeHtml(snr)} dB</button>
           </div>
           <div class="neighbor-stats">
-            <span class="neighbor-stat">🕒 ${escapeHtml(lastSeenLabel)}: ${escapeHtml(timeString)}</span>
-            ${rawSeen ? `<span class="neighbor-stat">🔗 ${escapeHtml(contactsLabel)}: ${escapeHtml(rawSeen)}x</span>` : ""}
+            <span class="neighbor-stat"><ha-icon icon="mdi:clock-outline"></ha-icon>${escapeHtml(lastSeenLabel)}: ${escapeHtml(timeString)}</span>
+            ${rawSeen ? `<span class="neighbor-stat"><ha-icon icon="mdi:link-variant"></ha-icon>${escapeHtml(contactsLabel)}: ${escapeHtml(rawSeen)}x</span>` : ""}
           </div>
         </div>
       `;
@@ -941,6 +1109,7 @@ export class MeshcoreCard extends HTMLElement {
         return;
       }
       this._cardSize = 5;
+      this._seedDetails(hub.pubkey);
       this._setBody(this._renderHub(hub, t));
       return;
     }
@@ -953,6 +1122,7 @@ export class MeshcoreCard extends HTMLElement {
     }
     const vm = this._buildNodeViewModel(node, t);
     this._cardSize = vm.online ? 5 : 1;
+    this._seedDetails(node.deviceId);
     this._setBody(this._renderNode(node, t, vm), !vm.online);
   }
 

@@ -1,10 +1,12 @@
 import type {
+  ActionConfig,
   HomeAssistant,
   MeshcoreCardConfig,
   MeshcoreCardTarget,
   HubInfo,
   NodeInfo,
   HaFormSchema,
+  HaFormFieldSchema,
   HaFormElement,
   HaAlertElement,
 } from "./types.js";
@@ -17,6 +19,17 @@ const EDITOR_STYLES = `
 `;
 
 const DEVICE_SETTING_KEYS = [
+  "name",
+  "icon",
+  "icon_color",
+  "tap_action",
+  "hold_action",
+  "double_tap_action",
+  "hide_battery",
+  "hide_metrics",
+  "hide_quick_stats",
+  "hide_details",
+  "details_default_open",
   "battery_entity",
   "voltage_entity",
   "location_entity",
@@ -36,6 +49,22 @@ const ENTITY_SETTING_KEYS = [
   "humidity_entity",
   "illuminance_entity",
   "pressure_entity",
+] as const;
+
+const STRING_SETTING_KEYS = ["name", "icon", "icon_color"] as const;
+
+const BOOLEAN_SETTING_KEYS = [
+  "hide_battery",
+  "hide_metrics",
+  "hide_quick_stats",
+  "hide_details",
+  "details_default_open",
+] as const;
+
+const ACTION_SETTING_KEYS = [
+  "tap_action",
+  "hold_action",
+  "double_tap_action",
 ] as const;
 
 export class MeshcoreCardEditor extends HTMLElement {
@@ -176,7 +205,28 @@ export class MeshcoreCardEditor extends HTMLElement {
 
   private _settingsSchema(target: MeshcoreCardTarget): HaFormSchema[] {
     const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
-    const mapSchema: HaFormSchema[] = [
+    const isNode = target.type === "node";
+
+    const appearance: HaFormFieldSchema[] = [
+      { name: "name", label: t("editor.name_label"), selector: { text: {} } },
+      { name: "icon", label: t("editor.icon_label"), selector: { icon: {} } },
+      { name: "icon_color", label: t("editor.icon_color_label"), selector: { ui_color: {} } },
+      { name: "hide_battery", label: t("editor.hide_battery"), selector: { boolean: {} } },
+      ...(isNode
+        ? [{ name: "hide_metrics", label: t("editor.hide_metrics"), selector: { boolean: {} } } as HaFormFieldSchema]
+        : []),
+      { name: "hide_quick_stats", label: t("editor.hide_quick_stats"), selector: { boolean: {} } },
+      { name: "hide_details", label: t("editor.hide_details"), selector: { boolean: {} } },
+      { name: "details_default_open", label: t("editor.details_default_open"), selector: { boolean: {} } },
+    ];
+
+    const interactions: HaFormFieldSchema[] = [
+      { name: "tap_action", label: t("editor.tap_action"), selector: { ui_action: { default_action: "more-info" } } },
+      { name: "hold_action", label: t("editor.hold_action"), selector: { ui_action: { default_action: "none" } } },
+      { name: "double_tap_action", label: t("editor.double_tap_action"), selector: { ui_action: { default_action: "none" } } },
+    ];
+
+    const mapSchema: HaFormFieldSchema[] = [
       {
         name: "map_provider",
         label: t("editor.map_provider"),
@@ -193,64 +243,99 @@ export class MeshcoreCardEditor extends HTMLElement {
       { name: "map_metro", label: t("editor.map_metro"), selector: { text: {} } },
     ];
 
-    if (target.type === "hub") {
+    let entities: HaFormFieldSchema[];
+    let behavior: HaFormFieldSchema[];
+
+    if (!isNode) {
       const ids = Object.keys(this._hass?.states ?? {}).filter((id) => id.includes(target.id));
       const dcSel = (deviceClass: string) =>
         (ids.length
           ? { entity: { include_entities: ids, device_class: deviceClass } }
           : { entity: { domain: "sensor", device_class: deviceClass } }) as never;
-      return [
+      entities = [
         { name: "battery_entity", label: t("editor.battery_entity"), selector: dcSel("battery") },
         { name: "voltage_entity", label: t("editor.voltage_entity"), selector: dcSel("voltage") },
+      ];
+      behavior = mapSchema;
+    } else {
+      const node = this._selectedNode();
+      const meshcoreIds = this._hass?.entities
+        ? Object.entries(this._hass.entities)
+            .filter(([, info]) => info.platform === "meshcore")
+            .map(([id]) => id)
+        : [];
+      const ids = node && this._hass?.entities
+        ? Object.entries(this._hass.entities)
+            .filter(([, info]) => info.device_id === node.deviceId)
+            .map(([id]) => id)
+        : [];
+      const dcSel = (deviceClass: string) =>
+        (ids.length
+          ? { entity: { include_entities: ids, device_class: deviceClass } }
+          : { entity: { domain: "sensor", device_class: deviceClass } }) as never;
+      const devSel = ids.length
+        ? { entity: { include_entities: ids } }
+        : { entity: { domain: "sensor" } };
+      const locSel = meshcoreIds.length
+        ? { entity: { include_entities: meshcoreIds } }
+        : { entity: { domain: "sensor" } };
+      entities = [
+        { name: "battery_entity", label: t("editor.battery_entity"), selector: dcSel("battery") },
+        { name: "voltage_entity", label: t("editor.voltage_entity"), selector: dcSel("voltage") },
+        { name: "location_entity", label: t("editor.location_entity"), selector: locSel },
+        { name: "temperature_entity", label: t("editor.temperature_entity"), selector: devSel },
+        { name: "humidity_entity", label: t("editor.humidity_entity"), selector: devSel },
+        { name: "illuminance_entity", label: t("editor.illuminance_entity"), selector: devSel },
+        { name: "pressure_entity", label: t("editor.pressure_entity"), selector: devSel },
+      ];
+      behavior = [
+        { name: "show_neighbors", label: t("editor.show_neighbors"), selector: { boolean: {} } },
+        { name: "max_neighbors", label: t("editor.max_neighbors"), selector: { number: { min: 0, mode: "box" } } },
         ...mapSchema,
       ];
     }
 
-    const node = this._selectedNode();
-    const meshcoreIds = this._hass?.entities
-      ? Object.entries(this._hass.entities)
-          .filter(([, info]) => info.platform === "meshcore")
-          .map(([id]) => id)
-      : [];
-    const ids = node && this._hass?.entities
-      ? Object.entries(this._hass.entities)
-          .filter(([, info]) => info.device_id === node.deviceId)
-          .map(([id]) => id)
-      : [];
-    const dcSel = (deviceClass: string) =>
-      (ids.length
-        ? { entity: { include_entities: ids, device_class: deviceClass } }
-        : { entity: { domain: "sensor", device_class: deviceClass } }) as never;
-    const devSel = ids.length
-      ? { entity: { include_entities: ids } }
-      : { entity: { domain: "sensor" } };
-    const locSel = meshcoreIds.length
-      ? { entity: { include_entities: meshcoreIds } }
-      : { entity: { domain: "sensor" } };
+    const section = (title: string, icon: string, schema: HaFormFieldSchema[]): HaFormSchema => ({
+      type: "expandable",
+      name: "",
+      flatten: true,
+      title,
+      icon,
+      schema,
+    });
 
     return [
-      { name: "battery_entity", label: t("editor.battery_entity"), selector: dcSel("battery") },
-      { name: "voltage_entity", label: t("editor.voltage_entity"), selector: dcSel("voltage") },
-      { name: "location_entity", label: t("editor.location_entity"), selector: locSel },
-      { name: "temperature_entity", label: t("editor.temperature_entity"), selector: devSel },
-      { name: "humidity_entity", label: t("editor.humidity_entity"), selector: devSel },
-      { name: "illuminance_entity", label: t("editor.illuminance_entity"), selector: devSel },
-      { name: "pressure_entity", label: t("editor.pressure_entity"), selector: devSel },
-      { name: "show_neighbors", label: t("editor.show_neighbors"), selector: { boolean: {} } },
-      { name: "max_neighbors", label: t("editor.max_neighbors"), selector: { number: { min: 0, mode: "box" } } },
-      ...mapSchema,
+      section(t("editor.section_appearance"), "mdi:palette", appearance),
+      section(t("editor.section_interactions"), "mdi:gesture-tap", interactions),
+      section(t("editor.section_entities"), "mdi:tune", entities),
+      section(
+        t(isNode ? "editor.section_behavior" : "editor.section_map"),
+        "mdi:map-marker",
+        behavior
+      ),
     ];
   }
 
   private _settingsData(target: MeshcoreCardTarget): Record<string, unknown> {
     const config = this._config ?? {};
     const data: Record<string, unknown> = {
+      name: config.name ?? "",
+      icon: config.icon ?? null,
+      icon_color: config.icon_color ?? null,
+      tap_action: config.tap_action,
+      hold_action: config.hold_action,
+      double_tap_action: config.double_tap_action,
+      hide_battery: config.hide_battery === true,
+      hide_quick_stats: config.hide_quick_stats === true,
+      hide_details: config.hide_details === true,
+      details_default_open: config.details_default_open === true,
       battery_entity: config.battery_entity ?? null,
       voltage_entity: config.voltage_entity ?? null,
       map_provider: config.map_provider === "meshmapper" ? "meshmapper" : "analyzer",
       map_metro: config.map_metro ?? "",
     };
     if (target.type === "node") {
+      data["hide_metrics"] = config.hide_metrics === true;
       data["location_entity"] = config.location_entity ?? null;
       data["temperature_entity"] = config.temperature_entity ?? null;
       data["humidity_entity"] = config.humidity_entity ?? null;
@@ -275,6 +360,23 @@ export class MeshcoreCardEditor extends HTMLElement {
         const entityId = value[key];
         if (typeof entityId === "string" && entityId) config[key] = entityId;
         else delete config[key];
+      }
+      for (const key of STRING_SETTING_KEYS) {
+        const raw = value[key];
+        if (typeof raw === "string" && raw.trim()) config[key] = raw;
+        else delete config[key];
+      }
+      for (const key of BOOLEAN_SETTING_KEYS) {
+        if (value[key] === true) config[key] = true;
+        else delete config[key];
+      }
+      for (const key of ACTION_SETTING_KEYS) {
+        const raw = value[key];
+        if (raw && typeof raw === "object" && typeof (raw as ActionConfig).action === "string") {
+          config[key] = raw as ActionConfig;
+        } else {
+          delete config[key];
+        }
       }
       if (target.type === "node" && value["show_neighbors"] === false) {
         config.show_neighbors = false;
