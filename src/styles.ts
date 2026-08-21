@@ -56,7 +56,8 @@ export const STYLES: string = `
     border-radius: var(--ha-card-border-radius, 12px);
   }
 
-  ha-card.device-card { padding: 0; }
+  /* Full-bleed hover bands (header, details) are clipped by the card radius. */
+  ha-card.device-card { padding: 0; overflow: hidden; }
 
   ha-card.offline-node-card {
     display: flex;
@@ -83,6 +84,11 @@ export const STYLES: string = `
     outline: 2px solid var(--primary-color, var(--mushroom-meshcore-info-color));
     outline-offset: 2px;
   }
+
+  /* Full-bleed controls sit flush with the clipped card edge, so their focus
+     ring must draw inward to stay visible. */
+  .device-header:focus-visible,
+  .node-details summary:focus-visible { outline-offset: -2px; }
 
   /* Tile/Mushroom interaction idiom: a faint currentColor overlay on hover
      and an ha-ripple on press. The overlay handles hover so the ripple's own
@@ -124,9 +130,10 @@ export const STYLES: string = `
     display: flex;
     min-height: 56px;
     align-items: center;
-    padding: 0 var(--mush-spacing, 10px);
   }
 
+  /* The header carries the card inset itself so its hover band and ripple
+     reach the card edges, Tile-style. */
   .device-header {
     display: flex;
     min-width: 0;
@@ -134,15 +141,15 @@ export const STYLES: string = `
     flex: 1;
     align-items: center;
     gap: var(--mush-spacing, 10px);
-    padding: 0;
-    border-radius: var(--mushroom-meshcore-control-radius);
+    padding: 0 var(--mush-spacing, 10px);
     background: transparent;
     text-align: left;
   }
 
   /* The offline badge overhangs the icon shape; the header must not clip it. */
   .device-header.clickable { overflow: visible; }
-  .device-header.clickable::after { border-radius: var(--mushroom-meshcore-control-radius); }
+
+  .device-header-row > .count-badge { margin-right: var(--mush-spacing, 10px); }
 
   .device-icon-shape {
     position: relative;
@@ -389,9 +396,11 @@ export const STYLES: string = `
     font-weight: 400;
   }
 
-  /* Details remain collapsed until explicitly requested. */
+  /* Details remain collapsed until explicitly requested. The disclosure is
+     the last child of .device-body; negative margins cancel the body inset so
+     the summary's hover band reaches the card edges. */
   .node-details {
-    margin-top: 10px;
+    margin: 10px calc(-1 * var(--mush-spacing, 10px)) calc(-1 * var(--mush-spacing, 10px));
     border-top: 1px solid var(--mushroom-meshcore-border-color);
   }
 
@@ -400,8 +409,7 @@ export const STYLES: string = `
     height: var(--mushroom-meshcore-control-height);
     align-items: center;
     justify-content: space-between;
-    padding: 0 2px;
-    border-radius: var(--mushroom-meshcore-control-radius);
+    padding: 0 calc(var(--mush-spacing, 10px) + 2px);
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: 500;
@@ -418,7 +426,7 @@ export const STYLES: string = `
   }
   .node-details[open] summary ha-icon { transform: rotate(180deg); }
 
-  .details-content { padding-top: 3px; }
+  .details-content { padding: 3px var(--mush-spacing, 10px) var(--mush-spacing, 10px); }
 
   .detail-section { margin-top: 12px; }
   .detail-section h4,
@@ -537,9 +545,9 @@ export const STYLES: string = `
   ha-card.grid-rows { height: 100%; overflow: hidden; }
 
   @media (max-width: 420px) {
-    .device-header-row { align-items: flex-start; padding-top: 10px; padding-bottom: 10px; }
-    .device-header { min-height: 36px; }
-    .device-header-row > .count-badge { height: 32px; padding: 0 7px; }
+    .device-header-row { align-items: flex-start; }
+    .device-header { padding-top: 10px; padding-bottom: 10px; }
+    .device-header-row > .count-badge { height: 32px; padding: 0 7px; margin-top: 10px; }
     .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .node-metric { padding: 7px; }
   }
