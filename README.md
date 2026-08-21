@@ -59,7 +59,7 @@ target:
 
 Each main-card instance displays one selected hub or remote node. Add the card through the dashboard editor, select a MeshCore device, and repeat for every device you want to place independently.
 
-Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, battery, voltage, sent/received traffic, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Offline nodes collapse to their identity and last-seen status instead of displaying unavailable metrics.
+Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, available noise-floor data, battery percentage and voltage, sent/received traffic, uptime, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Offline nodes collapse to their identity and last-seen status instead of displaying unavailable metrics, while their card surface fills the row allocated by a Sections dashboard.
 
 ### Configuration
 

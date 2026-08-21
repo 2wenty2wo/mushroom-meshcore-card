@@ -138,8 +138,10 @@ function createHass(online = true) {
     [`${prefix}battery_voltage${suffix}`]: state(4.08),
     [`${prefix}nb_sent${suffix}`]: state(19175),
     [`${prefix}nb_recv${suffix}`]: state(64487),
+    [`${prefix}temperature${suffix}`]: state(25),
     [`${prefix}last_advert${suffix}`]: state(Math.floor(Date.now() / 1000) - 30),
     [`${prefix}airtime_utilization${suffix}`]: state(2.5),
+    [`${prefix}noise_floor${suffix}`]: state(-114),
   };
   const states = {
     [hubCount]: state(2),
@@ -215,6 +217,34 @@ assert.equal(onlineNode.card.shadowRoot.querySelector("ha-tile-info").primary, "
 assert.match(onlineNode.card.shadowRoot.querySelector("ha-tile-info").secondary, /^Online/);
 assert.match(onlineNode.body, /class="metrics-grid/);
 assert.match(onlineNode.body, />RSSI</);
+assert.match(onlineNode.body, />SNR</);
+assert.match(onlineNode.body, />Noise Floor</);
+const metricsHtml = onlineNode.body.match(/<div class="metrics-grid[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+assert.doesNotMatch(metricsHtml, />Battery</);
+assert.equal(
+  (onlineNode.body.match(/data-entity="sensor\.meshcore_spring_noise_floor_spring_farm"/g) ?? []).length,
+  1,
+);
+assert.doesNotMatch(onlineNode.body, /Node ID/);
+assert.doesNotMatch(onlineNode.body, /<h4>Technical<\/h4>/);
+assert.match(onlineNode.body, /class="battery-percentage clickable" data-entity="sensor\.meshcore_spring_battery_percentage_spring_farm"/);
+assert.match(onlineNode.body, /class="battery-voltage clickable" data-entity="sensor\.meshcore_spring_battery_voltage_spring_farm"/);
+assert.ok(
+  onlineNode.body.indexOf('class="battery-percentage clickable"')
+    < onlineNode.body.indexOf('class="battery-voltage clickable"'),
+  "battery percentage is rendered before voltage",
+);
+const sentChipIndex = onlineNode.body.indexOf('icon="mdi:arrow-up"');
+const receivedChipIndex = onlineNode.body.indexOf('icon="mdi:arrow-down"');
+const temperatureChipIndex = onlineNode.body.indexOf('icon="mdi:thermometer"');
+const uptimeChipIndex = onlineNode.body.indexOf('icon="mdi:timer-outline"');
+assert.ok(
+  sentChipIndex < receivedChipIndex
+    && receivedChipIndex < temperatureChipIndex
+    && temperatureChipIndex < uptimeChipIndex,
+  "quick chips are ordered sent, received, temperature, uptime",
+);
+assert.match(onlineNode.body, /aria-label="Uptime 1d 12h"/);
 assert.doesNotMatch(onlineNode.body, />Repeater</);
 assert.doesNotMatch(onlineNode.body, />REMOTE NODES</);
 assert.deepEqual(onlineNode.card.getGridOptions(), {
@@ -229,7 +259,11 @@ const offlineNode = render(
   createHass(false)
 );
 assert.match(offlineNode.body, /Offline/);
+assert.match(offlineNode.body, /class="device-card offline-node-card"/);
 assert.doesNotMatch(offlineNode.body, /class="metrics-grid/);
+assert.doesNotMatch(offlineNode.body, /class="quick-chip/);
+assert.doesNotMatch(offlineNode.body, /class="node-details/);
+assert.doesNotMatch(offlineNode.body, /Noise Floor/);
 assert.equal(offlineNode.card.getCardSize(), 1);
 
 const missingMetricHass = createHass();
@@ -239,6 +273,45 @@ const missingMetricNode = render(
   missingMetricHass
 );
 assert.doesNotMatch(missingMetricNode.body, />RSSI</);
+
+const missingNoiseHass = createHass();
+missingNoiseHass.states["sensor.meshcore_spring_noise_floor_spring_farm"].state = "unavailable";
+const missingNoiseNode = render(
+  { target: { type: "node", id: "Spring Farm" } },
+  missingNoiseHass
+);
+assert.doesNotMatch(missingNoiseNode.body, />Noise Floor</);
+assert.equal((missingNoiseNode.body.match(/class="node-metric clickable"/g) ?? []).length, 2);
+
+const percentageOnlyHass = createHass();
+percentageOnlyHass.states["sensor.meshcore_spring_battery_voltage_spring_farm"].state = "unavailable";
+const percentageOnlyNode = render(
+  { target: { type: "node", id: "Spring Farm" } },
+  percentageOnlyHass
+);
+assert.match(percentageOnlyNode.body, /class="battery-percentage clickable"/);
+assert.doesNotMatch(percentageOnlyNode.body, /class="battery-voltage clickable"/);
+assert.doesNotMatch(percentageOnlyNode.body, /icon="mdi:flash"/);
+
+const voltageOnlyHass = createHass();
+voltageOnlyHass.states["sensor.meshcore_spring_battery_percentage_spring_farm"].state = "unavailable";
+const voltageOnlyNode = render(
+  { target: { type: "node", id: "Spring Farm" } },
+  voltageOnlyHass
+);
+assert.doesNotMatch(voltageOnlyNode.body, /class="battery-block"/);
+assert.match(voltageOnlyNode.body, /icon="mdi:flash"/);
+assert.match(voltageOnlyNode.body, />4\.08 V<\/span>/);
+
+const missingBatteryHass = createHass();
+missingBatteryHass.states["sensor.meshcore_spring_battery_percentage_spring_farm"].state = "unavailable";
+missingBatteryHass.states["sensor.meshcore_spring_battery_voltage_spring_farm"].state = "unavailable";
+const missingBatteryNode = render(
+  { target: { type: "node", id: "Spring Farm" } },
+  missingBatteryHass
+);
+assert.doesNotMatch(missingBatteryNode.body, /class="battery-block"/);
+assert.doesNotMatch(missingBatteryNode.body, /icon="mdi:flash"/);
 
 const fixedGridNode = render({
   target: { type: "node", id: "Spring Farm" },

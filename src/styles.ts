@@ -2,6 +2,8 @@ export const STYLES: string = `
   *, *::before, *::after { box-sizing: border-box; }
 
   :host {
+    display: block;
+    height: 100%;
     --mushroom-meshcore-primary-font-size: var(--mush-card-primary-font-size, 14px);
     --mushroom-meshcore-secondary-font-size: var(--mush-card-secondary-font-size, 12px);
     --mushroom-meshcore-primary-font-weight: var(--mush-card-primary-font-weight, 500);
@@ -55,6 +57,15 @@ export const STYLES: string = `
   }
 
   ha-card.device-card { padding: 0; }
+
+  ha-card.offline-node-card {
+    display: flex;
+    min-height: 56px;
+    height: 100%;
+    align-items: center;
+  }
+
+  ha-card.offline-node-card > .device-header-row { width: 100%; }
 
   button {
     min-width: 0;
@@ -259,6 +270,13 @@ export const STYLES: string = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
+  .battery-values {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--mushroom-meshcore-chip-spacing);
+  }
+
+  .battery-percentage,
   .battery-voltage {
     padding: 2px 0;
     background: transparent;
