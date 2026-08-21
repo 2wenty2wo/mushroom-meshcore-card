@@ -6,6 +6,8 @@
     "hub_name": "Hub: {name}",
     "nodes_count": "◈ {n} Nodes",
     "empty_hubs": "Geen MeshCore-hubs gevonden.<br>Controleer of de MeshCore-integratie is geïnstalleerd.",
+    "select_device_prompt": "Selecteer een MeshCore-apparaat in de kaarteditor. Bestaande overzichtsconfiguraties moeten worden opgesplitst in één kaart per apparaat.",
+    "target_not_found": "Het geselecteerde MeshCore-apparaat ‘{id}’ is niet gevonden.",
     "empty_contacts": "Geen MeshCore-contactnodes gevonden.<br>Controleer of de MeshCore-integratie is geïnstalleerd.",
     "map_link": "Kaart ↗",
     "unknown_location": "Onbekende locatie",
@@ -72,6 +74,10 @@
     "d_ago": "{n}d geleden"
   },
   "editor": {
+    "target_device": "MeshCore-apparaat",
+    "target_hub": "Hub — {name} ({id})",
+    "target_node": "Node — {name}",
+    "no_devices_detected": "Nog geen MeshCore-apparaten gedetecteerd. Controleer de MeshCore-integratie en bewerk de kaart daarna opnieuw.",
     "show_this_hub": "Toon deze hub",
     "show_this_node": "Toon deze node",
     "battery_entity": "Batterij % entiteit (leeg = auto-detectie)",

@@ -1,8 +1,6 @@
 import type {
   HomeAssistant,
   MeshcoreCardConfig,
-  HubConfig,
-  NodeConfig,
   HubInfo,
   NodeInfo,
 } from "./types.js";
@@ -72,6 +70,7 @@ export class MeshcoreCard extends HTMLElement {
   private _renderTimer: ReturnType<typeof setTimeout> | null = null;
   private _trimTimer: ReturnType<typeof requestAnimationFrame> | null = null;
   private _openDetails = new Set<string>();
+  private _cardSize = 1;
 
   constructor() {
     super();
@@ -92,12 +91,21 @@ export class MeshcoreCard extends HTMLElement {
       if (!deviceId || details.tagName !== "DETAILS") return;
       if (details.open) this._openDetails.add(deviceId);
       else this._openDetails.delete(deviceId);
-      if (this._config?.grid_options?.rows) this._scheduleTrim(".node-block");
+      if (typeof this._config?.grid_options?.rows === "number") {
+        this._scheduleTrim(".trim-section");
+      }
     }, true);
   }
 
   setConfig(config: MeshcoreCardConfig): void {
-    this._config = config;
+    const previousTarget = this._config?.target;
+    this._config = { ...config };
+    if (
+      previousTarget &&
+      (previousTarget.type !== config.target?.type || previousTarget.id !== config.target?.id)
+    ) {
+      this._openDetails.clear();
+    }
     this._fp = null; // force re-render on config change
     this._render();
   }
@@ -208,21 +216,38 @@ export class MeshcoreCard extends HTMLElement {
     return null;
   }
 
-  // ── Config helpers ─────────────────────────────────────────────────────────
-
-  private _hubCfg(pubkey: string): HubConfig {
-    const v = (this._config?.hubs ?? {})[pubkey];
-    if (v && typeof v === "object") return v as HubConfig;
-    return { enabled: v !== false };
-  }
-
-  private _nodeCfg(name: string): NodeConfig {
-    const v = (this._config?.nodes ?? {})[name];
-    if (v && typeof v === "object") return v as NodeConfig;
-    return { enabled: v !== false };
-  }
-
   // ── Rendering helpers ──────────────────────────────────────────────────────
+
+  private _renderDeviceHeader(
+    displayName: string,
+    secondary: string,
+    icon: string,
+    online: boolean,
+    primaryEntityId: string | null,
+    trailing = ""
+  ): string {
+    const stateClass = online ? "online" : "offline";
+    const label = secondary ? `${displayName}, ${secondary}` : displayName;
+    const tag = primaryEntityId ? "button" : "div";
+    const attributes = primaryEntityId
+      ? `type="button" data-entity="${escapeHtml(primaryEntityId)}" aria-label="${escapeHtml(label)}"`
+      : `role="group" aria-label="${escapeHtml(label)}"`;
+
+    return `<div class="device-header-row ${stateClass}" part="device-header">
+      <${tag} class="device-header ${primaryEntityId ? "clickable" : ""}" ${attributes}>
+        <span class="device-icon-shape" aria-hidden="true">
+          <ha-tile-icon>
+            <ha-icon slot="icon" icon="${escapeHtml(icon)}"></ha-icon>
+          </ha-tile-icon>
+        </span>
+        <ha-tile-info>
+          <span slot="primary">${escapeHtml(displayName)}</span>
+          ${secondary ? `<span slot="secondary">${escapeHtml(secondary)}</span>` : ""}
+        </ha-tile-info>
+      </${tag}>
+      ${trailing}
+    </div>`;
+  }
 
   private _reading(id: string | null, numeric = false): EntityReading {
     const value = this._val(id);
@@ -439,12 +464,11 @@ export class MeshcoreCard extends HTMLElement {
   private _renderHub(hub: HubInfo, t: LocalizeFunc): string {
     const { pubkey, name } = hub;
     const e = (m: string) => this._hubEntity(pubkey, name, m);
-    const hubCfg = this._hubCfg(pubkey);
 
     const statusId  = e("node_status");
     const countId   = hub.nodeCountEntity;
-    const battPctId = hubCfg.battery_entity ?? e("battery_percentage");
-    const battVId   = hubCfg.voltage_entity  ?? e("battery_voltage");
+    const battPctId = this._config?.battery_entity ?? e("battery_percentage");
+    const battVId   = this._config?.voltage_entity  ?? e("battery_voltage");
     const freqId    = e("frequency");
     const bwId      = e("bandwidth");
     const sfId      = e("spreading_factor");
@@ -459,15 +483,15 @@ export class MeshcoreCard extends HTMLElement {
       .sort();
 
     const status    = this._val(statusId) ?? "unknown";
-    const battPct   = this._val(battPctId);
-    const battV     = this._val(battVId);
-    const nodeCount = this._val(countId);
-    const freq      = this._val(freqId);
-    const bw        = this._val(bwId);
-    const sf        = this._val(sfId);
-    const txPow     = this._val(txPowId);
-    const lat       = this._val(latId);
-    const lon       = this._val(lonId);
+    const battPct   = this._reading(battPctId, true).value;
+    const battV     = this._reading(battVId, true).value;
+    const nodeCount = this._reading(countId, true).value;
+    const freq      = this._reading(freqId, true).value;
+    const bw        = this._reading(bwId, true).value;
+    const sf        = this._reading(sfId, true).value;
+    const txPow     = this._reading(txPowId, true).value;
+    const lat       = this._reading(latId, true).value;
+    const lon       = this._reading(lonId, true).value;
 
     const hwModel  = this._attr(statusId, "hw_model") || this._attr(countId, "hw_model");
     const firmware = this._attr(statusId, "firmware_version") || this._attr(countId, "firmware_version");
@@ -485,50 +509,48 @@ export class MeshcoreCard extends HTMLElement {
       displayName = displayName.substring(8);
     }
 
-    return `
-      <div class="node-block ${online ? "" : "node-offline"}">
-        <div class="node-header">
-          <div class="node-left">
-            <span class="status-dot ${online ? "dot-online" : "dot-offline"}"></span>
-            <span class="status-text ${online ? "online" : "offline"}">${escapeHtml(online ? t("card.online") : t("card.offline"))}</span>
-          </div>
-          <div class="node-right">
-            ${nodeCount !== null ? `<span class="count-badge clickable" data-entity="${escapeHtml(countId)}">${escapeHtml(t("card.nodes_count", { n: nodeCount }))}</span>` : ""}
-          </div>
-        </div>
+    const secondary = `${online ? t("card.online") : t("card.offline")} · ${pubkey}`;
+    const nodeCountChip = nodeCount !== null
+      ? `<button type="button" class="count-badge clickable" data-entity="${escapeHtml(countId)}" aria-label="${escapeHtml(t("card.nodes_count", { n: nodeCount }))}">${escapeHtml(t("card.nodes_count", { n: nodeCount }))}</button>`
+      : "";
+    const header = this._renderDeviceHeader(
+      displayName.trim(),
+      secondary,
+      "mdi:router-wireless",
+      online,
+      statusId ?? countId,
+      nodeCountChip
+    );
 
-        <div class="node-title-row">
-          <span class="hub-name">${escapeHtml(t("card.hub_name", { name: displayName }))}</span>
-          <span class="node-key dim clickable" data-entity="${escapeHtml(statusId ?? countId)}">(${escapeHtml(pubkey)})</span>
-        </div>
-
-        ${hwModel || firmware ? `<div class="hw-info">${[hwModel, firmware].filter(Boolean).map((s) => escapeHtml(s)).join(" • ")}</div>` : ""}
+    return `${header}
+      <div class="device-body ${online ? "" : "node-offline"}">
+        ${hwModel || firmware ? `<div class="hw-info trim-section">${[hwModel, firmware].filter(Boolean).map((s) => escapeHtml(s)).join(" • ")}</div>` : ""}
 
         ${battPct !== null && Number(battPct) !== 0 ? `
-          <div class="bar-row">
+          <div class="bar-row trim-section">
             <span class="bar-label">${escapeHtml(t("card.battery_label"))}</span>
             <span class="bar-label-right">
-              ${battV !== null && parseFloat(battV) >= 0.001 ? `<span class="clickable" data-entity="${escapeHtml(battVId)}">⚡ ${parseFloat(battV).toFixed(3)}V</span>` : ""}
-              <span class="bar-val clickable" data-entity="${escapeHtml(battPctId)}" style="color:${battCol}">${escapeHtml(battPct)}%</span>
+              ${battV !== null && parseFloat(battV) >= 0.001 && battVId ? `<button type="button" class="inline-entity clickable" data-entity="${escapeHtml(battVId)}">⚡ ${parseFloat(battV).toFixed(3)}V</button>` : ""}
+              ${battPctId ? `<button type="button" class="bar-val inline-entity clickable" data-entity="${escapeHtml(battPctId)}" style="color:${battCol}">${escapeHtml(battPct)}%</button>` : ""}
             </span>
           </div>
-          ${this._progressBar(battPct, battCol, t("card.battery_label"))}` : ""}
+          <div class="trim-section">${this._progressBar(battPct, battCol, t("card.battery_label"))}</div>` : ""}
 
         ${showRf ? `
-          <div class="section-header">${escapeHtml(t("card.technical_section"))}</div>
+          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.technical_section"))}</div>
           <div class="rf-row">
             ${freq ? `<span class="rf-chip clickable" data-entity="${escapeHtml(freqId)}">${parseFloat(freq).toFixed(3)} MHz</span>` : ""}
             ${bw   ? `<span class="rf-chip clickable" data-entity="${escapeHtml(bwId)}">${escapeHtml(bw)} kHz</span>` : ""}
             ${sf   ? `<span class="rf-chip clickable" data-entity="${escapeHtml(sfId)}">SF${escapeHtml(sf)}</span>` : ""}
             ${txPow ? `<span class="rf-chip clickable" data-entity="${escapeHtml(txPowId)}">${escapeHtml(txPow)} dBm</span>` : ""}
-          </div>` : ""}
+          </div></section>` : ""}
 
         ${lat !== null && lon !== null ? `
-          <div class="section-header">${escapeHtml(t("card.location_section"))}</div>
-          ${this._locLink(lat, lon, latId, t)}` : ""}
+          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.location_section"))}</div>
+          ${this._locLink(lat, lon, latId, t)}</section>` : ""}
 
         ${mqttIds.length ? `
-          <div class="section-header">${escapeHtml(t("card.mqtt_section"))}</div>
+          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.mqtt_section"))}</div>
           <div class="mqtt-row">
             ${mqttIds.map((id) => {
               const v   = this._val(id);
@@ -539,14 +561,14 @@ export class MeshcoreCard extends HTMLElement {
                   .trim();
               return `<span class="mqtt-pill ${v ? "ok" : "err"} clickable" data-entity="${escapeHtml(id)}">${escapeHtml(lbl)}</span>`;
             }).join("")}
-          </div>` : ""}
+          </div></section>` : ""}
 
         ${(this._exists(rateLimId) || this._exists(ch1VId)) ? `
-          <div class="section-header">${escapeHtml(t("card.other_section"))}</div>
+          <section class="trim-section"><div class="section-header">${escapeHtml(t("card.other_section"))}</div>
           <div class="chip-row">
             ${this._exists(ch1VId) ? this._chip(ch1VId, t("card.chip_ch1"), (this._val(ch1VId) ?? "—") + "V") : ""}
             ${this._exists(rateLimId) ? this._chip(rateLimId, t("card.chip_rate"), (this._val(rateLimId) ?? "—") + " tok") : ""}
-          </div>` : ""}
+          </div></section>` : ""}
       </div>
     `;
   }
@@ -556,7 +578,6 @@ export class MeshcoreCard extends HTMLElement {
   private _buildNodeViewModel(node: NodeInfo, t: LocalizeFunc): NodeViewModel {
     const { name, deviceId, ePrefix, eSuffix } = node;
     const p = (m: string) => this._findEntityByDevice(deviceId, m, ePrefix, eSuffix);
-    const nodeCfg = this._nodeCfg(name);
 
     // Common entities
     const statusId  = p("online") ?? p("status");
@@ -566,8 +587,8 @@ export class MeshcoreCard extends HTMLElement {
     const pathId    = p("path_length");
     const routeId   = p("routing_path");
     const advertId  = p("last_advert");
-    const battPctId = nodeCfg.battery_entity ?? p("battery_percentage") ?? p("battery_level") ?? p("battery");
-    let battVId = nodeCfg.voltage_entity ?? null;
+    const battPctId = this._config?.battery_entity ?? p("battery_percentage") ?? p("battery_level") ?? p("battery");
+    let battVId = this._config?.voltage_entity ?? null;
     if (!battVId) {
       battVId = p("battery_voltage");
     }
@@ -582,7 +603,7 @@ export class MeshcoreCard extends HTMLElement {
         }
       }
     }
-    const locEntityId = nodeCfg.location_entity ?? null;
+    const locEntityId = this._config?.location_entity ?? null;
     const contactId   = locEntityId ? null : this._contactEntity(name);
     const latId       = locEntityId ? null : p("latitude");
     const lonId       = locEntityId ? null : p("longitude");
@@ -603,10 +624,10 @@ export class MeshcoreCard extends HTMLElement {
 
     // Optional telemetry keeps explicit overrides authoritative, then falls
     // back to the same device-scoped matching used for MeshCore metrics.
-    const tempId      = nodeCfg.temperature_entity ?? p("temperature");
-    const humidId     = nodeCfg.humidity_entity ?? p("humidity");
-    const illumId     = nodeCfg.illuminance_entity ?? p("illuminance");
-    const pressId     = nodeCfg.pressure_entity ?? p("pressure");
+    const tempId      = this._config?.temperature_entity ?? p("temperature");
+    const humidId     = this._config?.humidity_entity ?? p("humidity");
+    const illumId     = this._config?.illuminance_entity ?? p("illuminance");
+    const pressId     = this._config?.pressure_entity ?? p("pressure");
 
     const status  = this._val(statusId);
     const lastAdv = this._val(advertId);
@@ -733,29 +754,17 @@ export class MeshcoreCard extends HTMLElement {
     const stateLabel = t(vm.online ? "card.online" : "card.offline");
     const lastSeen = vm.lastSeen
       ? vm.online
-        ? escapeHtml(vm.lastSeen)
-        : escapeHtml(t("card.last_seen", { time: vm.lastSeen }))
+        ? vm.lastSeen
+        : t("card.last_seen", { time: vm.lastSeen })
       : "";
-    const secondary = `${escapeHtml(stateLabel)}${lastSeen ? `<span class="separator" aria-hidden="true">·</span>${lastSeen}` : ""}`;
-    const typeLabel = vm.isRepeater
-      ? t("card.type_repeater")
-      : vm.isSensor
-        ? t("card.type_sensor")
-        : null;
-    const iconLabel = `${vm.displayName}, ${stateLabel}`;
-    const icon = `<ha-icon icon="${escapeHtml(vm.icon)}"></ha-icon>`;
-    const iconShape = vm.primaryEntityId
-      ? `<button type="button" class="node-icon-shape clickable" part="node-icon" data-entity="${escapeHtml(vm.primaryEntityId)}" aria-label="${escapeHtml(iconLabel)}">${icon}</button>`
-      : `<span class="node-icon-shape" part="node-icon" role="img" aria-label="${escapeHtml(iconLabel)}">${icon}</span>`;
-
-    return `<div class="node-card-header" part="node-header">
-      ${iconShape}
-      <div class="node-heading">
-        <div class="node-name">${escapeHtml(vm.displayName)}</div>
-        <div class="node-secondary">${secondary}</div>
-      </div>
-      ${typeLabel ? `<div class="node-badges"><span class="type-badge">${escapeHtml(typeLabel)}</span></div>` : ""}
-    </div>`;
+    const secondary = `${stateLabel}${lastSeen ? ` · ${lastSeen}` : ""}`;
+    return this._renderDeviceHeader(
+      vm.displayName,
+      secondary,
+      vm.icon,
+      vm.online,
+      vm.primaryEntityId
+    );
   }
 
   private _detailChip(reading: EntityReading, label: string, unit = ""): string {
@@ -810,17 +819,20 @@ export class MeshcoreCard extends HTMLElement {
     if (!body) return "";
 
     const open = this._openDetails.has(vm.node.deviceId) ? " open" : "";
-    return `<details class="node-details" part="details" data-node-id="${escapeHtml(vm.node.deviceId)}"${open}>
+    return `<details class="node-details trim-section" part="details" data-node-id="${escapeHtml(vm.node.deviceId)}"${open}>
       <summary><span>${escapeHtml(t("card.details"))}</span><ha-icon icon="mdi:chevron-down"></ha-icon></summary>
       <div class="details-content">${body}</div>
     </details>`;
   }
 
-  private _renderNode(node: NodeInfo, t: LocalizeFunc): string {
-    const vm = this._buildNodeViewModel(node, t);
-    const part = vm.online ? "node" : "node node-offline";
+  private _renderNode(
+    node: NodeInfo,
+    t: LocalizeFunc,
+    viewModel?: NodeViewModel
+  ): string {
+    const vm = viewModel ?? this._buildNodeViewModel(node, t);
     if (!vm.online) {
-      return `<article class="node-block node-offline" part="${part}">${this._renderNodeHeader(vm, t)}</article>`;
+      return this._renderNodeHeader(vm, t);
     }
 
     const metrics = [
@@ -846,18 +858,17 @@ export class MeshcoreCard extends HTMLElement {
         : "",
     ].join("");
 
-    return `<article class="node-block" part="${part}">
-      ${this._renderNodeHeader(vm, t)}
-      ${metrics ? `<div class="metrics-grid" part="metrics">${metrics}</div>` : ""}
-      ${battery}
-      ${quickChips ? `<div class="quick-chip-row">${quickChips}</div>` : ""}
-      ${this._renderNodeDetails(vm, t)}
-    </article>`;
+    return `${this._renderNodeHeader(vm, t)}
+      <div class="device-body">
+        ${metrics ? `<div class="metrics-grid trim-section" part="metrics">${metrics}</div>` : ""}
+        ${battery ? `<div class="trim-section">${battery}</div>` : ""}
+        ${quickChips ? `<div class="quick-chip-row trim-section">${quickChips}</div>` : ""}
+        ${this._renderNodeDetails(vm, t)}
+      </div>`;
   }
 
   private _renderNeighbors(node: NodeInfo, t: LocalizeFunc): string {
-    const nodeCfg = this._nodeCfg(node.name);
-    if (nodeCfg.show_neighbors === false) return "";
+    if (this._config?.show_neighbors === false) return "";
 
     const neighbors = this._getNeighbors(node.deviceId);
     const neighborsWithSnr = neighbors.filter(n => n.snr !== null && !isNaN(parseFloat(n.snr)));
@@ -878,7 +889,7 @@ export class MeshcoreCard extends HTMLElement {
     
     // Cap the list (neighbors are sorted best-SNR-first, so the cap keeps
     // the strongest links); the count badge still shows the full total.
-    const cap = nodeCfg.max_neighbors;
+    const cap = this._config?.max_neighbors;
     const shownNeighbors = cap && cap > 0 ? neighborsWithSnr.slice(0, cap) : neighborsWithSnr;
 
     const neighborRows = shownNeighbors.map(n => {
@@ -925,49 +936,46 @@ export class MeshcoreCard extends HTMLElement {
   private _render(): void {
     if (!this._hass || !this._config) return;
     const t = makeLocalize(this._hass.language ?? this._hass.locale?.language ?? "en");
-
-    const allHubs = this._discoverHubs();
-    if (!allHubs.length) {
-      this._setBody(`<div class="empty">${t("card.empty_hubs")}</div>`);
+    const target = this._config.target;
+    if (
+      !target ||
+      (target.type !== "hub" && target.type !== "node") ||
+      typeof target.id !== "string" ||
+      !target.id.trim()
+    ) {
+      this._cardSize = 1;
+      this._setBody(`<div class="empty config-prompt">${escapeHtml(t("card.select_device_prompt"))}</div>`);
       return;
     }
 
-    const visibleHubs = allHubs.filter((h) => this._hubCfg(h.pubkey).enabled !== false);
-    const nodesOrder = this._config?.nodes_order ?? [];
-    const nodes = this._discoverNodes()
-      .filter((n) => this._nodeCfg(n.name).enabled !== false)
-      .sort((a, b) => {
-        const ia = nodesOrder.indexOf(a.name);
-        const ib = nodesOrder.indexOf(b.name);
-        if (ia === -1 && ib === -1) return 0;
-        if (ia === -1) return 1;
-        if (ib === -1) return -1;
-        return ia - ib;
-      });
+    if (target.type === "hub") {
+      const hub = this._discoverHubs().find((item) => item.pubkey === target.id);
+      if (!hub) {
+        this._cardSize = 1;
+        this._setBody(`<div class="empty config-prompt">${escapeHtml(t("card.target_not_found", { id: target.id }))}</div>`);
+        return;
+      }
+      this._cardSize = 5;
+      this._setBody(this._renderHub(hub, t));
+      return;
+    }
 
-    const hubsHtml = visibleHubs.length
-      ? `<div class="section-label">${t("card.section_hubs")}</div>` +
-        visibleHubs.map((hub) => this._renderHub(hub, t)).join("")
-      : "";
-
-    const nodesHtml = nodes.length
-      ? `<div class="nodes-section">
-          <div class="section-label">${t("card.section_nodes")}</div>
-          ${nodes.map((n) => this._renderNode(n, t)).join("")}
-         </div>`
-      : "";
-
-    this._setBody(
-      hubsHtml + nodesHtml ||
-        `<div class="empty">All hubs and nodes are hidden.</div>`
-    );
+    const node = this._discoverNodes().find((item) => item.name === target.id);
+    if (!node) {
+      this._cardSize = 1;
+      this._setBody(`<div class="empty config-prompt">${escapeHtml(t("card.target_not_found", { id: target.id }))}</div>`);
+      return;
+    }
+    const vm = this._buildNodeViewModel(node, t);
+    this._cardSize = vm.online ? 5 : 1;
+    this._setBody(this._renderNode(node, t, vm));
   }
 
   private _setBody(body: string): void {
-    const constrained = !!this._config?.grid_options?.rows;
-    const cls = constrained ? " class=\"grid-rows\"" : "";
-    this.shadowRoot!.innerHTML = `<style>${STYLES}</style><ha-card${cls}>${body}</ha-card>`;
-    if (constrained) this._scheduleTrim(".node-block");
+    const constrained = typeof this._config?.grid_options?.rows === "number";
+    const cls = constrained ? "device-card grid-rows" : "device-card";
+    this.shadowRoot!.innerHTML = `<style>${STYLES}</style><ha-card class="${cls}">${body}</ha-card>`;
+    if (constrained) this._scheduleTrim(".trim-section");
   }
 
   private _scheduleTrim(rowSelector: string): void {
@@ -987,7 +995,21 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   getCardSize(): number {
-    return 5;
+    return this._cardSize;
+  }
+
+  getGridOptions(): {
+    columns: "full";
+    rows: "auto";
+    min_columns: number;
+    min_rows: number;
+  } {
+    return {
+      columns: "full",
+      rows: "auto",
+      min_columns: 6,
+      min_rows: 1,
+    };
   }
 
   static getConfigElement(): HTMLElement {

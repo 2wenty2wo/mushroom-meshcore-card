@@ -6,6 +6,8 @@
     "hub_name": "Hub: {name}",
     "nodes_count": "◈ {n} Nodes",
     "empty_hubs": "No MeshCore hubs found.<br>Check the MeshCore integration is installed.",
+    "select_device_prompt": "Select a MeshCore device in the card editor. Existing overview configurations must be split into one card per device.",
+    "target_not_found": "The selected MeshCore device “{id}” was not found.",
     "empty_contacts": "No MeshCore contact nodes found.<br>Check the MeshCore integration is installed.",
     "map_link": "Map ↗",
     "unknown_location": "Unknown Location",
@@ -72,6 +74,10 @@
     "d_ago": "{n}d ago"
   },
   "editor": {
+    "target_device": "MeshCore device",
+    "target_hub": "Hub — {name} ({id})",
+    "target_node": "Node — {name}",
+    "no_devices_detected": "No MeshCore devices detected yet. Check the MeshCore integration, then edit the card again.",
     "show_this_hub": "Show this hub",
     "show_this_node": "Show this node",
     "battery_entity": "Battery % entity (blank = auto-detect)",

@@ -12,6 +12,7 @@
     "build": "rollup -c rollup.config.mjs",
     "watch": "rollup -c rollup.config.mjs --watch",
     "typecheck": "tsc --noEmit",
+    "test:render": "node scripts/render-smoke.mjs",
     "dev": "npm run typecheck && npm run watch",
     "translate": "node scripts/translate.mjs",
     "translate:dry": "node scripts/translate.mjs --dry-run",
