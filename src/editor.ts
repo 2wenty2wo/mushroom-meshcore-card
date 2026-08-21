@@ -73,8 +73,15 @@ export class MeshcoreCardEditor extends HTMLElement {
   private _discoveryFp = "";
 
   setConfig(config: MeshcoreCardConfig): void {
-    this._config = { ...config };
-    this._renderEditor();
+    // HA echoes our own config-changed dispatch back through setConfig; a
+    // teardown re-render there would collapse expansion panels and drop the
+    // typing focus, so only rebuild when the config actually differs.
+    const next = { ...config };
+    const unchanged =
+      this._config !== undefined &&
+      JSON.stringify(next) === JSON.stringify(this._config);
+    this._config = next;
+    if (!unchanged) this._renderEditor();
   }
 
   set hass(hass: HomeAssistant) {
@@ -355,6 +362,9 @@ export class MeshcoreCardEditor extends HTMLElement {
     form.data = this._settingsData(target);
     form.addEventListener("value-changed", (event: Event) => {
       const value = (event as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+      // The form survives the setConfig echo, so its aggregate data must be
+      // kept current or the next field edit would revert this one.
+      form.data = value;
       const config: MeshcoreCardConfig = { ...this._config };
       for (const key of ENTITY_SETTING_KEYS) {
         const entityId = value[key];

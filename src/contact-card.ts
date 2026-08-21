@@ -348,8 +348,14 @@ export class MeshcoreContactCardEditor extends HTMLElement {
   private _hass?: HomeAssistant;
 
   setConfig(config: MeshcoreContactCardConfig): void {
-    this._config = { ...config };
-    this._renderEditor();
+    // Skip the teardown re-render on HA's echo of our own dispatch so the
+    // form keeps input focus while typing.
+    const next = { ...config };
+    const unchanged =
+      this._config !== undefined &&
+      JSON.stringify(next) === JSON.stringify(this._config);
+    this._config = next;
+    if (!unchanged) this._renderEditor();
   }
 
   set hass(hass: HomeAssistant) {
@@ -392,6 +398,8 @@ export class MeshcoreContactCardEditor extends HTMLElement {
 
     form.addEventListener("value-changed", (e: Event) => {
       const value = (e as CustomEvent<{ value: Record<string, unknown> }>).detail.value;
+      // The form survives the setConfig echo; keep its aggregate current.
+      form.data = value;
       const cfg: MeshcoreContactCardConfig = { ...this._config, max_contact_age_days: Number(value["max_contact_age_days"]) };
       // Only store non-defaults so the YAML stays minimal.
       if (value["show_path"] === true) cfg.show_path = true;
