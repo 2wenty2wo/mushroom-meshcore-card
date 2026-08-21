@@ -100,7 +100,7 @@ grid_options:
   rows: 4
 ```
 
-`tap_action`, `hold_action`, and `double_tap_action` accept the standard Home Assistant action config (`more-info`, `navigate`, `url`, `perform-action`, `none`) and apply to the device header; individual metrics and chips always open their own entity's more-info dialog. `icon_color` accepts the Mushroom/Tile color names (`red`, `blue`, `deep-purple`, …) or any CSS color, and applies while the device is online.
+`tap_action`, `hold_action`, and `double_tap_action` accept the standard Home Assistant action config (`more-info`, `navigate`, `url`, `perform-action`, `none`), including the optional `confirmation:` prompt, and apply to the device header; individual metrics and chips always open their own entity's more-info dialog. `icon_color` accepts the Mushroom/Tile color names (`red`, `blue`, `deep-purple`, …) or a plain CSS color (`#rrggbb`, `rgb(…)`, `hsl(…)`, named colors), and applies while the device is online.
 
 Hub cards use the same public card type:
 

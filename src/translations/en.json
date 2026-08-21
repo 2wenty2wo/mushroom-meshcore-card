@@ -64,7 +64,8 @@
     "frequency": "Frequency",
     "bandwidth": "Bandwidth",
     "tx_power": "TX power",
-    "battery_voltage": "Battery voltage"
+    "battery_voltage": "Battery voltage",
+    "confirm_action": "Are you sure?"
   },
   "time": {
     "s_ago": "{n}s ago",

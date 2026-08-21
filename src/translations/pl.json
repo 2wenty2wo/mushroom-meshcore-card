@@ -64,7 +64,8 @@
     "frequency": "Częstotliwość",
     "bandwidth": "Szerokość pasma",
     "tx_power": "Moc TX",
-    "battery_voltage": "Napięcie baterii"
+    "battery_voltage": "Napięcie baterii",
+    "confirm_action": "Czy na pewno?"
   },
   "time": {
     "s_ago": "{n} s temu",

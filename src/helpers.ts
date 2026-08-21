@@ -94,12 +94,21 @@ const NAMED_COLORS = new Set([
   "black", "white", "disabled",
 ]);
 
-export function computeCssColor(color: string): string {
-  const c = color.trim().toLowerCase();
-  if (c === "primary") return "var(--primary-color)";
-  if (c === "accent") return "var(--accent-color)";
-  if (NAMED_COLORS.has(c)) return `var(--${c}-color)`;
-  return color.trim();
+/** Resolve a configured color to a CSS value, or null when it is not a
+ *  recognizably safe color. The result is interpolated into an inline
+ *  `style` attribute, so raw passthrough is limited to strict color
+ *  syntax — HTML escaping alone cannot stop CSS declaration injection
+ *  via characters like `;` in an arbitrary string. */
+export function computeCssColor(color: string): string | null {
+  const c = color.trim();
+  const lower = c.toLowerCase();
+  if (lower === "primary") return "var(--primary-color)";
+  if (lower === "accent") return "var(--accent-color)";
+  if (NAMED_COLORS.has(lower)) return `var(--${lower}-color)`;
+  if (/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c)) return c;
+  if (/^[a-z]+$/i.test(c)) return lower; // CSS named colors, e.g. rebeccapurple
+  if (/^(?:rgb|rgba|hsl|hsla)\(\s*[0-9a-z.,%\s/-]*\s*\)$/i.test(c)) return c;
+  return null;
 }
 
 export interface MapLinkConfig {

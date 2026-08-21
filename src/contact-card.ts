@@ -7,15 +7,15 @@ const CONTACT_STYLES: string = `
   .contact-list {
     display: flex;
     flex-direction: column;
-    gap: var(--mush-spacing, 12px);
+    gap: var(--mush-spacing, 10px);
   }
 
   .contact-row {
     display: flex;
     min-height: 56px;
     align-items: center;
-    gap: var(--mush-spacing, 12px);
-    padding: var(--mush-spacing, 12px);
+    gap: var(--mush-spacing, 10px);
+    padding: var(--mush-spacing, 10px);
     border: var(--ha-card-border-width, 1px) solid var(--mushroom-meshcore-border-color);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);
@@ -26,7 +26,7 @@ const CONTACT_STYLES: string = `
     flex: 1;
     min-width: 0;
     align-items: center;
-    gap: var(--mush-spacing, 12px);
+    gap: var(--mush-spacing, 10px);
     padding: 0;
     background: transparent;
     text-align: start;

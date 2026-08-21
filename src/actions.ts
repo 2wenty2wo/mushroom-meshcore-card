@@ -2,14 +2,24 @@ import type { ActionConfig, HomeAssistant } from "./types.js";
 
 /** Execute a Mushroom/Tile-style action config. `entityId` backs the
  *  default `more-info` action. Dispatches from `node` so `hass-more-info`
- *  bubbles through the card into the HA frontend. */
+ *  bubbles through the card into the HA frontend. Honors the standard
+ *  `confirmation:` option before any side effect, mirroring HA's action
+ *  handler; `confirmText` supplies the localized fallback prompt. */
 export function handleAction(
   node: HTMLElement,
   hass: HomeAssistant | undefined,
   action: ActionConfig | undefined,
-  entityId: string | null
+  entityId: string | null,
+  confirmText = "Are you sure?"
 ): void {
   const config = action ?? { action: "more-info" };
+  if (config.confirmation && config.action !== "none") {
+    const text =
+      typeof config.confirmation === "object" && config.confirmation.text
+        ? config.confirmation.text
+        : confirmText;
+    if (!window.confirm(text)) return;
+  }
   switch (config.action) {
     case "more-info": {
       if (!entityId) return;

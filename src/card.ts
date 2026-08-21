@@ -102,7 +102,7 @@ export class MeshcoreCard extends HTMLElement {
       this._holdTimer = setTimeout(() => {
         this._holdTimer = null;
         this._holdFired = true;
-        handleAction(this, this._hass, this._config?.hold_action, header.dataset["entity"] ?? null);
+        handleAction(this, this._hass, this._config?.hold_action, header.dataset["entity"] ?? null, this._confirmText());
       }, 500);
     });
     for (const type of ["pointerup", "pointercancel"]) {
@@ -157,6 +157,11 @@ export class MeshcoreCard extends HTMLElement {
     }
   }
 
+  private _confirmText(): string {
+    const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+    return t("card.confirm_action");
+  }
+
   private _onHeaderClick(header: HTMLElement): void {
     if (this._holdFired) {
       this._holdFired = false;
@@ -171,16 +176,16 @@ export class MeshcoreCard extends HTMLElement {
       if (this._tapTimer !== null) {
         clearTimeout(this._tapTimer);
         this._tapTimer = null;
-        handleAction(this, this._hass, doubleTap, entityId);
+        handleAction(this, this._hass, doubleTap, entityId, this._confirmText());
       } else {
         this._tapTimer = setTimeout(() => {
           this._tapTimer = null;
-          handleAction(this, this._hass, this._config?.tap_action, entityId);
+          handleAction(this, this._hass, this._config?.tap_action, entityId, this._confirmText());
         }, 250);
       }
       return;
     }
-    handleAction(this, this._hass, this._config?.tap_action, entityId);
+    handleAction(this, this._hass, this._config?.tap_action, entityId, this._confirmText());
   }
 
   setConfig(config: MeshcoreCardConfig): void {

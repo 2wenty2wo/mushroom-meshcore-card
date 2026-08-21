@@ -64,7 +64,8 @@
     "frequency": "Frequentie",
     "bandwidth": "Bandbreedte",
     "tx_power": "TX-vermogen",
-    "battery_voltage": "Batterijspanning"
+    "battery_voltage": "Batterijspanning",
+    "confirm_action": "Weet u het zeker?"
   },
   "time": {
     "s_ago": "{n}s geleden",

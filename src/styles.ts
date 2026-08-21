@@ -33,7 +33,7 @@ export const STYLES: string = `
     --mushroom-meshcore-danger-color: var(--error-color, rgb(var(--mush-rgb-danger, var(--rgb-danger, 244, 67, 54))));
     --mushroom-meshcore-info-color: var(--info-color, rgb(var(--mush-rgb-info, var(--rgb-info, 3, 169, 244))));
     --mushroom-meshcore-muted-color: var(--secondary-text-color, #727272);
-    --mushroom-meshcore-card-padding: var(--mush-spacing, 12px);
+    --mushroom-meshcore-card-padding: var(--mush-spacing, 10px);
 
     /* Compatibility aliases for the retained hub/contact/channel layouts. */
     --mesh-green: var(--mushroom-meshcore-success-color);
@@ -124,7 +124,7 @@ export const STYLES: string = `
     display: flex;
     min-height: 56px;
     align-items: center;
-    padding: 0 var(--mush-spacing, 12px);
+    padding: 0 var(--mush-spacing, 10px);
   }
 
   .device-header {
@@ -133,7 +133,7 @@ export const STYLES: string = `
     min-height: 56px;
     flex: 1;
     align-items: center;
-    gap: var(--mush-spacing, 12px);
+    gap: var(--mush-spacing, 10px);
     padding: 0;
     border-radius: var(--mushroom-meshcore-control-radius);
     background: transparent;
@@ -237,7 +237,7 @@ export const STYLES: string = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
-  .device-body { padding: 0 var(--mush-spacing, 12px) var(--mush-spacing, 12px); }
+  .device-body { padding: 0 var(--mush-spacing, 10px) var(--mush-spacing, 10px); }
 
   .type-badge,
   .count-badge {
@@ -263,7 +263,7 @@ export const STYLES: string = `
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
     gap: 8px;
-    margin-top: var(--mush-spacing, 12px);
+    margin-top: var(--mush-spacing, 10px);
   }
 
   .node-metric {
@@ -272,7 +272,7 @@ export const STYLES: string = `
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    padding: var(--mush-spacing, 12px);
+    padding: var(--mush-spacing, 10px);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);
     text-align: left;
@@ -302,7 +302,7 @@ export const STYLES: string = `
   }
 
   /* Battery stays informative without becoming the visual focus. */
-  .battery-block { margin-top: var(--mush-spacing, 12px); }
+  .battery-block { margin-top: var(--mush-spacing, 10px); }
 
   .battery-meta {
     display: flex;
@@ -354,7 +354,7 @@ export const STYLES: string = `
     gap: var(--mushroom-meshcore-chip-spacing);
   }
 
-  .quick-chip-row { margin-top: var(--mush-spacing, 12px); }
+  .quick-chip-row { margin-top: var(--mush-spacing, 10px); }
 
   .quick-chip,
   .chip,
@@ -462,7 +462,7 @@ export const STYLES: string = `
   }
   .neighbors-list { display: flex; flex-direction: column; gap: 6px; }
   .neighbor-row {
-    padding: var(--mush-spacing, 12px);
+    padding: var(--mush-spacing, 10px);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);
   }

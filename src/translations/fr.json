@@ -64,7 +64,8 @@
     "frequency": "Fréquence",
     "bandwidth": "Bande passante",
     "tx_power": "Puissance TX",
-    "battery_voltage": "Tension de batterie"
+    "battery_voltage": "Tension de batterie",
+    "confirm_action": "Êtes-vous sûr ?"
   },
   "time": {
     "s_ago": "il y a {n}s",

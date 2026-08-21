@@ -61,6 +61,7 @@ export interface ActionConfig {
   data?: Record<string, unknown>;
   service_data?: Record<string, unknown>;
   target?: ActionTarget;
+  confirmation?: boolean | { text?: string };
 }
 
 // ── Card config types ─────────────────────────────────────────────────────────
