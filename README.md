@@ -59,17 +59,32 @@ target:
 
 Each main-card instance displays one selected hub or remote node. Add the card through the dashboard editor, select a MeshCore device, and repeat for every device you want to place independently.
 
-Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, available noise-floor data, battery percentage and voltage, sent/received traffic, uptime, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Offline nodes collapse to their identity and last-seen status instead of displaying unavailable metrics, while their card surface fills the row allocated by a Sections dashboard.
+Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, available noise-floor data, battery percentage and voltage, sent/received traffic, uptime, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Hubs share the same body primitives: a battery block, hardware/firmware quick chips, and RF, location, MQTT, and other diagnostics under the same **Details** control. Offline devices collapse to their identity and last-seen status with a badge on the icon, while their card surface fills the row allocated by a Sections dashboard.
 
 ### Configuration
 
-The visual editor exposes only the settings relevant to the selected device. Entity overrides remain optional because device-scoped automatic matching is the default.
+The visual editor groups settings into Mushroom-style Appearance, Interactions, and entity-override sections, and exposes only the settings relevant to the selected device. Entity overrides remain optional because device-scoped automatic matching is the default.
 
 ```yaml
 type: custom:mushroom-meshcore-card
 target:
   type: node
   id: Spring Farm
+name: Spring Farm Repeater
+icon: mdi:radio-tower
+icon_color: blue
+tap_action:
+  action: more-info
+hold_action:
+  action: navigate
+  navigation_path: /lovelace/mesh
+double_tap_action:
+  action: none
+hide_battery: false
+hide_metrics: false
+hide_quick_stats: false
+hide_details: false
+details_default_open: false
 battery_entity: sensor.example_battery
 voltage_entity: sensor.example_voltage
 location_entity: sensor.example_location
@@ -84,6 +99,8 @@ map_metro: smf
 grid_options:
   rows: 4
 ```
+
+`tap_action`, `hold_action`, and `double_tap_action` accept the standard Home Assistant action config (`more-info`, `navigate`, `url`, `perform-action`, `none`) and apply to the device header; individual metrics and chips always open their own entity's more-info dialog. `icon_color` accepts the Mushroom/Tile color names (`red`, `blue`, `deep-purple`, …) or any CSS color, and applies while the device is online.
 
 Hub cards use the same public card type:
 

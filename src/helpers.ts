@@ -84,6 +84,24 @@ export function rssiClass(rssi: string | number | null): ColorClass {
   return "red";
 }
 
+// Named colors accepted by icon_color, matching HA's ui_color selector and
+// Mushroom's icon_color option. They resolve through HA's global `--<name>-color`
+// theme properties; anything else passes through as a raw CSS color.
+const NAMED_COLORS = new Set([
+  "red", "pink", "purple", "deep-purple", "indigo", "blue", "light-blue",
+  "cyan", "teal", "green", "light-green", "lime", "yellow", "amber", "orange",
+  "deep-orange", "brown", "light-grey", "grey", "dark-grey", "blue-grey",
+  "black", "white", "disabled",
+]);
+
+export function computeCssColor(color: string): string {
+  const c = color.trim().toLowerCase();
+  if (c === "primary") return "var(--primary-color)";
+  if (c === "accent") return "var(--accent-color)";
+  if (NAMED_COLORS.has(c)) return `var(--${c}-color)`;
+  return color.trim();
+}
+
 export interface MapLinkConfig {
   map_provider?: string;
   map_metro?: string;

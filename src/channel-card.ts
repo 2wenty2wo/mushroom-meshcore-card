@@ -7,15 +7,15 @@ const CHANNEL_STYLES: string = `
   .channel-list {
     display: flex;
     flex-direction: column;
-    gap: var(--mush-spacing, 10px);
+    gap: var(--mush-spacing, 12px);
   }
 
   .channel-row {
     display: flex;
     min-height: 56px;
     align-items: center;
-    gap: var(--mush-spacing, 10px);
-    padding: var(--mush-spacing, 10px);
+    gap: var(--mush-spacing, 12px);
+    padding: var(--mush-spacing, 12px);
     border: var(--ha-card-border-width, 1px) solid var(--mushroom-meshcore-border-color);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);

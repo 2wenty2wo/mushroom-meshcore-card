@@ -4,7 +4,7 @@
     "section_nodes": "NŒUDS DISTANTS",
     "section_contacts": "CONTACTS",
     "hub_name": "Hub : {name}",
-    "nodes_count": "◈ {n} Nœuds",
+    "nodes_count": "{n} Nœuds",
     "empty_hubs": "Aucun hub MeshCore trouvé.<br>Vérifiez que l'intégration MeshCore est installée.",
     "select_device_prompt": "Sélectionnez un appareil MeshCore dans l’éditeur de carte. Les anciennes vues d’ensemble doivent être divisées en une carte par appareil.",
     "target_not_found": "L’appareil MeshCore sélectionné « {id} » est introuvable.",
@@ -94,6 +94,22 @@
     "max_neighbors": "Nombre max de voisins (0 = tous)",
     "show_path": "Afficher le chemin de routage",
     "map_provider": "Fournisseur de carte",
-    "map_metro": "Métro MeshMapper (sous-domaine, ex. smf)"
+    "map_metro": "Métro MeshMapper (sous-domaine, ex. smf)",
+    "section_appearance": "Apparence",
+    "section_interactions": "Interactions",
+    "section_entities": "Remplacements d'entités",
+    "section_behavior": "Voisins et carte",
+    "section_map": "Carte",
+    "name_label": "Nom",
+    "icon_label": "Icône",
+    "icon_color_label": "Couleur de l'icône",
+    "hide_battery": "Masquer la batterie",
+    "hide_metrics": "Masquer les métriques de signal",
+    "hide_quick_stats": "Masquer les statistiques rapides",
+    "hide_details": "Masquer la section détails",
+    "details_default_open": "Déplier les détails par défaut",
+    "tap_action": "Action lors d'un appui",
+    "hold_action": "Action lors d'un appui long",
+    "double_tap_action": "Action lors d'un appui double"
   }
 }

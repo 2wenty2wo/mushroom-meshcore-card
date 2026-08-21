@@ -33,7 +33,7 @@ export const STYLES: string = `
     --mushroom-meshcore-danger-color: var(--error-color, rgb(var(--mush-rgb-danger, var(--rgb-danger, 244, 67, 54))));
     --mushroom-meshcore-info-color: var(--info-color, rgb(var(--mush-rgb-info, var(--rgb-info, 3, 169, 244))));
     --mushroom-meshcore-muted-color: var(--secondary-text-color, #727272);
-    --mushroom-meshcore-card-padding: var(--mush-spacing, 10px);
+    --mushroom-meshcore-card-padding: var(--mush-spacing, 12px);
 
     /* Compatibility aliases for the retained hub/contact/channel layouts. */
     --mesh-green: var(--mushroom-meshcore-success-color);
@@ -84,9 +84,31 @@ export const STYLES: string = `
     outline-offset: 2px;
   }
 
-  .clickable { cursor: pointer; }
-  .clickable:hover { filter: brightness(0.97); }
-  .clickable:active { filter: brightness(0.94); }
+  /* Tile/Mushroom interaction idiom: a faint currentColor overlay on hover
+     and an ha-ripple on press. The overlay handles hover so the ripple's own
+     hover state is disabled to avoid doubling up. */
+  .clickable {
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .clickable::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 180ms ease-in-out;
+    pointer-events: none;
+  }
+
+  @media (hover: hover) {
+    .clickable:hover::after { opacity: 0.04; }
+  }
+
+  ha-ripple { --ha-ripple-hover-opacity: 0; }
 
   .section-label {
     padding: 0 0 8px;
@@ -102,7 +124,7 @@ export const STYLES: string = `
     display: flex;
     min-height: 56px;
     align-items: center;
-    padding: 0 var(--mush-spacing, 10px);
+    padding: 0 var(--mush-spacing, 12px);
   }
 
   .device-header {
@@ -111,13 +133,19 @@ export const STYLES: string = `
     min-height: 56px;
     flex: 1;
     align-items: center;
-    gap: var(--mush-spacing, 10px);
+    gap: var(--mush-spacing, 12px);
     padding: 0;
+    border-radius: var(--mushroom-meshcore-control-radius);
     background: transparent;
     text-align: left;
   }
 
+  /* The offline badge overhangs the icon shape; the header must not clip it. */
+  .device-header.clickable { overflow: visible; }
+  .device-header.clickable::after { border-radius: var(--mushroom-meshcore-control-radius); }
+
   .device-icon-shape {
+    position: relative;
     display: inline-flex;
     width: 36px;
     height: 36px;
@@ -128,8 +156,31 @@ export const STYLES: string = `
     background: rgba(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80)), 0.2);
   }
 
+  /* Tile-style state badge pinned to the icon's top-right corner. */
+  .icon-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    z-index: 1;
+    display: flex;
+    width: var(--mushroom-meshcore-badge-size);
+    height: var(--mushroom-meshcore-badge-size);
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--mushroom-meshcore-badge-radius);
+    background: var(--mushroom-meshcore-muted-color);
+    box-shadow: 0 0 0 2px var(--ha-card-background, var(--card-background-color, white));
+    color: var(--ha-card-background, var(--card-background-color, white));
+  }
+
+  .icon-badge ha-icon {
+    display: flex;
+    line-height: 0;
+    --mdc-icon-size: 10px;
+  }
+
   .device-icon-shape ha-tile-icon {
-    --tile-icon-color: var(--mushroom-meshcore-success-color);
+    --tile-icon-color: var(--mushroom-meshcore-icon-override-color, var(--mushroom-meshcore-success-color));
     flex: 0 0 36px;
   }
 
@@ -186,14 +237,10 @@ export const STYLES: string = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
-  .device-body { padding: 0 var(--mush-spacing, 10px) var(--mush-spacing, 10px); }
+  .device-body { padding: 0 var(--mush-spacing, 12px) var(--mush-spacing, 12px); }
 
   .type-badge,
-  .count-badge,
-  .node-header-badge,
-  .badge,
-  .rf-chip,
-  .mqtt-pill {
+  .count-badge {
     display: inline-flex;
     height: var(--mushroom-meshcore-chip-height);
     align-items: center;
@@ -216,7 +263,7 @@ export const STYLES: string = `
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
     gap: 8px;
-    margin-top: var(--mush-spacing, 10px);
+    margin-top: var(--mush-spacing, 12px);
   }
 
   .node-metric {
@@ -225,7 +272,7 @@ export const STYLES: string = `
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    padding: var(--mush-spacing, 10px);
+    padding: var(--mush-spacing, 12px);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);
     text-align: left;
@@ -255,10 +302,9 @@ export const STYLES: string = `
   }
 
   /* Battery stays informative without becoming the visual focus. */
-  .battery-block { margin-top: var(--mush-spacing, 10px); }
+  .battery-block { margin-top: var(--mush-spacing, 12px); }
 
-  .battery-meta,
-  .bar-row {
+  .battery-meta {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -284,14 +330,6 @@ export const STYLES: string = `
     font-size: inherit;
   }
 
-  .bar-label-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .bar-val { font-weight: 600; }
-
   .bar-track {
     width: 100%;
     height: 6px;
@@ -309,18 +347,14 @@ export const STYLES: string = `
 
   /* Compact secondary facts. */
   .quick-chip-row,
-  .chip-row,
-  .node-chip-row,
-  .detail-chips,
-  .rf-row,
-  .mqtt-row {
+  .detail-chips {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--mushroom-meshcore-chip-spacing);
   }
 
-  .quick-chip-row { margin-top: var(--mush-spacing, 10px); }
+  .quick-chip-row { margin-top: var(--mush-spacing, 12px); }
 
   .quick-chip,
   .chip,
@@ -367,6 +401,7 @@ export const STYLES: string = `
     align-items: center;
     justify-content: space-between;
     padding: 0 2px;
+    border-radius: var(--mushroom-meshcore-control-radius);
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: 500;
@@ -387,7 +422,6 @@ export const STYLES: string = `
 
   .detail-section { margin-top: 12px; }
   .detail-section h4,
-  .section-header,
   .neighbors-header {
     margin: 0 0 8px;
     color: var(--secondary-text-color, #727272);
@@ -407,23 +441,9 @@ export const STYLES: string = `
 
   .dot-online { background: var(--mushroom-meshcore-success-color); }
   .dot-offline { background: var(--mushroom-meshcore-muted-color); opacity: 0.55; }
-  .hw-info {
-    margin: 0 0 8px;
-    color: var(--secondary-text-color, #727272);
-    font-size: var(--mushroom-meshcore-secondary-font-size);
-    font-weight: var(--mushroom-meshcore-secondary-font-weight);
-    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
-    line-height: var(--mushroom-meshcore-secondary-line-height);
-  }
-  .inline-entity {
-    padding: 0;
-    background: transparent;
-    color: inherit;
-  }
   .dim { color: var(--secondary-text-color, #727272); opacity: 0.7; }
-  .rf-row, .mqtt-row, .chip-row { margin: 8px 0; }
-  .mqtt-pill.ok { color: var(--mushroom-meshcore-success-color); }
-  .mqtt-pill.err { color: var(--mushroom-meshcore-danger-color); }
+  .chip.mqtt-ok { color: var(--mushroom-meshcore-success-color); }
+  .chip.mqtt-err { color: var(--mushroom-meshcore-danger-color); }
 
   .loc-row {
     display: flex;
@@ -442,7 +462,7 @@ export const STYLES: string = `
   }
   .neighbors-list { display: flex; flex-direction: column; gap: 6px; }
   .neighbor-row {
-    padding: var(--mush-spacing, 10px);
+    padding: var(--mush-spacing, 12px);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);
   }
@@ -488,6 +508,16 @@ export const STYLES: string = `
     font-weight: var(--mushroom-meshcore-secondary-font-weight);
     letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
     line-height: var(--mushroom-meshcore-secondary-line-height);
+  }
+  .neighbor-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .neighbor-stat ha-icon {
+    display: flex;
+    line-height: 0;
+    --mdc-icon-size: 14px;
   }
   .green { color: var(--mushroom-meshcore-success-color); }
   .yellow, .orange { color: var(--mushroom-meshcore-warning-color); }
