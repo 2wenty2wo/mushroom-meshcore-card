@@ -1,8 +1,8 @@
 # Mushroom MeshCore Card
 
-Mushroom-inspired [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
+Mushroom-styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
 
-This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card). It keeps the original card's automatic MeshCore discovery and configuration model while presenting remote nodes and repeaters in a compact, theme-aware layout that fits naturally beside Mushroom Cards.
+This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card). It keeps the original card's automatic MeshCore discovery and configuration model while presenting remote nodes and repeaters with current Mushroom primitives and theme defaults.
 
 [![GitHub Release](https://img.shields.io/github/release/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
 [![License](https://img.shields.io/github/license/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](LICENSE)
@@ -118,7 +118,9 @@ The channel card discovers MeshCore message-channel entities and sorts them by c
 
 ## Theme and Card Mod compatibility
 
-The cards inherit Mushroom variables such as `--mush-card-primary-font-size`, `--mush-card-secondary-font-size`, `--mush-chip-height`, `--mush-chip-border-radius`, and `--mush-icon-size`, with Home Assistant theme fallbacks.
+The current [Mushroom source](https://github.com/piitaya/lovelace-mushroom) and its [theme definitions](https://github.com/piitaya/lovelace-mushroom/blob/main/src/utils/theme.ts) are the source of truth for presentation. The mirrored fallback defaults are 10px spacing; a 36px icon shape with a `0.667em` (24px) symbol; 36px-high chips with a 19px radius and 8px spacing; `14px/500/20px/0.1px` primary text; `12px/400/16px/0.4px` secondary text; 42px-high controls with a 12px radius; and 16px circular badges.
+
+The cards inherit Mushroom variables such as `--mush-card-primary-font-size`, `--mush-card-secondary-font-size`, `--mush-chip-height`, `--mush-chip-border-radius`, and `--mush-icon-size`, with Home Assistant theme fallbacks. The community [Mushroom Card Mod guide](https://community.home-assistant.io/t/mushroom-cards-card-mod-styling-config-guide/600472) is a useful customization reference, but its selectors and examples are version-sensitive.
 
 The main surface also exposes scoped variables that can be set from a theme or Card Mod:
 

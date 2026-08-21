@@ -23,7 +23,7 @@ if (!window.customCards.find((c) => c.type === "mushroom-meshcore-card")) {
   window.customCards.push({
     type: "mushroom-meshcore-card",
     name: "Mushroom MeshCore Card",
-    description: "Displays MeshCore hubs and nodes in a Mushroom-inspired layout",
+    description: "Displays MeshCore hubs and nodes in a Mushroom-styled layout",
     preview: true,
     documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
   });

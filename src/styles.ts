@@ -6,22 +6,34 @@ export const STYLES: string = `
     --mushroom-meshcore-secondary-font-size: var(--mush-card-secondary-font-size, 12px);
     --mushroom-meshcore-primary-font-weight: var(--mush-card-primary-font-weight, 500);
     --mushroom-meshcore-secondary-font-weight: var(--mush-card-secondary-font-weight, 400);
-    --mushroom-meshcore-chip-height: var(--mush-chip-height, 32px);
-    --mushroom-meshcore-chip-radius: var(--mush-chip-border-radius, 18px);
+    --mushroom-meshcore-primary-line-height: var(--mush-card-primary-line-height, 20px);
+    --mushroom-meshcore-secondary-line-height: var(--mush-card-secondary-line-height, 16px);
+    --mushroom-meshcore-primary-letter-spacing: var(--mush-card-primary-letter-spacing, 0.1px);
+    --mushroom-meshcore-secondary-letter-spacing: var(--mush-card-secondary-letter-spacing, 0.4px);
+    --mushroom-meshcore-chip-height: var(--mush-chip-height, 36px);
+    --mushroom-meshcore-chip-radius: var(--mush-chip-border-radius, 19px);
     --mushroom-meshcore-chip-spacing: var(--mush-chip-spacing, 8px);
-    --mushroom-meshcore-icon-size: var(--mush-icon-size, 42px);
+    --mushroom-meshcore-chip-background: var(--mush-chip-background, var(--ha-card-background, var(--card-background-color, white)));
+    --mushroom-meshcore-chip-border-width: var(--mush-chip-border-width, var(--ha-card-border-width, 1px));
+    --mushroom-meshcore-chip-border-color: var(--mush-chip-border-color, var(--ha-card-border-color, var(--divider-color, rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.12))));
+    --mushroom-meshcore-icon-size: var(--mush-icon-size, 36px);
+    --mushroom-meshcore-icon-symbol-size: var(--mush-icon-symbol-size, 0.667em);
     --mushroom-meshcore-icon-radius: var(--mush-icon-border-radius, 50%);
-    --mushroom-meshcore-card-background: var(--ha-card-background, var(--card-background-color, #fff));
-    --mushroom-meshcore-surface: var(--mush-chip-background, var(--secondary-background-color, rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.045)));
+    --mushroom-meshcore-control-height: var(--mush-control-height, 42px);
+    --mushroom-meshcore-control-radius: var(--mush-control-border-radius, 12px);
+    --mushroom-meshcore-badge-size: var(--mush-badge-size, 16px);
+    --mushroom-meshcore-badge-radius: var(--mush-badge-border-radius, 50%);
+    --mushroom-meshcore-card-background: var(--ha-card-background, var(--card-background-color, white));
+    --mushroom-meshcore-surface: var(--secondary-background-color, rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05));
     --mushroom-meshcore-border-color: var(--ha-card-border-color, var(--divider-color, rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.12)));
-    --mushroom-meshcore-success-color: var(--success-color, rgb(var(--rgb-success, 76, 175, 80)));
-    --mushroom-meshcore-warning-color: var(--warning-color, rgb(var(--rgb-warning, 255, 152, 0)));
-    --mushroom-meshcore-danger-color: var(--error-color, rgb(var(--rgb-danger, 244, 67, 54)));
-    --mushroom-meshcore-info-color: var(--info-color, var(--primary-color, #03a9f4));
+    --mushroom-meshcore-success-color: var(--success-color, rgb(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80))));
+    --mushroom-meshcore-warning-color: var(--warning-color, rgb(var(--mush-rgb-warning, var(--rgb-warning, 255, 152, 0))));
+    --mushroom-meshcore-danger-color: var(--error-color, rgb(var(--mush-rgb-danger, var(--rgb-danger, 244, 67, 54))));
+    --mushroom-meshcore-info-color: var(--info-color, rgb(var(--mush-rgb-info, var(--rgb-info, 3, 169, 244))));
     --mushroom-meshcore-muted-color: var(--secondary-text-color, #727272);
-    --mushroom-meshcore-node-radius: var(--ha-card-border-radius, 16px);
-    --mushroom-meshcore-card-padding: 12px;
-    --mushroom-meshcore-node-spacing: 10px;
+    --mushroom-meshcore-node-radius: var(--ha-card-border-radius, 12px);
+    --mushroom-meshcore-card-padding: var(--mush-spacing, 10px);
+    --mushroom-meshcore-node-spacing: var(--mush-spacing, 10px);
 
     /* Compatibility aliases for the retained hub/contact/channel layouts. */
     --mesh-green: var(--mushroom-meshcore-success-color);
@@ -63,21 +75,21 @@ export const STYLES: string = `
 
   .clickable { cursor: pointer; }
   .clickable:hover { filter: brightness(0.97); }
-  .clickable:active { transform: scale(0.98); }
+  .clickable:active { filter: brightness(0.94); }
 
   .section-label {
-    padding: 4px 4px 8px;
+    padding: 0 0 8px;
     color: var(--secondary-text-color, #727272);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
   .nodes-section { margin-top: 10px; }
 
   .node-block {
-    padding: 14px;
+    padding: var(--mush-spacing, 10px);
     margin: 0 0 var(--mushroom-meshcore-node-spacing);
     overflow: hidden;
     border: var(--ha-card-border-width, 1px) solid var(--mushroom-meshcore-border-color);
@@ -93,7 +105,7 @@ export const STYLES: string = `
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 12px;
+    gap: var(--mush-spacing, 10px);
   }
 
   .node-icon-shape {
@@ -103,18 +115,20 @@ export const STYLES: string = `
     flex: 0 0 var(--mushroom-meshcore-icon-size);
     align-items: center;
     justify-content: center;
+    font-size: var(--mushroom-meshcore-icon-size);
     border-radius: var(--mushroom-meshcore-icon-radius);
     color: var(--mushroom-meshcore-success-color);
-    background: rgba(var(--rgb-success, 76, 175, 80), 0.16);
+    background: rgba(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80)), 0.2);
+    transition: background-color 280ms ease-out, color 280ms ease-in-out;
   }
 
   .node-icon-shape ha-icon {
-    --mdc-icon-size: calc(var(--mushroom-meshcore-icon-size) * 0.55);
+    --mdc-icon-size: var(--mushroom-meshcore-icon-symbol-size);
   }
 
   .node-offline .node-icon-shape {
     color: var(--mushroom-meshcore-muted-color);
-    background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.08);
+    background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05);
   }
 
   .node-heading { min-width: 0; }
@@ -124,7 +138,8 @@ export const STYLES: string = `
     color: var(--primary-text-color, #212121);
     font-size: var(--mushroom-meshcore-primary-font-size);
     font-weight: var(--mushroom-meshcore-primary-font-weight);
-    line-height: 20px;
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -138,7 +153,8 @@ export const STYLES: string = `
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: var(--mushroom-meshcore-secondary-font-weight);
-    line-height: 16px;
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -149,10 +165,9 @@ export const STYLES: string = `
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 6px;
+    gap: var(--mushroom-meshcore-chip-spacing);
   }
 
-  .status-pill,
   .type-badge,
   .count-badge,
   .node-header-badge,
@@ -160,28 +175,18 @@ export const STYLES: string = `
   .rf-chip,
   .mqtt-pill {
     display: inline-flex;
-    min-height: 24px;
+    height: var(--mushroom-meshcore-chip-height);
     align-items: center;
     gap: 5px;
-    padding: 2px 8px;
-    border: 1px solid var(--mushroom-meshcore-border-color);
-    border-radius: 999px;
-    background: var(--mushroom-meshcore-card-background);
+    padding: 0 9px;
+    border: var(--mushroom-meshcore-chip-border-width) solid var(--mushroom-meshcore-chip-border-color);
+    border-radius: var(--mushroom-meshcore-chip-radius);
+    background: var(--mushroom-meshcore-chip-background);
     color: var(--secondary-text-color, #727272);
-    font-size: 10px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     line-height: 1;
     white-space: nowrap;
-  }
-
-  .status-pill.online { color: var(--mushroom-meshcore-success-color); }
-  .status-pill.offline { color: var(--mushroom-meshcore-danger-color); }
-
-  .status-pill .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
   }
 
   .type-badge { color: var(--mushroom-meshcore-info-color); }
@@ -191,17 +196,17 @@ export const STYLES: string = `
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
     gap: 8px;
-    margin-top: 14px;
+    margin-top: var(--mush-spacing, 10px);
   }
 
   .node-metric {
     display: flex;
-    min-height: 54px;
+    min-height: 56px;
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    padding: 8px 10px;
-    border-radius: 12px;
+    padding: var(--mush-spacing, 10px);
+    border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-card-background);
     text-align: left;
   }
@@ -210,25 +215,27 @@ export const STYLES: string = `
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: var(--mushroom-meshcore-secondary-font-weight);
-    line-height: 16px;
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
   .metric-value {
     color: var(--primary-text-color, #212121);
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 20px;
+    font-size: var(--mushroom-meshcore-primary-font-size);
+    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
     white-space: nowrap;
   }
 
   .metric-unit {
     color: var(--secondary-text-color, #727272);
-    font-size: 11px;
-    font-weight: 400;
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
   }
 
   /* Battery stays informative without becoming the visual focus. */
-  .battery-block { margin-top: 11px; }
+  .battery-block { margin-top: var(--mush-spacing, 10px); }
 
   .battery-meta,
   .bar-row {
@@ -239,6 +246,8 @@ export const STYLES: string = `
     margin-bottom: 5px;
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
   .battery-voltage {
@@ -260,7 +269,7 @@ export const STYLES: string = `
     width: 100%;
     height: 6px;
     overflow: hidden;
-    border-radius: 999px;
+    border-radius: calc(6px / 2);
     background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.12);
   }
 
@@ -268,7 +277,7 @@ export const STYLES: string = `
     height: 100%;
     border-radius: inherit;
     background: var(--bar-color, var(--mushroom-meshcore-success-color));
-    transition: width 0.3s ease;
+    transition: width 280ms ease-out;
   }
 
   /* Compact secondary facts. */
@@ -284,24 +293,25 @@ export const STYLES: string = `
     gap: var(--mushroom-meshcore-chip-spacing);
   }
 
-  .quick-chip-row { margin-top: 11px; }
+  .quick-chip-row { margin-top: var(--mush-spacing, 10px); }
 
   .quick-chip,
   .chip,
   .loc-coords,
   .map-link {
     display: inline-flex;
-    min-height: var(--mushroom-meshcore-chip-height);
+    height: var(--mushroom-meshcore-chip-height);
     align-items: center;
     justify-content: center;
     gap: 5px;
-    padding: 0 11px;
-    border: 1px solid var(--mushroom-meshcore-border-color);
+    padding: 0 9px;
+    border: var(--mushroom-meshcore-chip-border-width) solid var(--mushroom-meshcore-chip-border-color);
     border-radius: var(--mushroom-meshcore-chip-radius);
-    background: var(--mushroom-meshcore-card-background);
+    background: var(--mushroom-meshcore-chip-background);
     color: var(--primary-text-color, #212121);
     font-size: var(--mushroom-meshcore-secondary-font-size);
-    font-weight: 500;
+    font-weight: 700;
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
     line-height: 1;
     text-decoration: none;
     white-space: nowrap;
@@ -309,7 +319,7 @@ export const STYLES: string = `
 
   .quick-chip ha-icon,
   .loc-coords ha-icon {
-    --mdc-icon-size: 16px;
+    --mdc-icon-size: calc(var(--mushroom-meshcore-chip-height) * 0.5);
     color: var(--secondary-text-color, #727272);
   }
 
@@ -326,13 +336,15 @@ export const STYLES: string = `
 
   .node-details summary {
     display: flex;
-    min-height: 36px;
+    height: var(--mushroom-meshcore-control-height);
     align-items: center;
     justify-content: space-between;
-    padding: 7px 2px 0;
+    padding: 0 2px;
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: 500;
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
     list-style: none;
     cursor: pointer;
   }
@@ -340,7 +352,7 @@ export const STYLES: string = `
   .node-details summary::-webkit-details-marker { display: none; }
   .node-details summary ha-icon {
     --mdc-icon-size: 18px;
-    transition: transform 0.2s ease;
+    transition: transform 280ms ease-out;
   }
   .node-details[open] summary ha-icon { transform: rotate(180deg); }
 
@@ -350,13 +362,12 @@ export const STYLES: string = `
   .detail-section h4,
   .section-header,
   .neighbors-header {
-    margin: 0 0 7px;
+    margin: 0 0 8px;
     color: var(--secondary-text-color, #727272);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    line-height: 14px;
-    text-transform: uppercase;
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
   /* Retained hub presentation, now using the shared tokens. */
@@ -368,29 +379,42 @@ export const STYLES: string = `
     align-items: center;
   }
 
-  .node-header { justify-content: space-between; gap: 10px; }
+  .node-header { justify-content: space-between; gap: var(--mush-spacing, 10px); }
   .node-left, .node-right { gap: 8px; flex-wrap: wrap; }
-  .node-title-row { gap: 8px; flex-wrap: wrap; margin: 7px 0 5px; }
+  .node-title-row { gap: 8px; flex-wrap: wrap; margin: var(--mush-spacing, 10px) 0 5px; }
 
   .node-header > .node-left > .status-dot,
   .contact-right .status-dot {
     display: inline-block;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
+    width: var(--mushroom-meshcore-badge-size);
+    height: var(--mushroom-meshcore-badge-size);
+    border-radius: var(--mushroom-meshcore-badge-radius);
   }
 
   .dot-online { background: var(--mushroom-meshcore-success-color); }
   .dot-offline { background: var(--mushroom-meshcore-muted-color); opacity: 0.55; }
-  .status-text { font-size: var(--mushroom-meshcore-secondary-font-size); font-weight: 600; }
+  .status-text {
+    font-size: var(--mushroom-meshcore-primary-font-size);
+    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
+  }
   .status-text.online { color: var(--mushroom-meshcore-success-color); }
   .status-text.offline { color: var(--mushroom-meshcore-muted-color); }
 
-  .hub-name { font-weight: var(--mushroom-meshcore-primary-font-weight); }
+  .hub-name {
+    font-size: var(--mushroom-meshcore-primary-font-size);
+    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
+  }
   .hw-info {
     margin: 3px 0 6px;
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
   }
   .node-key {
     overflow-wrap: anywhere;
@@ -398,8 +422,7 @@ export const STYLES: string = `
     font-size: 11px;
   }
   .dim { color: var(--secondary-text-color, #727272); opacity: 0.7; }
-  .rf-row, .mqtt-row, .chip-row { margin: 6px 0; }
-  .rf-chip { min-height: 28px; }
+  .rf-row, .mqtt-row, .chip-row { margin: 8px 0; }
   .mqtt-pill.ok { color: var(--mushroom-meshcore-success-color); }
   .mqtt-pill.err { color: var(--mushroom-meshcore-danger-color); }
 
@@ -420,8 +443,8 @@ export const STYLES: string = `
   }
   .neighbors-list { display: flex; flex-direction: column; gap: 6px; }
   .neighbor-row {
-    padding: 9px 10px;
-    border-radius: 12px;
+    padding: var(--mush-spacing, 10px);
+    border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-card-background);
   }
   .neighbor-main {
@@ -434,8 +457,10 @@ export const STYLES: string = `
     overflow: hidden;
     padding: 0;
     background: transparent;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: var(--mushroom-meshcore-primary-font-size);
+    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
     text-align: left;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -444,11 +469,13 @@ export const STYLES: string = `
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
-    border-radius: 999px;
+    height: var(--mushroom-meshcore-chip-height);
+    padding: 0 9px;
+    border-radius: var(--mushroom-meshcore-chip-radius);
     background: var(--mushroom-meshcore-surface);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
     white-space: nowrap;
   }
   .neighbor-snr ha-icon { --mdc-icon-size: 14px; }
@@ -458,7 +485,10 @@ export const STYLES: string = `
     gap: 10px;
     margin-top: 5px;
     color: var(--secondary-text-color, #727272);
-    font-size: 10px;
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
   }
   .green { color: var(--mushroom-meshcore-success-color); }
   .yellow, .orange { color: var(--mushroom-meshcore-warning-color); }
@@ -469,7 +499,9 @@ export const STYLES: string = `
     padding: 24px 16px;
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
-    line-height: 1.6;
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
     text-align: center;
   }
 

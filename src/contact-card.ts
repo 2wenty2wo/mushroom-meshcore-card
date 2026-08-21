@@ -7,45 +7,59 @@ const CONTACT_STYLES: string = `
   .contact-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--mush-spacing, 10px);
   }
 
   .contact-row {
     display: flex;
+    min-height: 56px;
     align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    border-radius: 18px;
-    background: rgba(128, 128, 128, 0.04);
-    backdrop-filter: blur(4px);
-    border: 1px solid rgba(128, 128, 128, 0.1);
-    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    gap: var(--mush-spacing, 10px);
+    padding: var(--mush-spacing, 10px);
+    border: var(--ha-card-border-width, 1px) solid var(--mushroom-meshcore-border-color);
+    border-radius: var(--mushroom-meshcore-control-radius);
+    background: var(--mushroom-meshcore-surface);
+  }
+
+  .contact-action {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: var(--mush-spacing, 10px);
+    padding: 0;
+    background: transparent;
+    text-align: start;
+    transition: filter 280ms ease-out;
     cursor: pointer;
   }
-  .contact-row:hover {
-    transform: translateY(-1px);
-    background: rgba(128, 128, 128, 0.07);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  }
+  .contact-action:hover { filter: brightness(0.97); }
+  .contact-action:active { filter: brightness(0.94); }
 
   .contact-icon {
     display: flex;
-    align-items: center;
-    justify-content: center;
     width: 36px;
     height: 36px;
     flex-shrink: 0;
-    color: var(--secondary-text-color);
-    background: rgba(128, 128, 128, 0.05);
-    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--mushroom-meshcore-icon-radius);
+    background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.05);
+    color: var(--mushroom-meshcore-muted-color);
+    font-size: var(--mushroom-meshcore-icon-size);
+    transition: background-color 280ms ease-out, color 280ms ease-in-out;
+  }
+  .contact-icon.online {
+    background: rgba(var(--mush-rgb-success, var(--rgb-success, 76, 175, 80)), 0.2);
+    color: var(--mushroom-meshcore-success-color);
   }
   .contact-icon ha-icon {
-    --mdc-icon-size: 20px;
+    --mdc-icon-size: var(--mushroom-meshcore-icon-symbol-size);
   }
   .contact-icon img {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+    width: var(--mushroom-meshcore-icon-size);
+    height: var(--mushroom-meshcore-icon-size);
+    border-radius: var(--mushroom-meshcore-icon-radius);
     object-fit: cover;
   }
 
@@ -57,87 +71,44 @@ const CONTACT_STYLES: string = `
   .contact-header {
     display: flex;
     align-items: center;
-    gap: 8px;
     flex-wrap: wrap;
+    gap: var(--mushroom-meshcore-chip-spacing);
   }
   .contact-name {
-    font-weight: 600;
-    font-size: 0.95rem;
-    text-transform: capitalize;
-    white-space: nowrap;
+    color: var(--primary-text-color);
+    font-size: var(--mushroom-meshcore-primary-font-size);
+    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
+    line-height: var(--mushroom-meshcore-primary-line-height);
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--primary-text-color);
+    white-space: nowrap;
   }
 
   .contact-meta {
     display: flex;
     align-items: center;
-    gap: 10px;
     flex-wrap: wrap;
-    margin-top: 4px;
-    font-size: 11px;
+    gap: var(--mushroom-meshcore-chip-spacing);
     color: var(--secondary-text-color);
-    opacity: 0.7;
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
   .meta-loc {
-    color: var(--mesh-blue);
-    text-decoration: none;
+    color: var(--mushroom-meshcore-info-color);
     font-weight: 500;
-    transition: opacity 0.2s;
+    text-decoration: none;
+    transition: opacity 280ms ease-out;
   }
-  .meta-loc:hover {
-    opacity: 0.7;
-  }
+  .meta-loc:hover { opacity: 0.7; }
 
   .contact-right {
     display: flex;
-    align-items: center;
     flex-shrink: 0;
-  }
-
-  /* Status dot – taka sama jak dla węzłów */
-  .status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    display: inline-block;
-    transition: box-shadow 0.3s ease;
-  }
-  .dot-online {
-    background: var(--mesh-green);
-    box-shadow: 0 0 8px rgba(74, 222, 128, 0.6);
-    animation: contact-pulse-glow 2s ease-in-out infinite;
-  }
-  .dot-offline {
-    background: var(--secondary-text-color);
-    opacity: 0.4;
-  }
-
-  @keyframes contact-pulse-glow {
-    0%, 100% { box-shadow: 0 0 4px rgba(74, 222, 128, 0.4); }
-    50% { box-shadow: 0 0 12px rgba(74, 222, 128, 0.8); }
-  }
-
-  /* Typ badge – taki sam jak dla węzłów */
-  .type-badge {
-    font-size: 10px;
-    color: var(--mesh-orange);
-    background: transparent;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-weight: 600;
-    border: 1px solid rgba(251, 146, 60, 0.3);
-    transition: all 0.2s ease;
-  }
-  .type-badge:hover {
-    transform: translateY(-1px);
-  }
-
-  .dim {
-    color: var(--secondary-text-color);
-    opacity: 0.5;
+    align-items: center;
   }
 `;
 
@@ -296,26 +267,29 @@ export class MeshcoreContactCard extends HTMLElement {
     const safeIcon = /^[a-z0-9_-]+:[a-z0-9_-]+$/i.test(c.icon) ? c.icon : "mdi:account";
 
     return `
-      <div class="contact-row" data-entity="${escapeHtml(c.entityId)}">
-        <div class="contact-icon">
+      <div class="contact-row">
+        <button class="contact-action" type="button" aria-label="${escapeHtml(c.advName)}" data-entity="${escapeHtml(c.entityId)}">
+          <div class="contact-icon ${c.online ? "online" : "offline"}">
           ${safePicture
             ? `<img src="${escapeHtml(safePicture)}" alt="">`
             : `<ha-icon icon="${escapeHtml(safeIcon)}"></ha-icon>`}
-        </div>
-        <div class="contact-info">
-          <div class="contact-header">
-            <span class="contact-name">${escapeHtml(c.advName)}</span>
-            ${c.nodeType ? `<span class="type-badge">${escapeHtml(c.nodeType)}</span>` : ""}
           </div>
-          <div class="contact-meta">
-            ${c.timeSince ? `<span>${escapeHtml(c.timeSince)}</span>` : ""}
-            ${mapUrl ? `<a class="meta-loc" href="${mapUrl}" target="_blank" rel="noopener">📍 ${c.lat!.toFixed(5)}, ${c.lon!.toFixed(5)}</a>` : c.unknownLocation ? `<span class="dim">${escapeHtml(t("card.unknown_location"))}</span>` : ""}
-            ${c.path ? `<span>↝ ${escapeHtml(c.path)}</span>` : ""}
+          <div class="contact-info">
+            <div class="contact-header">
+              <span class="contact-name">${escapeHtml(c.advName)}</span>
+              ${c.nodeType ? `<span class="type-badge">${escapeHtml(c.nodeType)}</span>` : ""}
+            </div>
+            <div class="contact-meta">
+              ${c.timeSince ? `<span>${escapeHtml(c.timeSince)}</span>` : ""}
+              ${!mapUrl && c.unknownLocation ? `<span class="dim">${escapeHtml(t("card.unknown_location"))}</span>` : ""}
+              ${c.path ? `<span>↝ ${escapeHtml(c.path)}</span>` : ""}
+            </div>
           </div>
-        </div>
-        <div class="contact-right">
-          <span class="status-dot ${c.online ? "dot-online" : "dot-offline"}"></span>
-        </div>
+          <div class="contact-right">
+            <span class="status-dot ${c.online ? "dot-online" : "dot-offline"}"></span>
+          </div>
+        </button>
+        ${mapUrl ? `<a class="meta-loc" href="${mapUrl}" target="_blank" rel="noopener">📍 ${c.lat!.toFixed(5)}, ${c.lon!.toFixed(5)}</a>` : ""}
       </div>`;
   }
 

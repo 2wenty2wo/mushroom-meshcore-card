@@ -50,6 +50,19 @@ Do not register legacy `meshcore-*` aliases: they collide with upstream. Legacy 
 - Keep raw RSSI and SNR visible. Do not invent RF quality labels or undocumented thresholds.
 - Use semantic buttons/disclosures, keyboard focus styles, ARIA labels where appropriate, and reduced-motion-safe transitions.
 
+## Mushroom design contract (non-negotiable)
+
+This project implements Mushroom styling; it is not a loose visual interpretation. For every presentation change:
+
+1. Inspect the current [Mushroom source](https://github.com/piitaya/lovelace-mushroom), especially its [theme variables](https://github.com/piitaya/lovelace-mushroom/blob/main/src/utils/theme.ts) and the corresponding shared card, state-item, state-info, shape-icon, chip, badge, or control implementation.
+2. Treat current upstream Mushroom source as the authority for geometry, typography, spacing, colour treatment, and interaction. Mirror its published `--mush-*` variables and exact fallbacks instead of inventing local values.
+3. Preserve MeshCore's composite information hierarchy, but build each visible primitive from the closest Mushroom primitive. If a direct mapping is impossible, keep the deviation minimal and explicitly justify it before implementation.
+4. Use the [community Card Mod guide](https://community.home-assistant.io/t/mushroom-cards-card-mod-styling-config-guide/600472) only as a customization reference. Its examples and shadow-DOM selectors are version-sensitive and are not a design authority.
+
+The current Mushroom baseline is 10px layout spacing; 36px circular icon shapes with a `0.667em` symbol; 36px chips with a 19px radius and 8px spacing; 14px/500/20px/0.1px primary text; 12px/400/16px/0.4px secondary text; 42px controls with a 12px radius; and 16px circular badges. Recheck upstream before presentation work and update mirrored fallbacks when Mushroom changes.
+
+Do not introduce glassmorphism, backdrop blur, gradients, glowing or pulsing status effects, hover lifts, bespoke shadows, arbitrary radii, or undocumented colour systems. State colour should remain a restrained semantic accent. Mushroom and Card Mod must remain optional, and light/dark themes must work through Mushroom and Home Assistant variables alone.
+
 ## Security and rendering
 
 Rendering uses `innerHTML` in places. Escape all Home Assistant, MeshCore, configuration, and translated values before interpolating them into markup. Continue to use `escapeHtml` and validate URLs, icons, or image sources as appropriate. Never introduce unsanitised registry, entity-state, attribute, or user-config values into HTML.
