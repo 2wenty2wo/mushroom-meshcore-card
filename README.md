@@ -45,7 +45,7 @@ Mushroom and Card Mod are optional. The card uses their public theme conventions
 
 ## Main card
 
-<img src="/screenshots/main-card.png" alt="Mushroom MeshCore Card">
+<img src="/screenshots/main-card.png" alt="Mushroom MeshCore Main Card">
 
 ```yaml
 type: custom:mushroom-meshcore-card
@@ -116,6 +116,8 @@ voltage_entity: sensor.example_voltage
 The grouped `hubs`, `nodes`, and `nodes_order` fields are no longer rendered. Duplicate or add the main card once per device, select its target in the visual editor, and move any applicable entity overrides to the flat fields shown above. A card without a valid `target` displays a migration prompt rather than selecting a device automatically.
 
 ## Channel card
+
+<img src="/screenshots/channel-card.png" alt="Mushroom MeshCore Channel Card">
 
 ```yaml
 type: custom:mushroom-meshcore-channel-card
