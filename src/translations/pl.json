@@ -35,8 +35,16 @@
     "telemetry_humidity": "Wilgotność",
     "telemetry_lux": "Luks",
     "telemetry_pressure": "Ciśnienie",
-    "section_channels": "KANAŁY",
-    "empty_channels": "Nie znaleziono kanałów MeshCore.<br>Sprawdź, czy integracja MeshCore jest zainstalowana.",
+    "select_channel_prompt": "Wybierz encję kanału MeshCore w edytorze karty. Istniejące konfiguracje list kanałów należy podzielić na osobne karty dla każdego kanału.",
+    "channel_not_found": "Nie znaleziono wybranego kanału MeshCore „{id}”.",
+    "channel_history_loading": "Wczytywanie historii kanału…",
+    "channel_history_empty": "Brak wiadomości kanału z ostatnich {hours} godzin.",
+    "channel_history_unavailable": "Historia kanału jest niedostępna. Sprawdź, czy dziennik jest włączony i encja jest rejestrowana.",
+    "channel_chat_label": "Historia wiadomości kanału {channel}",
+    "active": "Aktywny",
+    "unavailable": "Niedostępny",
+    "today": "Dzisiaj",
+    "yesterday": "Wczoraj",
     "neighbors_label": "Sąsiedzi",
     "no_neighbors_info": "Brak informacji o sąsiadach",
     "online": "Online",
@@ -111,6 +119,13 @@
     "details_default_open": "Domyślnie rozwiń szczegóły",
     "tap_action": "Akcja po dotknięciu",
     "hold_action": "Akcja po przytrzymaniu",
-    "double_tap_action": "Akcja po podwójnym dotknięciu"
+    "double_tap_action": "Akcja po podwójnym dotknięciu",
+    "target_channel": "Kanał MeshCore",
+    "no_channels_detected": "Nie wykryto jeszcze encji kanałów MeshCore. Sprawdź integrację MeshCore, a następnie ponownie edytuj kartę.",
+    "hide_timestamps": "Ukryj znaczniki czasu",
+    "hide_date_headers": "Ukryj nagłówki dat",
+    "hours_to_show": "Liczba godzin",
+    "max_messages": "Maksymalna liczba wiadomości",
+    "section_history": "Historia"
   }
 }

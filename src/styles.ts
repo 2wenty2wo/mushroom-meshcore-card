@@ -125,7 +125,7 @@ export const STYLES: string = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
-  /* Native Tile header shared by hub and node cards. */
+  /* Native Tile header shared by single-target MeshCore cards. */
   .device-header-row {
     display: flex;
     min-height: 56px;

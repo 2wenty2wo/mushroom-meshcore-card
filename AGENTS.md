@@ -42,6 +42,20 @@ Do not register legacy `meshcore-*` aliases: they collide with upstream. Legacy 
 - Do not add Mushroom or Card Mod as a runtime dependency. Card Mod customisation may be supported through stable CSS variables, classes, or parts, but core styling must work independently.
 - Keep contact and channel cards functional when changing shared code.
 
+## Reusable Mushroom conversion contract
+
+Treat the main device card as the reference implementation when converting or refactoring another card, including future single-target contact and channel cards. Reuse this configuration and editor structure rather than delivering presentation-only Mushroom styling.
+
+- A card that represents one device, contact, channel, or similar item must require an explicit target, render exactly that target, and show a localised prompt when the target is missing or unresolved. Never silently select the first discovered item.
+- Give the selected item a native Tile-style header with optional `name`, `icon`, and `icon_color` overrides. Discovered identity remains the fallback, and offline or unavailable styling must retain its semantic muted treatment.
+- Support `tap_action`, `hold_action`, and `double_tap_action` on the primary header using standard Home Assistant action configuration. Default more-info must resolve to the selected item's primary entity; metric, chip, and other entity-specific controls continue to open their own entities.
+- Provide flat, semantically named `hide_*` booleans for independently useful content regions and `*_default_open` booleans for disclosures. Content is visible and disclosures are collapsed by default. Expose only controls that make sense for that card; do not copy unrelated fields merely for uniformity.
+- Use the main card's `hide_battery`, node-only `hide_metrics`, `hide_quick_stats`, `hide_details`, and `details_default_open` fields as the concrete visibility/disclosure reference. New cards should define equally specific controls for their own visible elements.
+- Keep entity overrides optional and flat. Registry/device-scoped automatic discovery remains the default, so a user must not need to configure every supporting entity manually.
+- Keep YAML, visual-editor data, rendering, and config-change events in parity. Preserve Tile-compatible appearance, actions, visibility/disclosure settings, entity overrides, card-specific behaviour, and `grid_options` without dropping unrelated values during an editor change or target switch.
+- Build target-first visual editors with expandable Appearance, Interactions, Entity overrides, and card-specific Behavior or Map sections. Use native Home Assistant selectors, show only fields applicable to the selected target, localise every label, and preserve focus and expanded panels when Home Assistant echoes `config-changed` back through `setConfig`.
+- Recheck the current [Home Assistant Tile editor source](https://github.com/home-assistant/frontend/blob/dev/src/panels/lovelace/editor/config-elements/hui-tile-card-editor.ts) for configuration grouping and interaction conventions. Use it as a structural reference rather than mechanically adding Tile fields that do not fit the MeshCore card.
+
 ## Presentation rules
 
 - Follow Mushroom's design language using published `--mush-*` variables with sensible Home Assistant fallbacks.

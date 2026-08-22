@@ -35,8 +35,16 @@
     "telemetry_humidity": "Humidité",
     "telemetry_lux": "Lux",
     "telemetry_pressure": "Pression",
-    "section_channels": "CANAUX",
-    "empty_channels": "Aucun canal MeshCore trouvé.<br>Vérifiez que l'intégration MeshCore est installée.",
+    "select_channel_prompt": "Sélectionnez une entité de canal MeshCore dans l’éditeur de carte. Les configurations de liste de canaux existantes doivent être divisées en une carte par canal.",
+    "channel_not_found": "Le canal MeshCore sélectionné « {id} » est introuvable.",
+    "channel_history_loading": "Chargement de l’historique du canal…",
+    "channel_history_empty": "Aucun message de canal au cours des {hours} dernières heures.",
+    "channel_history_unavailable": "L’historique du canal est indisponible. Vérifiez que le journal est activé et que l’entité est enregistrée.",
+    "channel_chat_label": "Historique des messages de {channel}",
+    "active": "Actif",
+    "unavailable": "Indisponible",
+    "today": "Aujourd’hui",
+    "yesterday": "Hier",
     "neighbors_label": "Voisins",
     "no_neighbors_info": "Aucune information sur les voisins",
     "online": "En ligne",
@@ -111,6 +119,13 @@
     "details_default_open": "Déplier les détails par défaut",
     "tap_action": "Action lors d'un appui",
     "hold_action": "Action lors d'un appui long",
-    "double_tap_action": "Action lors d'un appui double"
+    "double_tap_action": "Action lors d'un appui double",
+    "target_channel": "Canal MeshCore",
+    "no_channels_detected": "Aucune entité de canal MeshCore détectée. Vérifiez l’intégration MeshCore, puis modifiez à nouveau la carte.",
+    "hide_timestamps": "Masquer les heures",
+    "hide_date_headers": "Masquer les en-têtes de date",
+    "hours_to_show": "Heures à afficher",
+    "max_messages": "Nombre maximal de messages",
+    "section_history": "Historique"
   }
 }

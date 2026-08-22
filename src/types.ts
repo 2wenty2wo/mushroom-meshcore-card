@@ -27,7 +27,24 @@ export interface HomeAssistant {
   devices: Record<string, HassDeviceRegistryEntry>;
   themes: Record<string, unknown>;
   language: string;
-  locale: { language: string };
+  locale: {
+    language: string;
+    time_format?: "12" | "24" | "language" | "system";
+    time_zone?: "local" | "server";
+  };
+  config?: {
+    components?: string[];
+    time_zone?: string;
+  };
+  connection?: {
+    subscribeMessage: <T>(
+      callback: (message: T) => void,
+      params: Record<string, unknown>,
+      options?: { resubscribe?: boolean }
+    ) => Promise<() => void>;
+    addEventListener?: (type: string, listener: () => void) => void;
+    removeEventListener?: (type: string, listener: () => void) => void;
+  };
   callService?: (
     domain: string,
     service: string,
@@ -118,6 +135,17 @@ export interface MeshcoreContactCardConfig {
 
 export interface MeshcoreChannelCardConfig {
   type?: string;
+  entity?: string;
+  name?: string;
+  icon?: string;
+  icon_color?: string;
+  tap_action?: ActionConfig;
+  hold_action?: ActionConfig;
+  double_tap_action?: ActionConfig;
+  hide_timestamps?: boolean;
+  hide_date_headers?: boolean;
+  hours_to_show?: number;
+  max_messages?: number;
   grid_options?: GridOptions;
 }
 

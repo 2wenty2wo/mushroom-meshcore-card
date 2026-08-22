@@ -65,3 +65,117 @@ export function handleAction(
 export function hasAction(action: ActionConfig | undefined): boolean {
   return !!action && action.action !== "none";
 }
+
+export interface HeaderActionConfig {
+  tap_action?: ActionConfig;
+  hold_action?: ActionConfig;
+  double_tap_action?: ActionConfig;
+}
+
+/** Shared Mushroom/Tile gesture handling for elements marked with
+ *  `data-action-scope`. Hosts keep their own delegated click listeners and
+ *  call these methods before handling entity-specific controls. */
+export class HeaderActionController {
+  private _holdTimer: ReturnType<typeof setTimeout> | null = null;
+  private _holdFired = false;
+  private _tapTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    private readonly _node: HTMLElement,
+    private readonly _getHass: () => HomeAssistant | undefined,
+    private readonly _getConfig: () => HeaderActionConfig | undefined,
+    private readonly _getConfirmText: () => string
+  ) {}
+
+  handleClick(event: Event): boolean {
+    const header = (event.target as Element).closest?.(
+      "[data-action-scope]"
+    ) as HTMLElement | null;
+    if (!header) return false;
+
+    if (this._holdFired) {
+      this._holdFired = false;
+      return true;
+    }
+
+    const entityId = header.dataset["entity"] ?? null;
+    const config = this._getConfig();
+    const doubleTap = config?.double_tap_action;
+    if (hasAction(doubleTap)) {
+      if (this._tapTimer !== null) {
+        clearTimeout(this._tapTimer);
+        this._tapTimer = null;
+        handleAction(
+          this._node,
+          this._getHass(),
+          doubleTap,
+          entityId,
+          this._getConfirmText()
+        );
+      } else {
+        this._tapTimer = setTimeout(() => {
+          this._tapTimer = null;
+          handleAction(
+            this._node,
+            this._getHass(),
+            this._getConfig()?.tap_action,
+            entityId,
+            this._getConfirmText()
+          );
+        }, 250);
+      }
+      return true;
+    }
+
+    handleAction(
+      this._node,
+      this._getHass(),
+      config?.tap_action,
+      entityId,
+      this._getConfirmText()
+    );
+    return true;
+  }
+
+  handlePointerDown(event: Event): void {
+    const config = this._getConfig();
+    if (!hasAction(config?.hold_action)) return;
+    const header = (event.target as Element).closest?.(
+      "[data-action-scope]"
+    ) as HTMLElement | null;
+    if (!header) return;
+
+    this._holdFired = false;
+    this._clearHoldTimer();
+    this._holdTimer = setTimeout(() => {
+      this._holdTimer = null;
+      this._holdFired = true;
+      handleAction(
+        this._node,
+        this._getHass(),
+        this._getConfig()?.hold_action,
+        header.dataset["entity"] ?? null,
+        this._getConfirmText()
+      );
+    }, 500);
+  }
+
+  handlePointerEnd(): void {
+    this._clearHoldTimer();
+  }
+
+  disconnect(): void {
+    this._clearHoldTimer();
+    if (this._tapTimer !== null) {
+      clearTimeout(this._tapTimer);
+      this._tapTimer = null;
+    }
+  }
+
+  private _clearHoldTimer(): void {
+    if (this._holdTimer !== null) {
+      clearTimeout(this._holdTimer);
+      this._holdTimer = null;
+    }
+  }
+}
