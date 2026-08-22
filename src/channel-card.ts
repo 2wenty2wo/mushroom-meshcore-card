@@ -102,7 +102,7 @@ const CHANNEL_STYLES = `
     overflow-wrap: anywhere;
     color: var(--primary-text-color, #212121);
     font-size: var(--mushroom-meshcore-primary-font-size);
-    font-weight: var(--mushroom-meshcore-primary-font-weight);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
     letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
     line-height: var(--mushroom-meshcore-primary-line-height);
     white-space: pre-wrap;
@@ -148,9 +148,7 @@ interface LogbookStreamMessage {
 }
 
 interface ParsedChannel {
-  hubName: string;
   channelName: string;
-  channelIndex: number;
 }
 
 interface ParsedMessage {
@@ -192,23 +190,17 @@ function parseChannel(
   );
   if (full) {
     return {
-      hubName: full[1]!,
       channelName: full[2]!,
-      channelIndex,
     };
   }
   const short = friendlyName.match(/^(.+?)\s+Messages\b/i);
-  if (short) {
-    return {
-      hubName: hubFromId,
-      channelName: short[1]!,
-      channelIndex,
-    };
+  let channelName = (short?.[1] ?? friendlyName).trim();
+  const hubName = discoveredHubName?.trim() || hubFromId;
+  if (hubName && channelName.startsWith(`${hubName} `)) {
+    channelName = channelName.slice(hubName.length).trim();
   }
   return {
-    hubName: hubFromId,
-    channelName: friendlyName || `Ch ${channelIndex}`,
-    channelIndex,
+    channelName: channelName || `Ch ${channelIndex}`,
   };
 }
 
@@ -746,7 +738,7 @@ export class MeshcoreChannelCard extends HTMLElement {
       : unavailable
         ? "card.unavailable"
         : "card.inactive";
-    const secondary = `${parsed.hubName} · ${t(statusKey)}`;
+    const secondary = t(statusKey);
     const header = renderTileHeader(this._config, {
       displayName: parsed.channelName,
       secondary,
