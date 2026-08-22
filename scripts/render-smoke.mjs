@@ -190,6 +190,7 @@ function createHass(online = true) {
         name_by_user: null,
         manufacturer: "MeshCore",
         model: "Repeater",
+        sw_version: "v1.14.0",
         via_device_id: "hub-device",
       },
     },
@@ -303,6 +304,9 @@ assert.doesNotMatch(onlineNode.body, /Node ID/);
 assert.doesNotMatch(onlineNode.body, /<h4>Technical<\/h4>/);
 assert.match(onlineNode.body, /class="battery-percentage clickable" data-entity="sensor\.meshcore_spring_battery_percentage_spring_farm"/);
 assert.match(onlineNode.body, /class="battery-voltage clickable" data-entity="sensor\.meshcore_spring_battery_voltage_spring_farm"/);
+assert.match(onlineNode.body, /icon="mdi:memory"/);
+assert.match(onlineNode.body, /aria-label="Firmware v1\.14\.0"/);
+assert.match(onlineNode.body, />v1\.14\.0<\/span>/);
 assert.ok(
   onlineNode.body.indexOf('class="battery-percentage clickable"')
     < onlineNode.body.indexOf('class="battery-voltage clickable"'),
@@ -327,6 +331,31 @@ assert.deepEqual(onlineNode.card.getGridOptions(), {
   min_columns: 6,
   min_rows: 1,
 });
+
+const hiddenQuickStatsNode = render({
+  target: { type: "node", id: "Spring Farm" },
+  hide_quick_stats: true,
+});
+assert.doesNotMatch(hiddenQuickStatsNode.body, /icon="mdi:memory"/);
+
+const unknownFirmwareHass = createHass();
+unknownFirmwareHass.devices["node-device"].sw_version = " Unknown ";
+const unknownFirmwareNode = render(
+  { target: { type: "node", id: "Spring Farm" } },
+  unknownFirmwareHass
+);
+assert.doesNotMatch(unknownFirmwareNode.body, /icon="mdi:memory"/);
+
+const refreshedFirmwareHass = createHass();
+const refreshedFirmwareNode = render(
+  { target: { type: "node", id: "Spring Farm" } },
+  refreshedFirmwareHass
+);
+const updatedFirmwareHass = createHass();
+updatedFirmwareHass.devices["node-device"].sw_version = " v1.15.0\n<beta> ";
+refreshedFirmwareNode.card._lastRender = 0;
+refreshedFirmwareNode.card.hass = updatedFirmwareHass;
+assert.match(refreshedFirmwareNode.card.shadowRoot.innerHTML, /v1\.15\.0 &lt;beta&gt;/);
 
 const offlineNode = render(
   { target: { type: "node", id: "Spring Farm" } },

@@ -72,6 +72,7 @@
     "bandwidth": "Bandbreedte",
     "tx_power": "TX-vermogen",
     "battery_voltage": "Batterijspanning",
+    "firmware_label": "Firmware {version}",
     "confirm_action": "Weet u het zeker?"
   },
   "time": {

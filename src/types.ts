@@ -17,6 +17,7 @@ export interface HassDeviceRegistryEntry {
   name_by_user: string | null;
   manufacturer: string | null;
   model: string | null;
+  sw_version?: string | null;
   via_device_id?: string | null;
 }
 
