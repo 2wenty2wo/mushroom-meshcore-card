@@ -45,7 +45,7 @@ Mushroom and Card Mod are optional. The card uses their public theme conventions
 
 ## Main card
 
-<img src="/screenshots/main-card.png" alt="Mushroom MeshCore Card" width="300">
+<img src="/screenshots/main-card.png" alt="Mushroom MeshCore Card">
 
 ```yaml
 type: custom:mushroom-meshcore-card
