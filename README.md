@@ -111,9 +111,6 @@ battery_entity: sensor.example_battery
 voltage_entity: sensor.example_voltage
 ```
 
-### Migrating grouped main cards
-
-The grouped `hubs`, `nodes`, and `nodes_order` fields are no longer rendered. Duplicate or add the main card once per device, select its target in the visual editor, and move any applicable entity overrides to the flat fields shown above. A card without a valid `target` displays a migration prompt rather than selecting a device automatically.
 
 ## Channel card
 
