@@ -35,7 +35,7 @@ export const STYLES: string = `
     --mushroom-meshcore-muted-color: var(--secondary-text-color, #727272);
     --mushroom-meshcore-card-padding: var(--mush-spacing, 10px);
 
-    /* Compatibility aliases for the retained hub/contact/channel layouts. */
+    /* Compatibility aliases for the retained hub/channel layouts. */
     --mesh-green: var(--mushroom-meshcore-success-color);
     --mesh-blue: var(--mushroom-meshcore-info-color);
     --mesh-orange: var(--mushroom-meshcore-warning-color);
@@ -439,16 +439,6 @@ export const STYLES: string = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
-  /* Retained contact-card status primitive. */
-  .contact-right .status-dot {
-    display: inline-block;
-    width: var(--mushroom-meshcore-badge-size);
-    height: var(--mushroom-meshcore-badge-size);
-    border-radius: var(--mushroom-meshcore-badge-radius);
-  }
-
-  .dot-online { background: var(--mushroom-meshcore-success-color); }
-  .dot-offline { background: var(--mushroom-meshcore-muted-color); opacity: 0.55; }
   .dim { color: var(--secondary-text-color, #727272); opacity: 0.7; }
   .chip.mqtt-ok { color: var(--mushroom-meshcore-success-color); }
   .chip.mqtt-err { color: var(--mushroom-meshcore-danger-color); }

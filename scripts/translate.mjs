@@ -94,7 +94,7 @@ Translate the JSON values below from English into ${langName}.
 Rules:
 1. Return ONLY a valid JSON object with the exact same keys — no markdown, no explanation.
 2. Do NOT translate or modify sentinel tokens matching «P0», «P1», «P2», etc. — copy them verbatim.
-3. ALL CAPS labels (e.g. "HUBS", "CONTACTS") must remain ALL CAPS.
+3. ALL CAPS labels (e.g. "HUBS", "CHANNELS") must remain ALL CAPS.
 4. Very short technical abbreviations (e.g. "MQTT", "Ch1", "SF") must stay unchanged.
 5. Preserve leading/trailing whitespace exactly as in the source.
 6. Use natural, concise UI language appropriate for a technical dashboard.

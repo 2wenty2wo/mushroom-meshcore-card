@@ -8,12 +8,12 @@ This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve
 
 ## Architecture
 
-- `src/index.ts` registers the three cards and their card-picker metadata.
+- `src/index.ts` registers the two cards and their card-picker metadata.
 - `src/discovery.ts` contains registry-based MeshCore hub, node, contact, channel, and entity discovery. Treat this as stable backend logic; do not rewrite it for presentation work.
 - `src/card.ts` owns the single-target hub/node card, configuration, throttled rendering, and more-info interactions.
 - `src/styles.ts` contains shared card styling and Mushroom/HA theme-token mappings.
 - `src/editor.ts` provides the target-first visual editor for the main card.
-- `src/contact-card.ts` and `src/channel-card.ts` provide the related cards.
+- `src/channel-card.ts` provides the channel card.
 - `src/helpers.ts`, `src/types.ts`, `src/localize.ts`, and `src/translations/` provide shared helpers, types, and localisation.
 
 Keep data/entity resolution separate from rendering. Prefer small presentation helpers over duplicating discovery or configuration logic.
@@ -23,7 +23,6 @@ Keep data/entity resolution separate from rendering. Prefer small presentation h
 The fork must be installable alongside upstream. Register only these public card elements:
 
 - `mushroom-meshcore-card`
-- `mushroom-meshcore-contact-card`
 - `mushroom-meshcore-channel-card`
 - Their matching `*-editor` elements
 
@@ -40,13 +39,13 @@ Do not register legacy `meshcore-*` aliases: they collide with upstream. Legacy 
 - Preserve registry/device-scoped entity matching, localisation, visual editors, more-info actions, fixed-grid clipping, and the 10-second render throttle.
 - Do not require users to manually configure every telemetry entity.
 - Do not add Mushroom or Card Mod as a runtime dependency. Card Mod customisation may be supported through stable CSS variables, classes, or parts, but core styling must work independently.
-- Keep contact and channel cards functional when changing shared code.
+- Keep the channel card functional when changing shared code.
 
 ## Reusable Mushroom conversion contract
 
-Treat the main device card as the reference implementation when converting or refactoring another card, including future single-target contact and channel cards. Reuse this configuration and editor structure rather than delivering presentation-only Mushroom styling.
+Treat the main device card as the reference implementation when converting or refactoring another card, including future single-target cards. Reuse this configuration and editor structure rather than delivering presentation-only Mushroom styling.
 
-- A card that represents one device, contact, channel, or similar item must require an explicit target, render exactly that target, and show a localised prompt when the target is missing or unresolved. Never silently select the first discovered item.
+- A card that represents one device, channel, or similar item must require an explicit target, render exactly that target, and show a localised prompt when the target is missing or unresolved. Never silently select the first discovered item.
 - Give the selected item a native Tile-style header with optional `name`, `icon`, and `icon_color` overrides. Discovered identity remains the fallback, and offline or unavailable styling must retain its semantic muted treatment.
 - Support `tap_action`, `hold_action`, and `double_tap_action` on the primary header using standard Home Assistant action configuration. Default more-info must resolve to the selected item's primary entity; metric, chip, and other entity-specific controls continue to open their own entities.
 - Provide flat, semantically named `hide_*` booleans for independently useful content regions and `*_default_open` booleans for disclosures. Content is visible and disclosures are collapsed by default. Expose only controls that make sense for that card; do not copy unrelated fields merely for uniformity.
@@ -118,7 +117,7 @@ Before handing off a change:
 
 1. Check for TypeScript, translation, and build errors.
 2. Audit registrations, editor tags, card-picker entries, metadata, workflows, and README examples for naming collisions.
-3. Review the diff for accidental changes to discovery, target/override handling, throttling, sanitisation, map handling, neighbours, or contact/channel behaviour.
+3. Review the diff for accidental changes to discovery, target/override handling, throttling, sanitisation, map handling, neighbours, or channel behaviour.
 4. Test both missing/unavailable metrics and representative online/offline node states when rendering changes are involved.
 
 ## Working-tree discipline

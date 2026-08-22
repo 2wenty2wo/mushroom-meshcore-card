@@ -124,15 +124,6 @@ export interface MeshcoreCardConfig {
   grid_options?: GridOptions;
 }
 
-export interface MeshcoreContactCardConfig {
-  type?: string;
-  max_contact_age_days?: number;
-  show_path?: boolean;
-  map_provider?: string;
-  map_metro?: string;
-  grid_options?: GridOptions;
-}
-
 export interface MeshcoreChannelCardConfig {
   type?: string;
   entity?: string;

@@ -118,20 +118,6 @@ voltage_entity: sensor.example_voltage
 
 The grouped `hubs`, `nodes`, and `nodes_order` fields are no longer rendered. Duplicate or add the main card once per device, select its target in the visual editor, and move any applicable entity overrides to the flat fields shown above. A card without a valid `target` displays a migration prompt rather than selecting a device automatically.
 
-## Contact card
-
-```yaml
-type: custom:mushroom-meshcore-contact-card
-max_contact_age_days: 7
-show_path: true
-map_provider: meshmapper
-map_metro: smf
-grid_options:
-  rows: 4
-```
-
-The contact card discovers `binary_sensor.meshcore_*_contact` entities, sorts them by the most recent advertisement, and preserves its location and optional routing-path support.
-
 ## Channel card
 
 ```yaml

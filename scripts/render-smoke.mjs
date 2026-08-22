@@ -464,21 +464,6 @@ await wait(525);
 sharedActionNode.card.shadowRoot.listeners.get("pointerup")({});
 assert.deepEqual(serviceCalls[1]?.slice(0, 2), ["meshcore", "hold"]);
 
-const ContactCard = registry.get("mushroom-meshcore-contact-card");
-assert.ok(ContactCard, "contact card is registered");
-const contactHass = createHass();
-contactHass.states["binary_sensor.meshcore_aabbcc_contact"] = state("on", {
-  adv_name: "Contact Alpha",
-  public_key: "aabbccdd",
-  last_advert: Math.floor(Date.now() / 1000) - 60,
-  node_type_str: "Companion",
-});
-const contactCard = new ContactCard();
-contactCard.setConfig({ max_contact_age_days: 7 });
-contactCard.hass = contactHass;
-assert.match(contactCard.shadowRoot.innerHTML, /Contact Alpha/);
-assert.match(contactCard.shadowRoot.innerHTML, /class="contact-list"/);
-
 const ChannelCard = registry.get("mushroom-meshcore-channel-card");
 assert.ok(ChannelCard, "channel card is registered");
 
@@ -837,4 +822,4 @@ assert.match(
   /No MeshCore channel entities detected/,
 );
 
-console.log("Main, contact, and channel render smoke tests passed");
+console.log("Main and channel render smoke tests passed");
