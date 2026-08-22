@@ -1,6 +1,5 @@
 import { MeshcoreCard } from "./card.js";
 import { MeshcoreCardEditor } from "./editor.js";
-import { MeshcoreContactCard, MeshcoreContactCardEditor } from "./contact-card.js";
 import { MeshcoreChannelCard, MeshcoreChannelCardEditor } from "./channel-card.js";
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -11,12 +10,6 @@ if (!customElements.get("mushroom-meshcore-card")) {
 if (!customElements.get("mushroom-meshcore-card-editor")) {
   customElements.define("mushroom-meshcore-card-editor", MeshcoreCardEditor);
 }
-if (!customElements.get("mushroom-meshcore-contact-card")) {
-  customElements.define("mushroom-meshcore-contact-card", MeshcoreContactCard);
-}
-if (!customElements.get("mushroom-meshcore-contact-card-editor")) {
-  customElements.define("mushroom-meshcore-contact-card-editor", MeshcoreContactCardEditor);
-}
 
 window.customCards = window.customCards || [];
 if (!window.customCards.find((c) => c.type === "mushroom-meshcore-card")) {
@@ -24,15 +17,6 @@ if (!window.customCards.find((c) => c.type === "mushroom-meshcore-card")) {
     type: "mushroom-meshcore-card",
     name: "Mushroom MeshCore Device Card",
     description: "Displays one selected MeshCore hub or remote node in a Tile-style layout",
-    preview: true,
-    documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
-  });
-}
-if (!window.customCards.find((c) => c.type === "mushroom-meshcore-contact-card")) {
-  window.customCards.push({
-    type: "mushroom-meshcore-contact-card",
-    name: "Mushroom MeshCore Contact Card",
-    description: "Lists all MeshCore contact nodes sorted by most recently heard",
     preview: true,
     documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
   });
