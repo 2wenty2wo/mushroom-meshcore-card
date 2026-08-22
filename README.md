@@ -5,7 +5,7 @@
 
 <div align="center">
 
-Mushroom and Tile styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
+Mushroom and Tile styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.io) integration.
 
 This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card).
 
