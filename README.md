@@ -35,19 +35,6 @@ Mushroom and Card Mod are optional. The card uses their public theme conventions
 3. Add `/local/mushroom-meshcore-card.js` under **Settings → Dashboards → Resources** as a JavaScript module.
 4. Reload the browser.
 
-## Use alongside the original card
-
-The fork deliberately uses different resource and custom-element names, so both packages can be loaded at the same time:
-
-```yaml
-resources:
-  - url: /hacsfiles/meshcore-card/meshcore-card.js
-    type: module
-  - url: /hacsfiles/mushroom-meshcore-card/mushroom-meshcore-card.js
-    type: module
-```
-
-Use `custom:meshcore-card` for upstream and `custom:mushroom-meshcore-card` for this fork. The resources coexist safely, but the main cards use different configuration models.
 
 ## Main card
 
