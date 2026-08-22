@@ -1,8 +1,7 @@
 <p align="center">
   <img src="assets/logo.svg" alt="Mushroom MeshCore Card" width="140">
+  <h1 align="center">Mushroom MeshCore Card</h1>
 </p>
-
-<h1 align="center">Mushroom MeshCore Card</h1>
 
 Mushroom and Tile styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
 
