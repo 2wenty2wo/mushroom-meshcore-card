@@ -3,6 +3,8 @@
   Mushroom MeshCore Card
 </h1>
 
+<div align="center">
+
 Mushroom and Tile styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
 
 This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card).
@@ -11,6 +13,8 @@ This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/m
 [![GitHub Release](https://img.shields.io/github/release/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
 [![License](https://img.shields.io/github/license/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](LICENSE)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
+
+</div>
 
 ## Requirements
 
