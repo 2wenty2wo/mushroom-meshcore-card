@@ -42,6 +42,7 @@
     "channel_history_unavailable": "L’historique du canal est indisponible. Vérifiez que le journal est activé et que l’entité est enregistrée.",
     "channel_chat_label": "Historique des messages de {channel}",
     "active": "Actif",
+    "inactive": "Inactif",
     "unavailable": "Indisponible",
     "today": "Aujourd’hui",
     "yesterday": "Hier",

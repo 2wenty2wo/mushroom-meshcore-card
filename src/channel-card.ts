@@ -738,10 +738,15 @@ export class MeshcoreChannelCard extends HTMLElement {
       state.attributes as Record<string, unknown>,
       discoveredHubName
     );
-    const active = state.state !== "unknown" && state.state !== "unavailable";
-    const secondary = `${parsed.hubName} · ${t(
-      active ? "card.active" : "card.unavailable"
-    )}`;
+    const stateValue = state.state.toLowerCase();
+    const active = stateValue === "active" || stateValue === "on";
+    const unavailable = stateValue === "unknown" || stateValue === "unavailable";
+    const statusKey = active
+      ? "card.active"
+      : unavailable
+        ? "card.unavailable"
+        : "card.inactive";
+    const secondary = `${parsed.hubName} · ${t(statusKey)}`;
     const header = renderTileHeader(this._config, {
       displayName: parsed.channelName,
       secondary,

@@ -42,6 +42,7 @@
     "channel_history_unavailable": "Der Kanalverlauf ist nicht verfügbar. Prüfen Sie, ob das Logbuch aktiviert ist und die Entität aufgezeichnet wird.",
     "channel_chat_label": "Nachrichtenverlauf von {channel}",
     "active": "Aktiv",
+    "inactive": "Inaktiv",
     "unavailable": "Nicht verfügbar",
     "today": "Heute",
     "yesterday": "Gestern",

@@ -42,6 +42,7 @@
     "channel_history_unavailable": "De kanaalgeschiedenis is niet beschikbaar. Controleer of het logboek is ingeschakeld en de entiteit wordt geregistreerd.",
     "channel_chat_label": "Berichtgeschiedenis van {channel}",
     "active": "Actief",
+    "inactive": "Inactief",
     "unavailable": "Niet beschikbaar",
     "today": "Vandaag",
     "yesterday": "Gisteren",

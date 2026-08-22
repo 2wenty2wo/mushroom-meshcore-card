@@ -42,6 +42,7 @@
     "channel_history_unavailable": "Channel history is unavailable. Check that Logbook is enabled and the entity is recorded.",
     "channel_chat_label": "{channel} message history",
     "active": "Active",
+    "inactive": "Inactive",
     "unavailable": "Unavailable",
     "today": "Today",
     "yesterday": "Yesterday",

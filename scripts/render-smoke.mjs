@@ -649,6 +649,21 @@ channelCard.hass = channelHass;
 assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
 assert.match(channelCard.shadowRoot.innerHTML, /Office · Unavailable/);
 
+channelHass.states[CHANNEL_ENTITY].state = "Inactive";
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
+assert.match(channelCard.shadowRoot.innerHTML, /Office · Inactive/);
+
+channelHass.states[CHANNEL_ENTITY].state = "off";
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
+assert.match(channelCard.shadowRoot.innerHTML, /Office · Inactive/);
+
+channelHass.states[CHANNEL_ENTITY].state = "on";
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /device-header-row online/);
+assert.match(channelCard.shadowRoot.innerHTML, /Office · Active/);
+
 delete channelHass.states[CHANNEL_ENTITY];
 channelCard.hass = channelHass;
 assert.match(channelCard.shadowRoot.innerHTML, /was not found/);

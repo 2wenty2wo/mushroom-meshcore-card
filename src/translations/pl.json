@@ -42,6 +42,7 @@
     "channel_history_unavailable": "Historia kanału jest niedostępna. Sprawdź, czy dziennik jest włączony i encja jest rejestrowana.",
     "channel_chat_label": "Historia wiadomości kanału {channel}",
     "active": "Aktywny",
+    "inactive": "Nieaktywny",
     "unavailable": "Niedostępny",
     "today": "Dzisiaj",
     "yesterday": "Wczoraj",
