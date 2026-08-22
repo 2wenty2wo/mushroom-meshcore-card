@@ -132,9 +132,6 @@ Each channel card requires one `binary_sensor.meshcore_*_ch_<n>_messages` entity
 
 The history defaults to 24 hours and at most 200 messages. Dates and timestamps are visible by default and can be hidden independently. `name`, `icon`, `icon_color`, all three Tile actions, history settings, and `grid_options` can be configured in YAML or the visual editor.
 
-### Migrating channel-list cards
-
-The former automatic channel list is no longer rendered. Add or duplicate one channel card per channel and select its message entity in the visual editor. A card without a valid `entity` displays a migration prompt rather than selecting the first discovered channel. Logbook and Recorder must include the selected entity for message history to be available.
 
 ## Theme and Card Mod compatibility
 
