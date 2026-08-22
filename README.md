@@ -4,6 +4,7 @@ Mushroom- and Tile-styled [Home Assistant](https://www.home-assistant.io/) Lovel
 
 This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card). It keeps automatic, device-scoped MeshCore discovery while presenting each selected hub or remote node as an independent Home Assistant card.
 
+[![CI](https://github.com/2wenty2wo/mushroom-meshcore-card/actions/workflows/ci.yml/badge.svg)](https://github.com/2wenty2wo/mushroom-meshcore-card/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/release/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
 [![License](https://img.shields.io/github/license/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](LICENSE)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
@@ -135,11 +136,32 @@ The contact card discovers `binary_sensor.meshcore_*_contact` entities, sorts th
 
 ```yaml
 type: custom:mushroom-meshcore-channel-card
+entity: binary_sensor.meshcore_edfaf6_ch_0_messages
+name: Public
+icon: mdi:message-bulleted
+icon_color: green
+tap_action:
+  action: more-info
+hold_action:
+  action: none
+double_tap_action:
+  action: none
+hide_timestamps: false
+hide_date_headers: false
+hours_to_show: 24
+max_messages: 200
 grid_options:
-  rows: 4
+  columns: full
+  rows: 8
 ```
 
-The channel card discovers MeshCore message-channel entities and sorts them by channel index.
+Each channel card requires one `binary_sensor.meshcore_*_ch_<n>_messages` entity. It uses Home Assistant's live Logbook stream to show that channel as a newest-first, scrollable conversation beneath the same Tile-style header used by the main card. The channel prefix is removed from each row, the sender before the first colon is emphasised, and later colons and line breaks remain part of the message.
+
+The history defaults to 24 hours and at most 200 messages. Dates and timestamps are visible by default and can be hidden independently. `name`, `icon`, `icon_color`, all three Tile actions, history settings, and `grid_options` can be configured in YAML or the visual editor.
+
+### Migrating channel-list cards
+
+The former automatic channel list is no longer rendered. Add or duplicate one channel card per channel and select its message entity in the visual editor. A card without a valid `entity` displays a migration prompt rather than selecting the first discovered channel. Logbook and Recorder must include the selected entity for message history to be available.
 
 ## Theme and Card Mod compatibility
 

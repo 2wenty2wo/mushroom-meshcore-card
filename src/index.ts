@@ -48,7 +48,7 @@ if (!window.customCards.find((c) => c.type === "mushroom-meshcore-channel-card")
   window.customCards.push({
     type: "mushroom-meshcore-channel-card",
     name: "Mushroom MeshCore Channel Card",
-    description: "Shows active MeshCore channels by hub",
+    description: "Displays one selected MeshCore channel with live chat history",
     preview: true,
     documentationURL: "https://github.com/2wenty2wo/mushroom-meshcore-card",
   });

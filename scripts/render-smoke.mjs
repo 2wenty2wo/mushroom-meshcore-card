@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 class FakeShadowRoot {
   _innerHTML = "";
   tileInfos = [];
+  historyElement = null;
   listeners = new Map();
 
   set innerHTML(value) {
@@ -17,6 +18,16 @@ class FakeShadowRoot {
         return match ? { textContent: match[1] } : null;
       },
     }));
+    if (value.includes('class="channel-history"')) {
+      const rowCount = (value.match(/class="message-row"/g) ?? []).length;
+      this.historyElement = {
+        scrollTop: 0,
+        scrollHeight: 100 + rowCount * 100,
+        clientHeight: 385,
+      };
+    } else {
+      this.historyElement = null;
+    }
   }
 
   get innerHTML() {
@@ -28,7 +39,9 @@ class FakeShadowRoot {
   }
 
   querySelector(selector) {
-    return selector === "ha-tile-info" ? this.tileInfos[0] ?? null : null;
+    if (selector === "ha-tile-info") return this.tileInfos[0] ?? null;
+    if (selector === ".channel-history") return this.historyElement;
+    return null;
   }
 
   querySelectorAll(selector) {
@@ -103,6 +116,11 @@ globalThis.requestAnimationFrame = (callback) => {
   return 1;
 };
 globalThis.cancelAnimationFrame = () => {};
+globalThis.setInterval = () => 1;
+globalThis.clearInterval = () => {};
+
+const wait = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const bundle = readFileSync(new URL("../dist/mushroom-meshcore-card.js", import.meta.url), "utf8");
 Function(bundle)();
@@ -179,6 +197,61 @@ function createHass(online = true) {
     language: "en",
     locale: { language: "en" },
   };
+}
+
+function createLogbookConnection({ reject = false } = {}) {
+  const subscriptions = [];
+  const readyListeners = new Set();
+  return {
+    subscriptions,
+    subscribeMessage(callback, params, options) {
+      if (reject) return Promise.reject(new Error("Logbook unavailable"));
+      const subscription = {
+        callback,
+        params,
+        options,
+        unsubscribed: false,
+      };
+      subscriptions.push(subscription);
+      return Promise.resolve(() => {
+        subscription.unsubscribed = true;
+      });
+    },
+    addEventListener(type, listener) {
+      if (type === "ready") readyListeners.add(listener);
+    },
+    removeEventListener(type, listener) {
+      if (type === "ready") readyListeners.delete(listener);
+    },
+    emitReady() {
+      for (const listener of readyListeners) listener();
+    },
+  };
+}
+
+const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
+const SECOND_CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_1_messages";
+
+function createChannelHass({ unavailable = false, reject = false } = {}) {
+  const hass = createHass();
+  hass.states[CHANNEL_ENTITY] = state(unavailable ? "unavailable" : "Active", {
+    friendly_name: "MeshCore Office (edfaf6) Public Messages",
+    channel_index: 0,
+  });
+  hass.states[SECOND_CHANNEL_ENTITY] = state("Active", {
+    friendly_name: "MeshCore Office (edfaf6) Team Messages",
+    channel_index: 1,
+  });
+  hass.entities[CHANNEL_ENTITY] = registryEntry("hub-device");
+  hass.entities[SECOND_CHANNEL_ENTITY] = registryEntry("hub-device");
+  hass.locale = {
+    language: "en",
+    time_format: "24",
+    time_zone: "server",
+  };
+  hass.config = { components: ["logbook"], time_zone: "Australia/Sydney" };
+  hass.connection = createLogbookConnection({ reject });
+  return hass;
 }
 
 function render(config, hass = createHass()) {
@@ -360,4 +433,394 @@ assert.equal(switchedConfig.map_provider, "meshmapper");
 assert.equal(switchedConfig.map_metro, "smf");
 assert.deepEqual(switchedConfig.grid_options, { rows: 4 });
 
-console.log("Main-card render smoke tests passed");
+const actionHass = createHass();
+const serviceCalls = [];
+actionHass.callService = (...args) => {
+  serviceCalls.push(args);
+};
+const sharedActionNode = render(
+  {
+    target: { type: "node", id: "Spring Farm" },
+    tap_action: { action: "none" },
+    hold_action: { action: "perform-action", perform_action: "meshcore.hold" },
+    double_tap_action: {
+      action: "perform-action",
+      perform_action: "meshcore.double",
+    },
+  },
+  actionHass,
+);
+const headerGestureEvent = {
+  target: {
+    closest: () => ({ dataset: { entity: headerEntity } }),
+  },
+};
+sharedActionNode.card.shadowRoot.listeners.get("click")(headerGestureEvent);
+sharedActionNode.card.shadowRoot.listeners.get("click")(headerGestureEvent);
+assert.deepEqual(serviceCalls[0]?.slice(0, 2), ["meshcore", "double"]);
+sharedActionNode.card.shadowRoot.listeners.get("pointerdown")(headerGestureEvent);
+await wait(525);
+sharedActionNode.card.shadowRoot.listeners.get("pointerup")({});
+assert.deepEqual(serviceCalls[1]?.slice(0, 2), ["meshcore", "hold"]);
+
+const ContactCard = registry.get("mushroom-meshcore-contact-card");
+assert.ok(ContactCard, "contact card is registered");
+const contactHass = createHass();
+contactHass.states["binary_sensor.meshcore_aabbcc_contact"] = state("on", {
+  adv_name: "Contact Alpha",
+  public_key: "aabbccdd",
+  last_advert: Math.floor(Date.now() / 1000) - 60,
+  node_type_str: "Companion",
+});
+const contactCard = new ContactCard();
+contactCard.setConfig({ max_contact_age_days: 7 });
+contactCard.hass = contactHass;
+assert.match(contactCard.shadowRoot.innerHTML, /Contact Alpha/);
+assert.match(contactCard.shadowRoot.innerHTML, /class="contact-list"/);
+
+const ChannelCard = registry.get("mushroom-meshcore-channel-card");
+assert.ok(ChannelCard, "channel card is registered");
+
+const channelNoEntity = new ChannelCard();
+channelNoEntity.setConfig({});
+channelNoEntity.hass = createChannelHass();
+assert.match(channelNoEntity.shadowRoot.innerHTML, /Select a MeshCore channel entity/);
+assert.doesNotMatch(channelNoEntity.shadowRoot.innerHTML, />CHANNELS</);
+
+const invalidChannel = new ChannelCard();
+invalidChannel.setConfig({ entity: "binary_sensor.not_a_meshcore_channel" });
+invalidChannel.hass = createChannelHass();
+assert.match(invalidChannel.shadowRoot.innerHTML, /was not found/);
+assert.match(invalidChannel.shadowRoot.innerHTML, /not_a_meshcore_channel/);
+
+const channelHass = createChannelHass();
+const channelCard = new ChannelCard();
+channelCard.setConfig({ entity: CHANNEL_ENTITY });
+channelCard.hass = channelHass;
+channelCard.connectedCallback();
+assert.equal(channelHass.connection.subscriptions.length, 1);
+const initialSubscription = channelHass.connection.subscriptions[0];
+assert.equal(initialSubscription.params.type, "logbook/event_stream");
+assert.deepEqual(initialSubscription.params.entity_ids, [CHANNEL_ENTITY]);
+assert.equal(initialSubscription.options.resubscribe, false);
+assert.ok(
+  Date.parse(initialSubscription.params.end_time) > Date.now() + 300 * 86400 * 1000,
+  "live Logbook subscription has a future end date",
+);
+assert.match(channelCard.shadowRoot.innerHTML, /Loading channel history/);
+assert.match(channelCard.shadowRoot.innerHTML, /<ha-tile-info>/);
+assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").primary, "Public");
+assert.match(
+  channelCard.shadowRoot.querySelector("ha-tile-info").secondary,
+  /^Office · Active$/,
+);
+
+const nowSeconds = Math.floor(Date.now() / 1000);
+const initialEvents = [
+  {
+    when: nowSeconds,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    context_id: "context-a",
+    message: "<Public> Alice & <Admin>: First: keep\nsecond <line>",
+  },
+  {
+    when: nowSeconds - 10,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    context_id: "context-b",
+    message: "<Public> Bob: Older message",
+  },
+  {
+    when: nowSeconds - 20,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    context_id: "context-c",
+    message: "Status without a sender",
+  },
+  {
+    when: nowSeconds - 30,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    state: "Active",
+  },
+  {
+    when: nowSeconds - 40,
+    name: "Team Messages",
+    entity_id: SECOND_CHANNEL_ENTITY,
+    message: "<Team> Wrong: channel",
+  },
+  {
+    when: nowSeconds - 25 * 60 * 60,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    message: "<Public> Expired: old",
+  },
+];
+initialSubscription.callback({ events: [...initialEvents, initialEvents[0]] });
+await wait(300);
+let channelHtml = channelCard.shadowRoot.innerHTML;
+assert.equal((channelHtml.match(/class="message-row"/g) ?? []).length, 3);
+assert.match(channelHtml, /<strong class="message-sender">Alice &amp; &lt;Admin&gt;<\/strong>/);
+assert.match(channelHtml, /First: keep\nsecond &lt;line&gt;/);
+assert.match(channelHtml, /Status without a sender/);
+assert.doesNotMatch(channelHtml, /&lt;Public&gt;/);
+assert.doesNotMatch(channelHtml, /Wrong: channel|Expired: old/);
+assert.ok(
+  channelHtml.indexOf("Alice &amp;") < channelHtml.indexOf("Bob"),
+  "channel messages are newest first",
+);
+assert.match(channelHtml, /class="date-header"/);
+assert.match(channelHtml, /class="message-time"/);
+const expectedLocalTime = new Intl.DateTimeFormat("en", {
+  timeZone: "Australia/Sydney",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+}).format(new Date(nowSeconds * 1000));
+const expectedLocalDate = new Intl.DateTimeFormat("en", {
+  timeZone: "Australia/Sydney",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+}).format(new Date(nowSeconds * 1000));
+assert.match(channelHtml, new RegExp(`>${expectedLocalTime}<\\/time>`));
+assert.match(channelHtml, new RegExp(`Today · ${expectedLocalDate}`));
+assert.match(channelHtml, /role="log" tabindex="0"/);
+assert.match(channelHtml, /height: 385px/);
+assert.doesNotMatch(channelHtml, />CHANNELS</);
+assert.deepEqual(channelCard.getGridOptions(), {
+  columns: "full",
+  rows: 8,
+  min_columns: 6,
+  min_rows: 4,
+});
+assert.equal(channelCard.getCardSize(), 8);
+
+channelCard.shadowRoot.listeners.get("click")({
+  target: {
+    closest: () => ({ dataset: { entity: CHANNEL_ENTITY } }),
+  },
+});
+assert.equal(channelCard.lastEvent?.detail?.entityId, CHANNEL_ENTITY);
+
+const oldHistoryElement = channelCard.shadowRoot.querySelector(".channel-history");
+oldHistoryElement.scrollTop = 80;
+const oldHistoryHeight = oldHistoryElement.scrollHeight;
+initialSubscription.callback({
+  events: [{
+    when: nowSeconds + 1,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    context_id: "context-live",
+    message: "<Public> Live Sender: Newly arrived",
+  }],
+});
+await wait(300);
+const newHistoryElement = channelCard.shadowRoot.querySelector(".channel-history");
+assert.equal(
+  newHistoryElement.scrollTop,
+  80 + (newHistoryElement.scrollHeight - oldHistoryHeight),
+  "live messages preserve the visible scroll anchor",
+);
+assert.match(channelCard.shadowRoot.innerHTML, /Live Sender/);
+
+await Promise.resolve();
+channelHass.connection.emitReady();
+assert.equal(channelHass.connection.subscriptions.length, 2);
+assert.equal(
+  initialSubscription.unsubscribed,
+  false,
+  "the dead socket handle is dropped instead of unsubscribed on the new connection",
+);
+const replaySubscription = channelHass.connection.subscriptions[1];
+replaySubscription.callback({ events: initialEvents.slice(0, 3) });
+await wait(300);
+channelHtml = channelCard.shadowRoot.innerHTML;
+assert.equal(
+  (channelHtml.match(/class="message-row"/g) ?? []).length,
+  4,
+  "replayed history is deduplicated after reconnect",
+);
+
+channelHass.states[CHANNEL_ENTITY].state = "unavailable";
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
+assert.match(channelCard.shadowRoot.innerHTML, /Office · Unavailable/);
+
+channelHass.states[CHANNEL_ENTITY].state = "Inactive";
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
+assert.match(channelCard.shadowRoot.innerHTML, /Office · Inactive/);
+
+channelHass.states[CHANNEL_ENTITY].state = "off";
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
+assert.match(channelCard.shadowRoot.innerHTML, /Office · Inactive/);
+
+channelHass.states[CHANNEL_ENTITY].state = "on";
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /device-header-row online/);
+assert.match(channelCard.shadowRoot.innerHTML, /Office · Active/);
+
+delete channelHass.states[CHANNEL_ENTITY];
+channelCard.hass = channelHass;
+assert.match(channelCard.shadowRoot.innerHTML, /was not found/);
+assert.equal(replaySubscription.unsubscribed, true);
+channelCard.disconnectedCallback();
+
+const cappedHass = createChannelHass();
+const cappedCard = new ChannelCard();
+cappedCard.setConfig({
+  entity: CHANNEL_ENTITY,
+  hours_to_show: 0,
+  max_messages: 0,
+});
+cappedCard.hass = cappedHass;
+cappedCard.connectedCallback();
+const cappedSubscription = cappedHass.connection.subscriptions[0];
+const startAgeHours =
+  (Date.now() - Date.parse(cappedSubscription.params.start_time)) / 3_600_000;
+assert.ok(startAgeHours > 23.9 && startAgeHours < 24.1);
+cappedSubscription.callback({
+  events: Array.from({ length: 205 }, (_, index) => ({
+    when: nowSeconds - index,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    context_id: `bulk-${index}`,
+    message: `<Public> Sender ${index}: Bulk ${index}`,
+  })),
+});
+await wait(300);
+const cappedHtml = cappedCard.shadowRoot.innerHTML;
+assert.equal((cappedHtml.match(/class="message-row"/g) ?? []).length, 200);
+assert.match(cappedHtml, /Bulk 0/);
+assert.doesNotMatch(cappedHtml, /Bulk 204/);
+cappedCard.disconnectedCallback();
+
+const hiddenHass = createChannelHass();
+const hiddenCard = new ChannelCard();
+const preservedChannelConfig = {
+  entity: CHANNEL_ENTITY,
+  name: "Operations",
+  icon: "mdi:radio-handheld",
+  icon_color: "green",
+  hide_timestamps: true,
+  hide_date_headers: true,
+  hours_to_show: 12,
+  max_messages: 50,
+  grid_options: { columns: "full", rows: 8 },
+};
+hiddenCard.setConfig(preservedChannelConfig);
+hiddenCard.hass = hiddenHass;
+hiddenCard.connectedCallback();
+const oldHiddenSubscription = hiddenHass.connection.subscriptions[0];
+oldHiddenSubscription.callback({
+  events: [{
+    when: nowSeconds,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    message: "<Public> Hidden: controls",
+  }],
+});
+await wait(300);
+let hiddenHtml = hiddenCard.shadowRoot.innerHTML;
+assert.equal(hiddenCard.shadowRoot.querySelector("ha-tile-info").primary, "Operations");
+assert.doesNotMatch(hiddenHtml, /class="date-header"/);
+assert.doesNotMatch(hiddenHtml, /class="message-time"/);
+assert.match(hiddenHtml, /channel-chat-card grid-rows/);
+
+hiddenCard.setConfig({
+  ...preservedChannelConfig,
+  entity: SECOND_CHANNEL_ENTITY,
+});
+assert.equal(oldHiddenSubscription.unsubscribed, true);
+assert.equal(hiddenHass.connection.subscriptions.length, 2);
+oldHiddenSubscription.callback({
+  events: [{
+    when: nowSeconds + 1,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    message: "<Public> Stale: ignored",
+  }],
+});
+hiddenHass.connection.subscriptions[1].callback({
+  events: [{
+    when: nowSeconds + 1,
+    name: "Team Messages",
+    entity_id: SECOND_CHANNEL_ENTITY,
+    message: "<Team> New Sender: Team history",
+  }],
+});
+await wait(300);
+hiddenHtml = hiddenCard.shadowRoot.innerHTML;
+assert.match(hiddenHtml, /New Sender/);
+assert.match(hiddenHtml, /Team history/);
+assert.doesNotMatch(hiddenHtml, /Stale: ignored|Hidden: controls/);
+hiddenCard.disconnectedCallback();
+
+const emptyHass = createChannelHass();
+const emptyCard = new ChannelCard();
+emptyCard.setConfig({ entity: CHANNEL_ENTITY });
+emptyCard.hass = emptyHass;
+emptyCard.connectedCallback();
+emptyHass.connection.subscriptions[0].callback({ events: [] });
+await wait(300);
+assert.match(emptyCard.shadowRoot.innerHTML, /No channel messages in the last 24 hours/);
+emptyCard.disconnectedCallback();
+
+const errorHass = createChannelHass({ reject: true });
+const errorCard = new ChannelCard();
+errorCard.setConfig({ entity: CHANNEL_ENTITY });
+errorCard.hass = errorHass;
+errorCard.connectedCallback();
+await Promise.resolve();
+await Promise.resolve();
+assert.match(errorCard.shadowRoot.innerHTML, /Channel history is unavailable/);
+errorCard.disconnectedCallback();
+
+const ChannelEditor = registry.get("mushroom-meshcore-channel-card-editor");
+assert.ok(ChannelEditor, "channel-card editor is registered");
+const channelEditor = new ChannelEditor();
+channelEditor.setConfig(preservedChannelConfig);
+channelEditor.hass = createChannelHass();
+const channelForms = channelEditor.querySelectorAll("ha-form");
+assert.equal(channelForms.length, 2);
+assert.deepEqual(
+  channelForms[0].schema[0].selector.entity.include_entities,
+  [CHANNEL_ENTITY, SECOND_CHANNEL_ENTITY],
+);
+assert.deepEqual(
+  channelForms[1].schema.map((section) => section.title),
+  ["Appearance", "Interactions", "History"],
+);
+channelForms[0].listeners.get("value-changed")({
+  detail: { value: { entity: SECOND_CHANNEL_ENTITY } },
+});
+const switchedChannelConfig = channelEditor.lastEvent?.detail?.config;
+assert.equal(switchedChannelConfig.entity, SECOND_CHANNEL_ENTITY);
+assert.equal(switchedChannelConfig.name, "Operations");
+assert.equal(switchedChannelConfig.icon, "mdi:radio-handheld");
+assert.equal(switchedChannelConfig.hide_timestamps, true);
+assert.equal(switchedChannelConfig.hours_to_show, 12);
+assert.equal(switchedChannelConfig.max_messages, 50);
+assert.deepEqual(switchedChannelConfig.grid_options, { columns: "full", rows: 8 });
+const stableSettingsForm = channelEditor.querySelectorAll("ha-form")[1];
+channelEditor.setConfig(switchedChannelConfig);
+assert.equal(
+  channelEditor.querySelectorAll("ha-form")[1],
+  stableSettingsForm,
+  "config echo preserves editor panels and focus",
+);
+
+const noChannelsEditor = new ChannelEditor();
+noChannelsEditor.setConfig({});
+noChannelsEditor.hass = createHass();
+assert.equal(noChannelsEditor.querySelectorAll("ha-alert").length, 1);
+assert.match(
+  noChannelsEditor.querySelectorAll("ha-alert")[0].textContent,
+  /No MeshCore channel entities detected/,
+);
+
+console.log("Main, contact, and channel render smoke tests passed");

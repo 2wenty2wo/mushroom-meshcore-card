@@ -11,12 +11,12 @@ import {
   formatUptime,
   escapeHtml,
   mapLinkUrl,
-  computeCssColor,
 } from "./helpers.js";
-import { handleAction, hasAction } from "./actions.js";
+import { handleAction, HeaderActionController } from "./actions.js";
 import { STYLES } from "./styles.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
+import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
 
 interface EntityReading {
   id: string | null;
@@ -71,9 +71,7 @@ export class MeshcoreCard extends HTMLElement {
   private _renderTimer: ReturnType<typeof setTimeout> | null = null;
   private _tickTimer: ReturnType<typeof setInterval> | null = null;
   private _trimTimer: ReturnType<typeof requestAnimationFrame> | null = null;
-  private _holdTimer: ReturnType<typeof setTimeout> | null = null;
-  private _holdFired = false;
-  private _tapTimer: ReturnType<typeof setTimeout> | null = null;
+  private _headerActions: HeaderActionController;
   private _openDetails = new Set<string>();
   private _detailsSeeded = false;
   private _cardSize = 1;
@@ -81,32 +79,27 @@ export class MeshcoreCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this._headerActions = new HeaderActionController(
+      this,
+      () => this._hass,
+      () => this._config,
+      () => this._confirmText()
+    );
     this.shadowRoot!.addEventListener("click", (e: Event) => {
+      if (this._headerActions.handleClick(e)) return;
       const target = e.target as Element;
-      const header = target.closest?.("[data-action-scope]") as HTMLElement | null;
-      if (header) {
-        this._onHeaderClick(header);
-        return;
-      }
       const el = target.closest("[data-entity]") as HTMLElement | null;
       if (el?.dataset["entity"]) {
         handleAction(this, this._hass, { action: "more-info" }, el.dataset["entity"]);
       }
     });
     this.shadowRoot!.addEventListener("pointerdown", (e: Event) => {
-      if (!hasAction(this._config?.hold_action)) return;
-      const header = (e.target as Element).closest?.("[data-action-scope]") as HTMLElement | null;
-      if (!header) return;
-      this._holdFired = false;
-      this._clearHoldTimer();
-      this._holdTimer = setTimeout(() => {
-        this._holdTimer = null;
-        this._holdFired = true;
-        handleAction(this, this._hass, this._config?.hold_action, header.dataset["entity"] ?? null, this._confirmText());
-      }, 500);
+      this._headerActions.handlePointerDown(e);
     });
     for (const type of ["pointerup", "pointercancel"]) {
-      this.shadowRoot!.addEventListener(type, () => this._clearHoldTimer());
+      this.shadowRoot!.addEventListener(type, () =>
+        this._headerActions.handlePointerEnd()
+      );
     }
     this.shadowRoot!.addEventListener("toggle", (e: Event) => {
       const details = e.target as HTMLDetailsElement;
@@ -143,49 +136,12 @@ export class MeshcoreCard extends HTMLElement {
       cancelAnimationFrame(this._trimTimer);
       this._trimTimer = null;
     }
-    this._clearHoldTimer();
-    if (this._tapTimer !== null) {
-      clearTimeout(this._tapTimer);
-      this._tapTimer = null;
-    }
-  }
-
-  private _clearHoldTimer(): void {
-    if (this._holdTimer !== null) {
-      clearTimeout(this._holdTimer);
-      this._holdTimer = null;
-    }
+    this._headerActions.disconnect();
   }
 
   private _confirmText(): string {
     const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
     return t("card.confirm_action");
-  }
-
-  private _onHeaderClick(header: HTMLElement): void {
-    if (this._holdFired) {
-      this._holdFired = false;
-      return;
-    }
-    const entityId = header.dataset["entity"] ?? null;
-    const doubleTap = this._config?.double_tap_action;
-    if (hasAction(doubleTap)) {
-      // Disambiguate single vs double tap the way Mushroom's action handler
-      // does: delay the tap briefly and let a second click within the window
-      // upgrade it.
-      if (this._tapTimer !== null) {
-        clearTimeout(this._tapTimer);
-        this._tapTimer = null;
-        handleAction(this, this._hass, doubleTap, entityId, this._confirmText());
-      } else {
-        this._tapTimer = setTimeout(() => {
-          this._tapTimer = null;
-          handleAction(this, this._hass, this._config?.tap_action, entityId, this._confirmText());
-        }, 250);
-      }
-      return;
-    }
-    handleAction(this, this._hass, this._config?.tap_action, entityId, this._confirmText());
   }
 
   setConfig(config: MeshcoreCardConfig): void {
@@ -336,49 +292,14 @@ export class MeshcoreCard extends HTMLElement {
     primaryEntityId: string | null,
     trailing = ""
   ): string {
-    const cfg = this._config;
-    const name = cfg?.name || displayName;
-    const iconName = cfg?.icon || icon;
-    const stateClass = online ? "online" : "offline";
-    const label = secondary ? `${name}, ${secondary}` : name;
-    const interactive =
-      !!primaryEntityId ||
-      hasAction(cfg?.tap_action) ||
-      hasAction(cfg?.hold_action) ||
-      hasAction(cfg?.double_tap_action);
-    const tag = interactive ? "button" : "div";
-    const attributes = interactive
-      ? `type="button" data-action-scope="header"${
-          primaryEntityId ? ` data-entity="${escapeHtml(primaryEntityId)}"` : ""
-        } aria-label="${escapeHtml(label)}"`
-      : `role="group" aria-label="${escapeHtml(label)}"`;
-
-    // icon_color only recolors the online state; offline keeps the muted
-    // Tile treatment so state stays readable at a glance.
-    const colorCss = online && cfg?.icon_color ? computeCssColor(cfg.icon_color) : null;
-    const shapeStyle = colorCss
-      ? ` style="background:color-mix(in srgb, ${escapeHtml(colorCss)} 20%, transparent);--mushroom-meshcore-icon-override-color:${escapeHtml(colorCss)}"`
-      : "";
-    const badge = online
-      ? ""
-      : `<span class="icon-badge" aria-hidden="true"><ha-icon icon="mdi:signal-off"></ha-icon></span>`;
-
-    return `<div class="device-header-row ${stateClass}" part="device-header">
-      <${tag} class="device-header ${interactive ? "clickable" : ""}" ${attributes}>
-        ${interactive ? "<ha-ripple></ha-ripple>" : ""}
-        <span class="device-icon-shape" aria-hidden="true"${shapeStyle}>
-          <ha-tile-icon>
-            <ha-icon slot="icon" icon="${escapeHtml(iconName)}"></ha-icon>
-          </ha-tile-icon>
-          ${badge}
-        </span>
-        <ha-tile-info>
-          <span slot="primary">${escapeHtml(name)}</span>
-          ${secondary ? `<span slot="secondary">${escapeHtml(secondary)}</span>` : ""}
-        </ha-tile-info>
-      </${tag}>
-      ${trailing}
-    </div>`;
+    return renderTileHeader(this._config, {
+      displayName,
+      secondary,
+      icon,
+      active: online,
+      primaryEntityId,
+      trailing,
+    });
   }
 
   private _reading(id: string | null, numeric = false): EntityReading {
@@ -1134,26 +1055,8 @@ export class MeshcoreCard extends HTMLElement {
       offlineNode ? "offline-node-card" : "",
     ].filter(Boolean).join(" ");
     this.shadowRoot!.innerHTML = `<style>${STYLES}</style><ha-card class="${cls}">${body}</ha-card>`;
-    this._hydrateTileInfo();
+    hydrateTileInfo(this.shadowRoot!);
     if (constrained) this._scheduleTrim(".trim-section");
-  }
-
-  private _hydrateTileInfo(): void {
-    const applyProperties = (): void => {
-      for (const info of Array.from(this.shadowRoot!.querySelectorAll("ha-tile-info"))) {
-        const primary = info.querySelector<HTMLElement>('[slot="primary"]')?.textContent ?? "";
-        const secondary = info.querySelector<HTMLElement>('[slot="secondary"]')?.textContent ?? "";
-        const tileInfo = info as HTMLElement & { primary: string; secondary: string };
-        tileInfo.primary = primary;
-        tileInfo.secondary = secondary;
-      }
-    };
-
-    if (customElements.get("ha-tile-info")) {
-      applyProperties();
-    } else {
-      void customElements.whenDefined?.("ha-tile-info").then(applyProperties);
-    }
   }
 
   private _scheduleTrim(rowSelector: string): void {
