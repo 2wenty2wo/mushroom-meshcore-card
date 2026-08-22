@@ -109,6 +109,7 @@ export interface MeshcoreCardConfig {
   hide_battery?: boolean;
   hide_metrics?: boolean;
   hide_quick_stats?: boolean;
+  show_firmware?: boolean;
   hide_details?: boolean;
   details_default_open?: boolean;
   battery_entity?: string;

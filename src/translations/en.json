@@ -114,6 +114,7 @@
     "hide_battery": "Hide battery",
     "hide_metrics": "Hide signal metrics",
     "hide_quick_stats": "Hide quick stats",
+    "show_firmware": "Show firmware version",
     "hide_details": "Hide details section",
     "details_default_open": "Expand details by default",
     "tap_action": "Tap action",

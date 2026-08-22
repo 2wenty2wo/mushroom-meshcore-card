@@ -957,7 +957,7 @@ export class MeshcoreCard extends HTMLElement {
       ? ""
       : this._batteryBlock(vm.batteryPct, vm.batteryVoltage, t);
     const quickChips = cfg?.hide_quick_stats ? "" : [
-      vm.firmwareVersion
+      cfg?.show_firmware === true && vm.firmwareVersion
         ? this._staticChip(
             vm.firmwareVersion,
             "mdi:memory",
