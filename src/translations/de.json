@@ -114,6 +114,7 @@
     "hide_battery": "Batterie ausblenden",
     "hide_metrics": "Signalmetriken ausblenden",
     "hide_quick_stats": "Kurzstatistiken ausblenden",
+    "show_firmware": "Firmware-Version anzeigen",
     "hide_details": "Detailbereich ausblenden",
     "details_default_open": "Details standardmäßig ausklappen",
     "tap_action": "Aktion beim Antippen",

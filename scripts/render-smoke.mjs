@@ -304,9 +304,7 @@ assert.doesNotMatch(onlineNode.body, /Node ID/);
 assert.doesNotMatch(onlineNode.body, /<h4>Technical<\/h4>/);
 assert.match(onlineNode.body, /class="battery-percentage clickable" data-entity="sensor\.meshcore_spring_battery_percentage_spring_farm"/);
 assert.match(onlineNode.body, /class="battery-voltage clickable" data-entity="sensor\.meshcore_spring_battery_voltage_spring_farm"/);
-assert.match(onlineNode.body, /icon="mdi:memory"/);
-assert.match(onlineNode.body, /aria-label="Firmware v1\.14\.0"/);
-assert.match(onlineNode.body, />v1\.14\.0<\/span>/);
+assert.doesNotMatch(onlineNode.body, /icon="mdi:memory"/);
 assert.ok(
   onlineNode.body.indexOf('class="battery-percentage clickable"')
     < onlineNode.body.indexOf('class="battery-voltage clickable"'),
@@ -332,23 +330,32 @@ assert.deepEqual(onlineNode.card.getGridOptions(), {
   min_rows: 1,
 });
 
+const shownFirmwareNode = render({
+  target: { type: "node", id: "Spring Farm" },
+  show_firmware: true,
+});
+assert.match(shownFirmwareNode.body, /icon="mdi:memory"/);
+assert.match(shownFirmwareNode.body, /aria-label="Firmware v1\.14\.0"/);
+assert.match(shownFirmwareNode.body, />v1\.14\.0<\/span>/);
+
 const hiddenQuickStatsNode = render({
   target: { type: "node", id: "Spring Farm" },
   hide_quick_stats: true,
+  show_firmware: true,
 });
 assert.doesNotMatch(hiddenQuickStatsNode.body, /icon="mdi:memory"/);
 
 const unknownFirmwareHass = createHass();
 unknownFirmwareHass.devices["node-device"].sw_version = " Unknown ";
 const unknownFirmwareNode = render(
-  { target: { type: "node", id: "Spring Farm" } },
+  { target: { type: "node", id: "Spring Farm" }, show_firmware: true },
   unknownFirmwareHass
 );
 assert.doesNotMatch(unknownFirmwareNode.body, /icon="mdi:memory"/);
 
 const refreshedFirmwareHass = createHass();
 const refreshedFirmwareNode = render(
-  { target: { type: "node", id: "Spring Farm" } },
+  { target: { type: "node", id: "Spring Farm" }, show_firmware: true },
   refreshedFirmwareHass
 );
 const updatedFirmwareHass = createHass();
@@ -358,7 +365,7 @@ refreshedFirmwareNode.card.hass = updatedFirmwareHass;
 assert.match(refreshedFirmwareNode.card.shadowRoot.innerHTML, /v1\.15\.0 &lt;beta&gt;/);
 
 const offlineNode = render(
-  { target: { type: "node", id: "Spring Farm" } },
+  { target: { type: "node", id: "Spring Farm" }, show_firmware: true },
   createHass(false)
 );
 assert.match(offlineNode.body, /Offline/);
@@ -450,7 +457,15 @@ editor.setConfig({
   nodes: { "Spring Farm": { enabled: true } },
 });
 editor.hass = createHass();
-const targetForm = editor.querySelectorAll("ha-form")[0];
+const editorForms = editor.querySelectorAll("ha-form");
+const targetForm = editorForms[0];
+const settingsForm = editorForms[1];
+assert.match(JSON.stringify(settingsForm.schema), /show_firmware/);
+assert.equal(settingsForm.data.show_firmware, false);
+settingsForm.listeners.get("value-changed")({
+  detail: { value: { ...settingsForm.data, show_firmware: true } },
+});
+assert.equal(editor.lastEvent?.detail?.config.show_firmware, true);
 targetForm.listeners.get("value-changed")({
   detail: { value: { target: JSON.stringify({ type: "hub", id: "55733c" }) } },
 });
@@ -458,6 +473,7 @@ const switchedConfig = editor.lastEvent?.detail?.config;
 assert.deepEqual(switchedConfig.target, { type: "hub", id: "55733c" });
 assert.equal(switchedConfig.battery_entity, undefined);
 assert.equal(switchedConfig.show_neighbors, undefined);
+assert.equal(switchedConfig.show_firmware, undefined);
 assert.equal(switchedConfig.nodes, undefined);
 assert.equal(switchedConfig.map_provider, "meshmapper");
 assert.equal(switchedConfig.map_metro, "smf");

@@ -114,6 +114,7 @@
     "hide_battery": "Masquer la batterie",
     "hide_metrics": "Masquer les métriques de signal",
     "hide_quick_stats": "Masquer les statistiques rapides",
+    "show_firmware": "Afficher la version du micrologiciel",
     "hide_details": "Masquer la section détails",
     "details_default_open": "Déplier les détails par défaut",
     "tap_action": "Action lors d'un appui",

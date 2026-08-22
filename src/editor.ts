@@ -28,6 +28,7 @@ const DEVICE_SETTING_KEYS = [
   "hide_battery",
   "hide_metrics",
   "hide_quick_stats",
+  "show_firmware",
   "hide_details",
   "details_default_open",
   "battery_entity",
@@ -57,6 +58,7 @@ const BOOLEAN_SETTING_KEYS = [
   "hide_battery",
   "hide_metrics",
   "hide_quick_stats",
+  "show_firmware",
   "hide_details",
   "details_default_open",
 ] as const;
@@ -223,6 +225,9 @@ export class MeshcoreCardEditor extends HTMLElement {
         ? [{ name: "hide_metrics", label: t("editor.hide_metrics"), selector: { boolean: {} } } as HaFormFieldSchema]
         : []),
       { name: "hide_quick_stats", label: t("editor.hide_quick_stats"), selector: { boolean: {} } },
+      ...(isNode
+        ? [{ name: "show_firmware", label: t("editor.show_firmware"), selector: { boolean: {} } } as HaFormFieldSchema]
+        : []),
       { name: "hide_details", label: t("editor.hide_details"), selector: { boolean: {} } },
       { name: "details_default_open", label: t("editor.details_default_open"), selector: { boolean: {} } },
     ];
@@ -343,6 +348,7 @@ export class MeshcoreCardEditor extends HTMLElement {
     };
     if (target.type === "node") {
       data["hide_metrics"] = config.hide_metrics === true;
+      data["show_firmware"] = config.show_firmware === true;
       data["location_entity"] = config.location_entity ?? null;
       data["temperature_entity"] = config.temperature_entity ?? null;
       data["humidity_entity"] = config.humidity_entity ?? null;
