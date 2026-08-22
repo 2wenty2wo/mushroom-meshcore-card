@@ -234,12 +234,13 @@ const SECOND_CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_1_messages";
 
 function createChannelHass({ unavailable = false, reject = false } = {}) {
   const hass = createHass();
+  hass.devices["hub-device"].name = "🌳 2wenty2wo (HA)";
   hass.states[CHANNEL_ENTITY] = state(unavailable ? "unavailable" : "Active", {
-    friendly_name: "MeshCore Office (edfaf6) Public Messages",
+    friendly_name: "🌳 2wenty2wo (HA) Public Messages",
     channel_index: 0,
   });
   hass.states[SECOND_CHANNEL_ENTITY] = state("Active", {
-    friendly_name: "MeshCore Office (edfaf6) Team Messages",
+    friendly_name: "🌳 2wenty2wo (HA) #macarthur Messages",
     channel_index: 1,
   });
   hass.entities[CHANNEL_ENTITY] = registryEntry("hub-device");
@@ -510,9 +511,18 @@ assert.ok(
 assert.match(channelCard.shadowRoot.innerHTML, /Loading channel history/);
 assert.match(channelCard.shadowRoot.innerHTML, /<ha-tile-info>/);
 assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").primary, "Public");
-assert.match(
-  channelCard.shadowRoot.querySelector("ha-tile-info").secondary,
-  /^Office · Active$/,
+assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").secondary, "Active");
+
+const hashtagChannelCard = new ChannelCard();
+hashtagChannelCard.setConfig({ entity: SECOND_CHANNEL_ENTITY });
+hashtagChannelCard.hass = channelHass;
+assert.equal(
+  hashtagChannelCard.shadowRoot.querySelector("ha-tile-info").primary,
+  "#macarthur",
+);
+assert.equal(
+  hashtagChannelCard.shadowRoot.querySelector("ha-tile-info").secondary,
+  "Active",
 );
 
 const nowSeconds = Math.floor(Date.now() / 1000);
@@ -563,6 +573,10 @@ let channelHtml = channelCard.shadowRoot.innerHTML;
 assert.equal((channelHtml.match(/class="message-row"/g) ?? []).length, 3);
 assert.match(channelHtml, /<strong class="message-sender">Alice &amp; &lt;Admin&gt;<\/strong>/);
 assert.match(channelHtml, /First: keep\nsecond &lt;line&gt;/);
+assert.match(
+  channelHtml,
+  /\.message-body\s*\{[^}]*font-weight: var\(--mushroom-meshcore-secondary-font-weight\)/s,
+);
 assert.match(channelHtml, /Status without a sender/);
 assert.doesNotMatch(channelHtml, /&lt;Public&gt;/);
 assert.doesNotMatch(channelHtml, /Wrong: channel|Expired: old/);
@@ -647,22 +661,22 @@ assert.equal(
 channelHass.states[CHANNEL_ENTITY].state = "unavailable";
 channelCard.hass = channelHass;
 assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
-assert.match(channelCard.shadowRoot.innerHTML, /Office · Unavailable/);
+assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").secondary, "Unavailable");
 
 channelHass.states[CHANNEL_ENTITY].state = "Inactive";
 channelCard.hass = channelHass;
 assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
-assert.match(channelCard.shadowRoot.innerHTML, /Office · Inactive/);
+assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").secondary, "Inactive");
 
 channelHass.states[CHANNEL_ENTITY].state = "off";
 channelCard.hass = channelHass;
 assert.match(channelCard.shadowRoot.innerHTML, /device-header-row offline/);
-assert.match(channelCard.shadowRoot.innerHTML, /Office · Inactive/);
+assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").secondary, "Inactive");
 
 channelHass.states[CHANNEL_ENTITY].state = "on";
 channelCard.hass = channelHass;
 assert.match(channelCard.shadowRoot.innerHTML, /device-header-row online/);
-assert.match(channelCard.shadowRoot.innerHTML, /Office · Active/);
+assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").secondary, "Active");
 
 delete channelHass.states[CHANNEL_ENTITY];
 channelCard.hass = channelHass;
