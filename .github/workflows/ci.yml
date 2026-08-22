@@ -1,18 +1,32 @@
 name: CI
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    name: Typecheck and build
+  verify:
+    name: Typecheck, translations, build, and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -26,5 +40,22 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Check translations
+        run: npm run check-translations
+
       - name: Build
         run: npm run build
+
+      - name: Verify distributable
+        run: test -s dist/mushroom-meshcore-card.js
+
+      - name: Run render smoke tests
+        run: npm run test:render
+
+      - name: Check pull-request diff
+        if: github.event_name == 'pull_request'
+        run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+
+      - name: Check pushed diff
+        if: github.event_name == 'push'
+        run: git diff --check "${{ github.event.before }}" "${{ github.sha }}"
