@@ -30,6 +30,7 @@ interface NodeViewModel {
   isRepeater: boolean;
   isSensor: boolean;
   icon: string;
+  firmwareVersion: string | null;
   primaryEntityId: string | null;
   lastSeen: string | null;
   rssi: EntityReading;
@@ -178,10 +179,22 @@ export class MeshcoreCard extends HTMLElement {
   set hass(hass: HomeAssistant) {
     this._hass = hass;
     const overrides = this._overrideEntityIds();
-    const fp = Object.entries(hass.states)
+    const target = this._config?.target;
+    const deviceFp = target?.type === "node"
+      ? Object.values(hass.devices)
+          .filter(
+            (device) =>
+              (device.name_by_user || device.name || device.id) === target.id
+          )
+          .map((device) => JSON.stringify([device.id, device.sw_version ?? null]))
+          .sort()
+          .join("|")
+      : "";
+    const stateFp = Object.entries(hass.states)
       .filter(([id]) => id.includes("meshcore") || overrides.has(id))
       .map(([id, s]) => `${id}=${s.state}@${s.last_changed}`)
       .join("|");
+    const fp = `${stateFp}|device=${deviceFp}`;
     if (fp === this._fp) return;
     this._fp = fp;
     const now = Date.now();
@@ -311,6 +324,19 @@ export class MeshcoreCard extends HTMLElement {
     }
     if (numeric && !Number.isFinite(Number(value))) return { id, value: null };
     return { id, value };
+  }
+
+  private _firmwareVersion(deviceId: string): string | null {
+    const value = this._hass?.devices[deviceId]?.sw_version;
+    if (typeof value !== "string") return null;
+    const normalized = value.trim().replace(/\s+/g, " ");
+    if (
+      !normalized ||
+      ["unknown", "unavailable", "none", "null"].includes(normalized.toLowerCase())
+    ) {
+      return null;
+    }
+    return normalized;
   }
 
   private _progressBar(
@@ -534,11 +560,14 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   /** Quick-chip-styled static fact (no backing entity, not clickable). */
-  private _staticChip(value: unknown, icon: string): string {
+  private _staticChip(value: unknown, icon: string, ariaLabel?: string): string {
     if (!value) return "";
-    return `<span class="quick-chip" part="quick-chip">
+    const accessible = ariaLabel
+      ? ` role="note" aria-label="${escapeHtml(ariaLabel)}" title="${escapeHtml(ariaLabel)}"`
+      : "";
+    return `<span class="quick-chip static-chip" part="quick-chip"${accessible}>
       <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
-      <span>${escapeHtml(value)}</span>
+      <span class="static-chip-content">${escapeHtml(value)}</span>
     </span>`;
   }
 
@@ -630,7 +659,11 @@ export class MeshcoreCard extends HTMLElement {
       ? ""
       : [
           this._staticChip(hwModel, "mdi:chip"),
-          this._staticChip(firmware, "mdi:memory"),
+          this._staticChip(
+            firmware,
+            "mdi:memory",
+            t("card.firmware_label", { version: String(firmware) })
+          ),
         ].join("");
 
     const technical = [
@@ -803,6 +836,7 @@ export class MeshcoreCard extends HTMLElement {
       isRepeater,
       isSensor,
       icon: isRepeater ? "mdi:radio-tower" : isSensor ? "mdi:access-point" : "mdi:radio-handheld",
+      firmwareVersion: this._firmwareVersion(deviceId),
       primaryEntityId: contactId ?? statusId ?? uptimeId ?? rssiId,
       lastSeen,
       rssi: this._reading(rssiId, true),
@@ -923,6 +957,13 @@ export class MeshcoreCard extends HTMLElement {
       ? ""
       : this._batteryBlock(vm.batteryPct, vm.batteryVoltage, t);
     const quickChips = cfg?.hide_quick_stats ? "" : [
+      vm.firmwareVersion
+        ? this._staticChip(
+            vm.firmwareVersion,
+            "mdi:memory",
+            t("card.firmware_label", { version: vm.firmwareVersion })
+          )
+        : "",
       this._quickChip(vm.sent, t("card.traffic_sent"), "", "mdi:arrow-up"),
       this._quickChip(vm.received, t("card.traffic_received"), "", "mdi:arrow-down"),
       this._quickChip(vm.temperature, t("card.telemetry_temp"), "°C", "mdi:thermometer"),

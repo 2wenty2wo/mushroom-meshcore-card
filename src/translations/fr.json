@@ -72,6 +72,7 @@
     "bandwidth": "Bande passante",
     "tx_power": "Puissance TX",
     "battery_voltage": "Tension de batterie",
+    "firmware_label": "Micrologiciel {version}",
     "confirm_action": "Êtes-vous sûr ?"
   },
   "time": {

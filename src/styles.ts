@@ -391,6 +391,16 @@ export const STYLES: string = `
     color: var(--secondary-text-color, #727272);
   }
 
+  .static-chip {
+    max-width: 100%;
+  }
+
+  .static-chip-content {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .chip-label {
     color: var(--secondary-text-color, #727272);
     font-weight: 400;

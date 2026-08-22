@@ -72,6 +72,7 @@
     "bandwidth": "Bandbreite",
     "tx_power": "Sendeleistung",
     "battery_voltage": "Batteriespannung",
+    "firmware_label": "Firmware {version}",
     "confirm_action": "Sind Sie sicher?"
   },
   "time": {

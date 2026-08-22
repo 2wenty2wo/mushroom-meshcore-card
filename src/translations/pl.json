@@ -72,6 +72,7 @@
     "bandwidth": "Szerokość pasma",
     "tx_power": "Moc TX",
     "battery_voltage": "Napięcie baterii",
+    "firmware_label": "Oprogramowanie sprzętowe {version}",
     "confirm_action": "Czy na pewno?"
   },
   "time": {
