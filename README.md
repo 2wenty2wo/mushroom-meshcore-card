@@ -1,8 +1,8 @@
 # Mushroom MeshCore Card
 
-Mushroom- and Tile-styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
+Mushroom and Tile styled [Home Assistant](https://www.home-assistant.io/) Lovelace cards for the [MeshCore](https://meshcore.co.uk) integration.
 
-This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card). It keeps automatic, device-scoped MeshCore discovery while presenting each selected hub or remote node as an independent Home Assistant card.
+This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card).
 
 [![CI](https://github.com/2wenty2wo/mushroom-meshcore-card/actions/workflows/ci.yml/badge.svg)](https://github.com/2wenty2wo/mushroom-meshcore-card/actions/workflows/ci.yml)
 [![GitHub Release](https://img.shields.io/github/release/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
