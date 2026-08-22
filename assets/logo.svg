@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <circle cx="512" cy="512" r="430" fill="#DDF3E4"/>
+
+  <!-- Unified mushroom silhouette -->
+  <path fill="#2F9E57" d="
+    M 246 478
+    C 266 354, 376 274, 512 274
+    C 648 274, 758 354, 778 478
+    C 783 511, 759 536, 724 542
+    C 651 554, 582 559, 512 559
+    C 442 559, 373 554, 300 542
+    C 265 536, 241 511, 246 478
+    Z"/>
+
+  <path fill="#2F9E57" d="
+    M 454 541
+    C 456 529, 466 520, 479 520
+    L 545 520
+    C 558 520, 568 529, 570 541
+    L 594 679
+    C 598 702, 582 722, 559 726
+    C 543 729, 527 731, 512 731
+    C 497 731, 481 729, 465 726
+    C 442 722, 426 702, 430 679
+    Z"/>
+
+  <!-- MeshCore mark as negative-space gills -->
+  <g fill="none" stroke="#DDF3E4" stroke-linecap="round">
+    <path d="M 401 401 C 364 430, 350 474, 361 516" stroke-width="42"/>
+    <path d="M 623 401 C 660 430, 674 474, 663 516" stroke-width="42"/>
+    <path d="M 451 426 C 429 445, 422 474, 430 497" stroke-width="34"/>
+    <path d="M 573 426 C 595 445, 602 474, 594 497" stroke-width="34"/>
+  </g>
+
+  <circle cx="512" cy="465" r="31" fill="#DDF3E4"/>
+</svg>
