@@ -10,9 +10,9 @@ Mushroom and Tile styled [Home Assistant](https://www.home-assistant.io/) Lovela
 This project is a fork of [jpettitt/meshcore-card](https://github.com/jpettitt/meshcore-card).
 
 [![CI](https://github.com/2wenty2wo/mushroom-meshcore-card/actions/workflows/ci.yml/badge.svg)](https://github.com/2wenty2wo/mushroom-meshcore-card/actions/workflows/ci.yml)
-[![GitHub Release](https://img.shields.io/github/release/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
-[![License](https://img.shields.io/github/license/2wenty2wo/mushroom-meshcore-card.svg?style=for-the-badge)](LICENSE)
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
+[![GitHub Release](https://img.shields.io/github/v/release/2wenty2wo/mushroom-meshcore-card?style=flat&label=release)](https://github.com/2wenty2wo/mushroom-meshcore-card/releases)
+[![License](https://img.shields.io/github/license/2wenty2wo/mushroom-meshcore-card?style=flat&label=license)](LICENSE)
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange?style=flat)](https://hacs.xyz)
 
 </div>
 
