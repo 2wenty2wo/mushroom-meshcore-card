@@ -43,6 +43,9 @@ jobs:
       - name: Check translations
         run: npm run check-translations
 
+      - name: Run unit tests
+        run: npm run test
+
       - name: Build
         run: npm run build
 

@@ -14,7 +14,7 @@ import {
 } from "./helpers.js";
 import { handleAction, HeaderActionController } from "./actions.js";
 import { STYLES } from "./styles.js";
-import { discoverHubs, discoverNodes } from "./discovery.js";
+import { discoverHubs, discoverNodes, findEntityByDevice } from "./discovery.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
 
@@ -243,27 +243,8 @@ export class MeshcoreCard extends HTMLElement {
     ePrefix: string,
     eSuffix: string
   ): string | null {
-    if (!deviceId || !this._hass?.entities) return null;
-    const pLen = (ePrefix || "").length;
-    const sLen = (eSuffix || "").length;
-    // First pass: strip the discovered prefix/suffix and match the metric
-    // exactly (or as the last underscored segment of the core). This is
-    // the precise path when discovery's eSuffix correctly identifies the
-    // node-name slug.
-    for (const [entityId, info] of Object.entries(this._hass.entities)) {
-      if (info.device_id !== deviceId) continue;
-      const core = entityId.slice(pLen, sLen ? -sLen : undefined);
-      if (core === metric || core.endsWith(`_${metric}`)) return entityId;
-    }
-    // Fallback for older entity-ID formats with no node-name suffix:
-    // accept entities whose ID ends exactly in `_<metric>`. We don't
-    // also `includes(_<metric>_)` because that over-matches — e.g.
-    // `_battery_percentage_*` would falsely satisfy metric "battery".
-    for (const [entityId, info] of Object.entries(this._hass.entities)) {
-      if (info.device_id !== deviceId) continue;
-      if (entityId.endsWith(`_${metric}`)) return entityId;
-    }
-    return null;
+    if (!this._hass?.entities) return null;
+    return findEntityByDevice(this._hass.entities, deviceId, metric, ePrefix, eSuffix);
   }
 
   // ── Discovery ─────────────────────────────────────────────────────────────
