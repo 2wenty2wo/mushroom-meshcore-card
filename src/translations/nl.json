@@ -73,7 +73,24 @@
     "tx_power": "TX-vermogen",
     "battery_voltage": "Batterijspanning",
     "firmware_label": "Firmware {version}",
-    "confirm_action": "Weet u het zeker?"
+    "confirm_action": "Weet u het zeker?",
+    "select_mentions_prompt": "Selecteer de Home Assistant-takenlijst die door de MeshCore-vermeldingsautomatisering wordt gebruikt.",
+    "mentions_invalid_entity": "Het geselecteerde vermeldingsdoel ‘{id}’ is geen takenlijstentiteit.",
+    "mentions_not_found": "De geselecteerde vermeldingenlijst ‘{id}’ is niet gevonden.",
+    "mentions_title": "MeshCore-vermeldingen",
+    "mentions_loading": "MeshCore-vermeldingen laden…",
+    "mentions_loading_short": "Laden…",
+    "mentions_unavailable": "Vermeldingen zijn niet beschikbaar. Controleer de verbinding met de Home Assistant-takenlijst.",
+    "mentions_entity_unavailable": "De geselecteerde vermeldingenlijst is niet beschikbaar.",
+    "mentions_empty": "Geen onverwerkte MeshCore-vermeldingen.",
+    "mentions_count_one": "1 onverwerkte vermelding",
+    "mentions_count": "{n} onverwerkte vermeldingen",
+    "mentions_pending": "Openstaand",
+    "mentions_handled": "Afgehandeld",
+    "mentions_channel": "op {channel}",
+    "mentions_handle_label": "Markeren als afgehandeld: {item}",
+    "mentions_reopen_label": "Vermelding heropenen: {item}",
+    "mentions_update_failed": "Deze vermelding kon niet worden bijgewerkt. Probeer het opnieuw."
   },
   "time": {
     "s_ago": "{n}s geleden",
@@ -126,6 +143,10 @@
     "hide_date_headers": "Datumkoppen verbergen",
     "hours_to_show": "Aantal uren",
     "max_messages": "Maximumaantal berichten",
-    "section_history": "Geschiedenis"
+    "section_history": "Geschiedenis",
+    "target_mentions": "Takenlijst voor vermeldingen",
+    "no_todo_entities": "Nog geen Home Assistant-takenlijsten gedetecteerd. Voeg Lokale takenlijst toe en bewerk de kaart opnieuw.",
+    "hide_completed_mentions": "Afgehandelde vermeldingen verbergen",
+    "section_mentions_behavior": "Vermeldingen"
   }
 }

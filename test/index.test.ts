@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 describe("card registration", () => {
-  it("defines all four custom elements and announces both cards", async () => {
+  it("defines all six custom elements and announces all three cards", async () => {
     await import("../src/index.js");
     expect(customElements.get("mushroom-meshcore-card")).toBeDefined();
     expect(customElements.get("mushroom-meshcore-card-editor")).toBeDefined();
@@ -9,10 +9,15 @@ describe("card registration", () => {
     expect(
       customElements.get("mushroom-meshcore-channel-card-editor")
     ).toBeDefined();
+    expect(customElements.get("mushroom-meshcore-mentions-card")).toBeDefined();
+    expect(
+      customElements.get("mushroom-meshcore-mentions-card-editor")
+    ).toBeDefined();
 
     const types = window.customCards.map((card) => card.type);
     expect(types).toContain("mushroom-meshcore-card");
     expect(types).toContain("mushroom-meshcore-channel-card");
+    expect(types).toContain("mushroom-meshcore-mentions-card");
     for (const entry of window.customCards) {
       expect(entry.name).toBeTruthy();
       expect(entry.preview).toBe(true);

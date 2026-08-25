@@ -232,6 +232,8 @@ function createLogbookConnection({ reject = false } = {}) {
 
 const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
 const SECOND_CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_1_messages";
+const MENTIONS_ENTITY = "todo.meshcore_tags";
+const SECOND_MENTIONS_ENTITY = "todo.meshcore_mentions_archive";
 
 function createChannelHass({ unavailable = false, reject = false } = {}) {
   const hass = createHass();
@@ -253,6 +255,37 @@ function createChannelHass({ unavailable = false, reject = false } = {}) {
   };
   hass.config = { components: ["logbook"], time_zone: "Australia/Sydney" };
   hass.connection = createLogbookConnection({ reject });
+  return hass;
+}
+
+function createMentionsHass({ unavailable = false, reject = false, callService } = {}) {
+  const hass = createHass();
+  hass.states[MENTIONS_ENTITY] = state(unavailable ? "unavailable" : 2, {
+    friendly_name: "MeshCore Tags",
+    supported_features: 4,
+  });
+  hass.states[SECOND_MENTIONS_ENTITY] = state(0, {
+    friendly_name: "MeshCore Mentions Archive",
+    supported_features: 4,
+  });
+  hass.entities[MENTIONS_ENTITY] = {
+    entity_id: MENTIONS_ENTITY,
+    device_id: null,
+    platform: "local_todo",
+    name: null,
+    icon: null,
+    disabled_by: null,
+  };
+  hass.entities[SECOND_MENTIONS_ENTITY] = {
+    ...hass.entities[MENTIONS_ENTITY],
+    entity_id: SECOND_MENTIONS_ENTITY,
+  };
+  hass.connection = createLogbookConnection({ reject });
+  hass.serviceCalls = [];
+  hass.callService = (...args) => {
+    hass.serviceCalls.push(args);
+    return callService ? callService(...args) : Promise.resolve();
+  };
   return hass;
 }
 
@@ -867,4 +900,309 @@ assert.match(
   /No MeshCore channel entities detected/,
 );
 
-console.log("Main and channel render smoke tests passed");
+const MentionsCard = registry.get("mushroom-meshcore-mentions-card");
+assert.ok(MentionsCard, "mentions card is registered");
+assert.ok(
+  window.customCards.some((card) => card.type === "mushroom-meshcore-mentions-card"),
+  "mentions card is registered in the card picker",
+);
+assert.deepEqual(MentionsCard.getStubConfig(), {});
+
+const mentionsNoEntity = new MentionsCard();
+mentionsNoEntity.setConfig({});
+mentionsNoEntity.hass = createMentionsHass();
+assert.match(mentionsNoEntity.shadowRoot.innerHTML, /Select the Home Assistant to-do list/);
+
+const mentionsWrongDomain = new MentionsCard();
+mentionsWrongDomain.setConfig({ entity: "sensor.meshcore_tags" });
+mentionsWrongDomain.hass = createMentionsHass();
+assert.match(mentionsWrongDomain.shadowRoot.innerHTML, /is not a to-do entity/);
+
+const mentionsMissing = new MentionsCard();
+mentionsMissing.setConfig({ entity: "todo.missing_mentions" });
+mentionsMissing.hass = createMentionsHass();
+assert.match(mentionsMissing.shadowRoot.innerHTML, /was not found/);
+
+const mentionsUnavailableHass = createMentionsHass({ unavailable: true });
+const mentionsUnavailable = new MentionsCard();
+mentionsUnavailable.setConfig({ entity: MENTIONS_ENTITY });
+mentionsUnavailable.hass = mentionsUnavailableHass;
+mentionsUnavailable.connectedCallback();
+assert.match(mentionsUnavailable.shadowRoot.innerHTML, /selected mentions list is unavailable/);
+assert.equal(mentionsUnavailableHass.connection.subscriptions.length, 0);
+mentionsUnavailable.disconnectedCallback();
+
+const mentionsHass = createMentionsHass();
+const mentionsCard = new MentionsCard();
+mentionsCard.setConfig({ entity: MENTIONS_ENTITY });
+mentionsCard.hass = mentionsHass;
+mentionsCard.connectedCallback();
+assert.equal(mentionsHass.connection.subscriptions.length, 1);
+const mentionsSubscription = mentionsHass.connection.subscriptions[0];
+assert.deepEqual(mentionsSubscription.params, {
+  type: "todo/item/subscribe",
+  entity_id: MENTIONS_ENTITY,
+});
+assert.equal(mentionsSubscription.options.resubscribe, false);
+assert.match(mentionsCard.shadowRoot.innerHTML, /Loading MeshCore mentions/);
+assert.equal(mentionsCard.shadowRoot.querySelector("ha-tile-info").primary, "MeshCore Mentions");
+assert.equal(mentionsCard.shadowRoot.querySelector("ha-tile-info").secondary, "Loading…");
+
+const mentionItems = [
+  {
+    uid: "mention-a",
+    summary: "Alice & <Admin> on Public: First: keep\nsecond <line>",
+    status: "needs_action",
+    description: "Details <unsafe>",
+  },
+  {
+    uid: "mention-b",
+    summary: "Bob on Team: Handled <message>",
+    status: "completed",
+  },
+  {
+    uid: "mention-c",
+    summary: "<script>alert('fallback')</script>",
+    status: null,
+  },
+  {
+    uid: "mention-d",
+    summary: "Rock on Radio on Ops: Hello",
+    status: "needs_action",
+  },
+  { uid: 5, summary: "Invalid item", status: "needs_action" },
+];
+mentionsSubscription.callback({ items: mentionItems });
+let mentionsHtml = mentionsCard.shadowRoot.innerHTML;
+assert.equal((mentionsHtml.match(/class="mention-row/g) ?? []).length, 3);
+assert.match(mentionsHtml, /Alice &amp; &lt;Admin&gt;/);
+assert.match(mentionsHtml, /on Public/);
+assert.match(mentionsHtml, /First: keep\nsecond &lt;line&gt;/);
+assert.match(mentionsHtml, /Details &lt;unsafe&gt;/);
+assert.match(
+  mentionsHtml,
+  /&lt;script&gt;alert\(&#39;fallback&#39;\)&lt;\/script&gt;/,
+);
+assert.doesNotMatch(mentionsHtml, /<script>/);
+assert.match(mentionsHtml, /Rock on Radio/);
+assert.match(mentionsHtml, /on Ops/);
+assert.doesNotMatch(mentionsHtml, /Handled &lt;message&gt;|class="mention-section-label"/);
+assert.equal(mentionsCard.shadowRoot.querySelector("ha-tile-info").secondary, "3 unhandled mentions");
+assert.deepEqual(mentionsCard.getGridOptions(), {
+  columns: "full",
+  rows: "auto",
+  min_columns: 6,
+  min_rows: 1,
+});
+assert.equal(mentionsCard.getCardSize(), 4);
+
+mentionsCard.setConfig({
+  entity: MENTIONS_ENTITY,
+  name: "Radio Mentions",
+  icon: "mdi:message-alert",
+  icon_color: "orange",
+  hide_completed: false,
+  grid_options: { columns: "full", rows: 6 },
+});
+mentionsHtml = mentionsCard.shadowRoot.innerHTML;
+assert.equal(mentionsCard.shadowRoot.querySelector("ha-tile-info").primary, "Radio Mentions");
+assert.match(mentionsHtml, /mdi:message-alert/);
+assert.match(mentionsHtml, /--mushroom-meshcore-icon-override-color:var\(--orange-color/);
+assert.equal((mentionsHtml.match(/class="mention-row/g) ?? []).length, 4);
+assert.match(mentionsHtml, />Pending</);
+assert.match(mentionsHtml, />Handled</);
+assert.match(mentionsHtml, /Handled &lt;message&gt;/);
+assert.match(mentionsHtml, /mentions-card grid-rows/);
+
+mentionsCard.shadowRoot.listeners.get("click")({
+  target: {
+    closest: (selector) =>
+      selector === "[data-mention-uid]"
+        ? { dataset: { mentionUid: "mention-a" } }
+        : null,
+  },
+});
+await Promise.resolve();
+await Promise.resolve();
+assert.deepEqual(mentionsHass.serviceCalls[0], [
+  "todo",
+  "update_item",
+  { item: "mention-a", status: "completed" },
+  { entity_id: MENTIONS_ENTITY },
+]);
+assert.match(
+  mentionsCard.shadowRoot.innerHTML,
+  /data-mention-uid="mention-a"[\s\S]*?aria-checked="true"/,
+);
+
+mentionsCard.shadowRoot.listeners.get("click")({
+  target: {
+    closest: (selector) =>
+      selector === "[data-mention-uid]"
+        ? { dataset: { mentionUid: "mention-b" } }
+        : null,
+  },
+});
+await Promise.resolve();
+await Promise.resolve();
+assert.deepEqual(mentionsHass.serviceCalls[1]?.slice(0, 3), [
+  "todo",
+  "update_item",
+  { item: "mention-b", status: "needs_action" },
+]);
+
+mentionsCard.shadowRoot.listeners.get("click")({
+  target: {
+    closest: (selector) =>
+      selector === "[data-action-scope]"
+        ? { dataset: { entity: MENTIONS_ENTITY } }
+        : null,
+  },
+});
+assert.equal(mentionsCard.lastEvent?.detail?.entityId, MENTIONS_ENTITY);
+
+let releasePending;
+const pendingService = new Promise((resolve) => {
+  releasePending = resolve;
+});
+const pendingMentionsHass = createMentionsHass({ callService: () => pendingService });
+const pendingMentionsCard = new MentionsCard();
+pendingMentionsCard.setConfig({ entity: MENTIONS_ENTITY });
+pendingMentionsCard.hass = pendingMentionsHass;
+pendingMentionsCard.connectedCallback();
+pendingMentionsHass.connection.subscriptions[0].callback({ items: [mentionItems[0]] });
+const pendingClick = {
+  target: {
+    closest: (selector) =>
+      selector === "[data-mention-uid]"
+        ? { dataset: { mentionUid: "mention-a" } }
+        : null,
+  },
+};
+pendingMentionsCard.shadowRoot.listeners.get("click")(pendingClick);
+pendingMentionsCard.shadowRoot.listeners.get("click")(pendingClick);
+assert.equal(pendingMentionsHass.serviceCalls.length, 1, "pending item suppresses duplicate updates");
+assert.match(pendingMentionsCard.shadowRoot.innerHTML, /disabled aria-busy="true"/);
+releasePending();
+await Promise.resolve();
+await Promise.resolve();
+pendingMentionsCard.disconnectedCallback();
+
+const rejectedMentionsHass = createMentionsHass({
+  callService: () => Promise.reject(new Error("Update rejected")),
+});
+const rejectedMentionsCard = new MentionsCard();
+rejectedMentionsCard.setConfig({ entity: MENTIONS_ENTITY });
+rejectedMentionsCard.hass = rejectedMentionsHass;
+rejectedMentionsCard.connectedCallback();
+rejectedMentionsHass.connection.subscriptions[0].callback({ items: [mentionItems[0]] });
+rejectedMentionsCard.shadowRoot.listeners.get("click")(pendingClick);
+await Promise.resolve();
+await Promise.resolve();
+assert.match(rejectedMentionsCard.shadowRoot.innerHTML, /Could not update this mention/);
+assert.match(rejectedMentionsCard.shadowRoot.innerHTML, /aria-checked="false"/);
+rejectedMentionsCard.disconnectedCallback();
+
+const emptyMentionsHass = createMentionsHass();
+const emptyMentionsCard = new MentionsCard();
+emptyMentionsCard.setConfig({ entity: MENTIONS_ENTITY });
+emptyMentionsCard.hass = emptyMentionsHass;
+emptyMentionsCard.connectedCallback();
+emptyMentionsHass.connection.subscriptions[0].callback({ items: [] });
+assert.match(emptyMentionsCard.shadowRoot.innerHTML, /No unhandled MeshCore mentions/);
+assert.equal(emptyMentionsCard.shadowRoot.querySelector("ha-tile-info").secondary, "0 unhandled mentions");
+emptyMentionsCard.disconnectedCallback();
+
+const mentionsErrorHass = createMentionsHass({ reject: true });
+const mentionsErrorCard = new MentionsCard();
+mentionsErrorCard.setConfig({ entity: MENTIONS_ENTITY });
+mentionsErrorCard.hass = mentionsErrorHass;
+mentionsErrorCard.connectedCallback();
+await Promise.resolve();
+await Promise.resolve();
+assert.match(mentionsErrorCard.shadowRoot.innerHTML, /Mentions are unavailable/);
+mentionsErrorCard.disconnectedCallback();
+
+await Promise.resolve();
+mentionsHass.connection.emitReady();
+assert.equal(mentionsHass.connection.subscriptions.length, 2);
+assert.equal(
+  mentionsSubscription.unsubscribed,
+  false,
+  "the dead mentions subscription handle is dropped on reconnect",
+);
+const replayMentionsSubscription = mentionsHass.connection.subscriptions[1];
+replayMentionsSubscription.callback({ items: mentionItems.slice(0, 2) });
+await Promise.resolve();
+mentionsCard.setConfig({ entity: SECOND_MENTIONS_ENTITY });
+assert.equal(replayMentionsSubscription.unsubscribed, true);
+assert.equal(mentionsHass.connection.subscriptions.length, 3);
+const switchedMentionsSubscription = mentionsHass.connection.subscriptions[2];
+mentionsCard.disconnectedCallback();
+await Promise.resolve();
+assert.equal(switchedMentionsSubscription.unsubscribed, true);
+
+const MentionsEditor = registry.get("mushroom-meshcore-mentions-card-editor");
+assert.ok(MentionsEditor, "mentions-card editor is registered");
+const mentionsEditorConfig = {
+  entity: MENTIONS_ENTITY,
+  name: "Radio Mentions",
+  icon: "mdi:message-alert",
+  icon_color: "orange",
+  hide_completed: false,
+  tap_action: { action: "more-info" },
+  grid_options: { columns: "full", rows: 6 },
+};
+const mentionsEditor = new MentionsEditor();
+mentionsEditor.setConfig(mentionsEditorConfig);
+mentionsEditor.hass = createMentionsHass();
+let mentionsForms = mentionsEditor.querySelectorAll("ha-form");
+assert.equal(mentionsForms.length, 2);
+assert.equal(mentionsForms[0].schema[0].selector.entity.domain, "todo");
+assert.deepEqual(mentionsForms[0].schema[0].selector.entity.include_entities, [
+  SECOND_MENTIONS_ENTITY,
+  MENTIONS_ENTITY,
+]);
+assert.deepEqual(
+  mentionsForms[1].schema.map((section) => section.title),
+  ["Appearance", "Interactions", "Mentions"],
+);
+assert.equal(mentionsForms[1].data.hide_completed, false);
+mentionsForms[0].listeners.get("value-changed")({
+  detail: { value: { entity: SECOND_MENTIONS_ENTITY } },
+});
+const switchedMentionsConfig = mentionsEditor.lastEvent?.detail?.config;
+assert.equal(switchedMentionsConfig.entity, SECOND_MENTIONS_ENTITY);
+assert.equal(switchedMentionsConfig.name, "Radio Mentions");
+assert.equal(switchedMentionsConfig.hide_completed, false);
+assert.deepEqual(switchedMentionsConfig.grid_options, { columns: "full", rows: 6 });
+mentionsForms = mentionsEditor.querySelectorAll("ha-form");
+const stableMentionsSettings = mentionsForms[1];
+mentionsEditor.setConfig(switchedMentionsConfig);
+assert.equal(
+  mentionsEditor.querySelectorAll("ha-form")[1],
+  stableMentionsSettings,
+  "mentions config echo preserves editor panels and focus",
+);
+stableMentionsSettings.listeners.get("value-changed")({
+  detail: {
+    value: {
+      ...stableMentionsSettings.data,
+      hide_completed: true,
+    },
+  },
+});
+const behaviorMentionsConfig = mentionsEditor.lastEvent?.detail?.config;
+assert.equal("hide_completed" in behaviorMentionsConfig, false);
+assert.deepEqual(behaviorMentionsConfig.grid_options, { columns: "full", rows: 6 });
+
+const noTodoEditor = new MentionsEditor();
+noTodoEditor.setConfig({});
+noTodoEditor.hass = createHass();
+assert.equal(noTodoEditor.querySelectorAll("ha-alert").length, 1);
+assert.match(
+  noTodoEditor.querySelectorAll("ha-alert")[0].textContent,
+  /No Home Assistant to-do lists detected/,
+);
+
+console.log("Main, channel, and mentions render smoke tests passed");

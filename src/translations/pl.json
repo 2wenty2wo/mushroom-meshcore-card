@@ -73,7 +73,24 @@
     "tx_power": "Moc TX",
     "battery_voltage": "Napięcie baterii",
     "firmware_label": "Oprogramowanie sprzętowe {version}",
-    "confirm_action": "Czy na pewno?"
+    "confirm_action": "Czy na pewno?",
+    "select_mentions_prompt": "Wybierz listę zadań Home Assistant używaną przez automatyzację wzmianek MeshCore.",
+    "mentions_invalid_entity": "Wybrany cel wzmianek „{id}” nie jest encją listy zadań.",
+    "mentions_not_found": "Nie znaleziono wybranej listy wzmianek „{id}”.",
+    "mentions_title": "Wzmianki MeshCore",
+    "mentions_loading": "Wczytywanie wzmianek MeshCore…",
+    "mentions_loading_short": "Wczytywanie…",
+    "mentions_unavailable": "Wzmianki są niedostępne. Sprawdź połączenie z listą zadań Home Assistant.",
+    "mentions_entity_unavailable": "Wybrana lista wzmianek jest niedostępna.",
+    "mentions_empty": "Brak nieobsłużonych wzmianek MeshCore.",
+    "mentions_count_one": "1 nieobsłużona wzmianka",
+    "mentions_count": "{n} nieobsłużonych wzmianek",
+    "mentions_pending": "Oczekujące",
+    "mentions_handled": "Obsłużone",
+    "mentions_channel": "na {channel}",
+    "mentions_handle_label": "Oznacz jako obsłużoną: {item}",
+    "mentions_reopen_label": "Otwórz ponownie wzmiankę: {item}",
+    "mentions_update_failed": "Nie udało się zaktualizować tej wzmianki. Spróbuj ponownie."
   },
   "time": {
     "s_ago": "{n} s temu",
@@ -126,6 +143,10 @@
     "hide_date_headers": "Ukryj nagłówki dat",
     "hours_to_show": "Liczba godzin",
     "max_messages": "Maksymalna liczba wiadomości",
-    "section_history": "Historia"
+    "section_history": "Historia",
+    "target_mentions": "Lista zadań ze wzmiankami",
+    "no_todo_entities": "Nie wykryto jeszcze list zadań Home Assistant. Dodaj integrację Lokalna lista zadań, a następnie ponownie edytuj kartę.",
+    "hide_completed_mentions": "Ukryj obsłużone wzmianki",
+    "section_mentions_behavior": "Wzmianki"
   }
 }

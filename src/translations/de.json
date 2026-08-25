@@ -73,7 +73,24 @@
     "tx_power": "Sendeleistung",
     "battery_voltage": "Batteriespannung",
     "firmware_label": "Firmware {version}",
-    "confirm_action": "Sind Sie sicher?"
+    "confirm_action": "Sind Sie sicher?",
+    "select_mentions_prompt": "Wählen Sie die von der MeshCore-Erwähnungsautomatisierung verwendete Home-Assistant-Aufgabenliste aus.",
+    "mentions_invalid_entity": "Das ausgewählte Erwähnungsziel „{id}“ ist keine Aufgabenentität.",
+    "mentions_not_found": "Die ausgewählte Erwähnungsliste „{id}“ wurde nicht gefunden.",
+    "mentions_title": "MeshCore-Erwähnungen",
+    "mentions_loading": "MeshCore-Erwähnungen werden geladen…",
+    "mentions_loading_short": "Wird geladen…",
+    "mentions_unavailable": "Erwähnungen sind nicht verfügbar. Prüfen Sie die Verbindung zur Home-Assistant-Aufgabenliste.",
+    "mentions_entity_unavailable": "Die ausgewählte Erwähnungsliste ist nicht verfügbar.",
+    "mentions_empty": "Keine unbearbeiteten MeshCore-Erwähnungen.",
+    "mentions_count_one": "1 unbearbeitete Erwähnung",
+    "mentions_count": "{n} unbearbeitete Erwähnungen",
+    "mentions_pending": "Offen",
+    "mentions_handled": "Erledigt",
+    "mentions_channel": "auf {channel}",
+    "mentions_handle_label": "Als erledigt markieren: {item}",
+    "mentions_reopen_label": "Erwähnung erneut öffnen: {item}",
+    "mentions_update_failed": "Diese Erwähnung konnte nicht aktualisiert werden. Versuchen Sie es erneut."
   },
   "time": {
     "s_ago": "vor {n}s",
@@ -126,6 +143,10 @@
     "hide_date_headers": "Datumsüberschriften ausblenden",
     "hours_to_show": "Anzuzeigende Stunden",
     "max_messages": "Maximale Nachrichtenanzahl",
-    "section_history": "Verlauf"
+    "section_history": "Verlauf",
+    "target_mentions": "Aufgabenliste für Erwähnungen",
+    "no_todo_entities": "Noch keine Home-Assistant-Aufgabenlisten erkannt. Fügen Sie Lokale Aufgaben hinzu und bearbeiten Sie die Karte erneut.",
+    "hide_completed_mentions": "Erledigte Erwähnungen ausblenden",
+    "section_mentions_behavior": "Erwähnungen"
   }
 }
