@@ -162,13 +162,13 @@ interface ScrollAnchor {
   atTop: boolean;
 }
 
-function normalizedPositiveNumber(value: unknown, fallback: number): number {
+export function normalizedPositiveNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 1
     ? value
     : fallback;
 }
 
-function parseChannel(
+export function parseChannel(
   entityId: string,
   attrs: Record<string, unknown>,
   discoveredHubName?: string
@@ -205,7 +205,7 @@ function parseChannel(
 }
 
 /** Remove one MeshCore channel prefix and split only the first sender colon. */
-function parseMessage(message: string): ParsedMessage | null {
+export function parseMessage(message: string): ParsedMessage | null {
   if (!message.trim()) return null;
   const withoutChannel = message.replace(/^\s*<[^>\r\n]+>\s*/, "");
   if (!withoutChannel.trim()) return null;

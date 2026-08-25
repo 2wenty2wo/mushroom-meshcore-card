@@ -1,4 +1,9 @@
-import type { HomeAssistant, HubInfo, NodeInfo } from "./types.js";
+import type {
+  HassEntityRegistryEntry,
+  HomeAssistant,
+  HubInfo,
+  NodeInfo,
+} from "./types.js";
 import { longestCommonPrefix, longestCommonSuffix } from "./helpers.js";
 
 // Longest suffix shared by at least half of the strings.
@@ -27,6 +32,38 @@ function majoritySuffix(strs: string[]): string {
     }
   }
   return best;
+}
+
+/** Resolve one metric entity among a device's registry entities, using the
+ *  entity-ID prefix/suffix discovered for that device. */
+export function findEntityByDevice(
+  entities: Record<string, HassEntityRegistryEntry>,
+  deviceId: string,
+  metric: string,
+  ePrefix: string,
+  eSuffix: string
+): string | null {
+  if (!deviceId) return null;
+  const pLen = (ePrefix || "").length;
+  const sLen = (eSuffix || "").length;
+  // First pass: strip the discovered prefix/suffix and match the metric
+  // exactly (or as the last underscored segment of the core). This is
+  // the precise path when discovery's eSuffix correctly identifies the
+  // node-name slug.
+  for (const [entityId, info] of Object.entries(entities)) {
+    if (info.device_id !== deviceId) continue;
+    const core = entityId.slice(pLen, sLen ? -sLen : undefined);
+    if (core === metric || core.endsWith(`_${metric}`)) return entityId;
+  }
+  // Fallback for older entity-ID formats with no node-name suffix:
+  // accept entities whose ID ends exactly in `_<metric>`. We don't
+  // also `includes(_<metric>_)` because that over-matches — e.g.
+  // `_battery_percentage_*` would falsely satisfy metric "battery".
+  for (const [entityId, info] of Object.entries(entities)) {
+    if (info.device_id !== deviceId) continue;
+    if (entityId.endsWith(`_${metric}`)) return entityId;
+  }
+  return null;
 }
 
 export function discoverHubs(hass: HomeAssistant): HubInfo[] {
