@@ -116,8 +116,33 @@ describe("MeshcoreMentionsCardEditor", () => {
     expect(target!.computeLabel(target!.schema[0]!)).toBe(
       t("editor.target_mentions")
     );
-    expect(settings!.computeLabel({ name: "bare", selector: {} })).toBe(
-      "bare"
+    const appearance = settings!.schema[0] as HaFormExpandableSchema;
+    expect(settings!.computeLabel(appearance.schema[0]!)).toBe(
+      t("editor.name_label")
+    );
+    for (const form of [target!, settings!]) {
+      expect(form.computeLabel({ name: "bare", selector: {} })).toBe("bare");
+      expect(
+        form.computeLabel({ name: "fallback", label: undefined, selector: {} })
+      ).toBe("fallback");
+    }
+  });
+
+  it("falls back through the hass locale and then English", () => {
+    const germanHass = createEditorHass();
+    germanHass.language = undefined as never;
+    germanHass.locale.language = "de";
+    const german = createEditor({}, germanHass).editor;
+    expect(
+      (forms(german)[0]!.schema[0] as HaFormFieldSchema).label
+    ).toBe(makeLocalize("de")("editor.target_mentions"));
+
+    const fallbackHass = createHass();
+    fallbackHass.language = undefined as never;
+    fallbackHass.locale = undefined as never;
+    const fallback = createEditor({}, fallbackHass).editor;
+    expect(fallback.querySelector("ha-alert")?.textContent).toBe(
+      t("editor.no_todo_entities")
     );
   });
 

@@ -196,6 +196,35 @@ describe("mentions card target states", () => {
     document.body.appendChild(card);
     expect(shadowBody(card)).toContain(t("card.mentions_loading"));
   });
+
+  it("falls back through the hass locale and then English", async () => {
+    const germanHass = createMentionsHass();
+    germanHass.language = undefined as never;
+    germanHass.locale.language = "de";
+    const german = await createCard({}, createConnection(), germanHass);
+    expect(shadowBody(german.card)).toContain(
+      makeLocalize("de")("card.select_mentions_prompt")
+    );
+
+    const fallbackHass = createMentionsHass();
+    fallbackHass.language = undefined as never;
+    fallbackHass.locale = undefined as never;
+    const fallback = await createCard({}, createConnection(), fallbackHass);
+    expect(shadowBody(fallback.card)).toContain(t("card.select_mentions_prompt"));
+  });
+
+  it("handles missing optional todo attributes", async () => {
+    const mock = createConnection();
+    const hass = createMentionsHass(mock);
+    delete hass.states[TODO_ENTITY]!.attributes["friendly_name"];
+    delete hass.states[TODO_ENTITY]!.attributes["supported_features"];
+    const { card } = await createCard({ entity: TODO_ENTITY }, mock, hass);
+    feed(mock, [pendingItem()]);
+    expect(
+      card.shadowRoot!.querySelector<HTMLButtonElement>("[data-mention-uid]")!
+        .disabled
+    ).toBe(true);
+  });
 });
 
 describe("mentions card subscription lifecycle", () => {
@@ -332,6 +361,71 @@ describe("mentions card subscription lifecycle", () => {
     expect(shadowBody(card)).not.toContain("stale");
     feed(mock, [pendingItem("new", "New on Public: current")], 1);
     expect(shadowBody(card)).toContain("current");
+  });
+
+  it("ignores ready notifications after disconnect or target loss", async () => {
+    const disconnected = await createCard();
+    const readyAfterDisconnect = disconnected.mock.readyListeners[0]!;
+    disconnected.card.remove();
+    readyAfterDisconnect();
+    expect(disconnected.mock.subscribeMessage).toHaveBeenCalledTimes(1);
+
+    const unavailable = await createCard();
+    const readyWithoutTarget = unavailable.mock.readyListeners[0]!;
+    unavailable.hass.states[TODO_ENTITY]!.state = "unavailable";
+    unavailable.card.hass = { ...unavailable.hass };
+    readyWithoutTarget();
+    expect(unavailable.mock.subscribeMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a stale subscription rejection after reconnect", async () => {
+    const mock = createConnection();
+    const workingSubscribe = mock.connection.subscribeMessage.bind(
+      mock.connection
+    );
+    let rejectFirst!: (reason: Error) => void;
+    let subscriptions = 0;
+    const subscribe = vi.fn(
+      (
+        callback: (message: { items: unknown[] }) => void,
+        params: Record<string, unknown>,
+        options: { resubscribe?: boolean }
+      ) => {
+        subscriptions++;
+        if (subscriptions === 1) {
+          mock.callbacks.push(callback);
+          return new Promise<() => void>((_resolve, reject) => {
+            rejectFirst = reject;
+          });
+        }
+        return workingSubscribe(callback, params, options);
+      }
+    );
+    mock.connection.subscribeMessage = subscribe as never;
+    mock.subscribeMessage = subscribe;
+    const { card } = await createCard(
+      { entity: TODO_ENTITY },
+      mock,
+      createMentionsHass(mock)
+    );
+    mock.readyListeners[0]!();
+    await vi.advanceTimersByTimeAsync(0);
+    feed(mock, [pendingItem("new", "Alice on Public: retained")], 1);
+    rejectFirst(new Error("old socket rejected"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shadowBody(card)).toContain("retained");
+    expect(shadowBody(card)).not.toContain(t("card.mentions_unavailable"));
+  });
+
+  it("keeps the private subscribe guard safe without hass or entity", () => {
+    const card = new MeshcoreMentionsCard();
+    expect(() =>
+      (card as unknown as { _subscribe(): void })._subscribe()
+    ).not.toThrow();
+    card.hass = createMentionsHass();
+    expect(() =>
+      (card as unknown as { _subscribe(): void })._subscribe()
+    ).not.toThrow();
   });
 
   it("moves the subscription when the connection object changes", async () => {
@@ -625,7 +719,12 @@ describe("mentions card item actions", () => {
     );
     feed(mock, [pendingItem()]);
     clickMention(card, "mention-a");
-    clickMention(card, "mention-a");
+    const duplicate = document.createElement("button");
+    duplicate.dataset["mentionUid"] = "mention-a";
+    card.shadowRoot!.appendChild(duplicate);
+    duplicate.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, composed: true })
+    );
     expect(callService).toHaveBeenCalledTimes(1);
     resolveService();
     await vi.advanceTimersByTimeAsync(0);
