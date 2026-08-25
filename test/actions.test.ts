@@ -279,4 +279,11 @@ describe("HeaderActionController", () => {
     vi.advanceTimersByTime(1000);
     expect(callService).not.toHaveBeenCalled();
   });
+
+  it("cancels a pending delayed tap on disconnect", () => {
+    controller.handleClick(clickEvent());
+    controller.disconnect();
+    vi.advanceTimersByTime(1000);
+    expect(callService).not.toHaveBeenCalled();
+  });
 });

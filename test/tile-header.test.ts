@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { renderTileHeader, type TileHeaderOptions } from "../src/tile-header.js";
+import {
+  hydrateTileInfo,
+  renderTileHeader,
+  type TileHeaderOptions,
+} from "../src/tile-header.js";
 
 const baseOptions: TileHeaderOptions = {
   displayName: "Spring Farm",
@@ -124,5 +128,46 @@ describe("renderTileHeader", () => {
     const html = renderTileHeader(undefined, { ...baseOptions, secondary: "" });
     expect(html).not.toContain('slot="secondary"');
     expect(html).toContain('aria-label="Spring Farm"');
+  });
+});
+
+describe("hydrateTileInfo", () => {
+  type HydratedTileInfo = HTMLElement & { primary?: string; secondary?: string };
+
+  function renderRoot(options: TileHeaderOptions = baseOptions): ShadowRoot {
+    const host = document.createElement("div");
+    const root = host.attachShadow({ mode: "open" });
+    root.innerHTML = renderTileHeader(undefined, options);
+    return root;
+  }
+
+  // Runs before ha-tile-info is defined below, so it takes the deferred path.
+  it("waits for the ha-tile-info upgrade before applying properties", async () => {
+    const root = renderRoot();
+    hydrateTileInfo(root);
+    const info = root.querySelector("ha-tile-info") as HydratedTileInfo;
+    expect(info.primary).toBeUndefined();
+
+    customElements.define("ha-tile-info", class extends HTMLElement {});
+    await customElements.whenDefined("ha-tile-info");
+    await Promise.resolve();
+    expect(info.primary).toBe("Spring Farm");
+    expect(info.secondary).toBe("Online");
+  });
+
+  it("applies properties synchronously once the element is defined", () => {
+    const root = renderRoot();
+    hydrateTileInfo(root);
+    const info = root.querySelector("ha-tile-info") as HydratedTileInfo;
+    expect(info.primary).toBe("Spring Farm");
+    expect(info.secondary).toBe("Online");
+  });
+
+  it("hydrates an empty secondary when the slot is omitted", () => {
+    const root = renderRoot({ ...baseOptions, secondary: "" });
+    hydrateTileInfo(root);
+    const info = root.querySelector("ha-tile-info") as HydratedTileInfo;
+    expect(info.primary).toBe("Spring Farm");
+    expect(info.secondary).toBe("");
   });
 });
