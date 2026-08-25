@@ -142,6 +142,29 @@ Each channel card requires one `binary_sensor.meshcore_*_ch_<n>_messages` entity
 
 The history defaults to 24 hours and at most 200 messages. Dates and timestamps are visible by default and can be hidden independently. `name`, `icon`, `icon_color`, all three Tile actions, history settings, and `grid_options` can be configured in YAML or the visual editor.
 
+## Mentions card
+
+```yaml
+type: custom:mushroom-meshcore-mentions-card
+entity: todo.meshcore_tags
+name: MeshCore Mentions
+icon: mdi:at
+icon_color: orange
+hide_completed: true
+tap_action:
+  action: more-info
+hold_action:
+  action: none
+double_tap_action:
+  action: none
+grid_options:
+  columns: full
+```
+
+The mentions card is a Mushroom-styled inbox for the persistent to-do items created by the separate [MeshCore Tag → Home Assistant Notification](https://github.com/2wenty2wo/Meshcore-Tag-HA-Notification) automation. Follow that project's setup to install the automation and create its Local To-do list, then explicitly select the resulting `todo` entity in this card's visual editor. Installing this frontend card does not install the automation and does not provide background mention detection or mobile notifications.
+
+Each item written as `sender on channel: message` is shown as a structured sender, channel, and message row. Use its checkbox to mark the mention handled. Handled mentions are hidden by default; turn off **Hide handled mentions** to view them and reopen an item. The card also accepts renamed Local To-do entities, preserves the server's item order, and safely falls back to the full item text when an entry does not match the automation's expected format.
+
 
 ## Theme and Card Mod compatibility
 

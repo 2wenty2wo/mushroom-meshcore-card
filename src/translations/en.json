@@ -73,7 +73,24 @@
     "tx_power": "TX power",
     "battery_voltage": "Battery voltage",
     "firmware_label": "Firmware {version}",
-    "confirm_action": "Are you sure?"
+    "confirm_action": "Are you sure?",
+    "select_mentions_prompt": "Select the Home Assistant to-do list used by the MeshCore mentions automation.",
+    "mentions_invalid_entity": "The selected mentions target “{id}” is not a to-do entity.",
+    "mentions_not_found": "The selected mentions list “{id}” was not found.",
+    "mentions_title": "MeshCore Mentions",
+    "mentions_loading": "Loading MeshCore mentions…",
+    "mentions_loading_short": "Loading…",
+    "mentions_unavailable": "Mentions are unavailable. Check the Home Assistant to-do list connection.",
+    "mentions_entity_unavailable": "The selected mentions list is unavailable.",
+    "mentions_empty": "No unhandled MeshCore mentions.",
+    "mentions_count_one": "1 unhandled mention",
+    "mentions_count": "{n} unhandled mentions",
+    "mentions_pending": "Pending",
+    "mentions_handled": "Handled",
+    "mentions_channel": "on {channel}",
+    "mentions_handle_label": "Mark handled: {item}",
+    "mentions_reopen_label": "Reopen mention: {item}",
+    "mentions_update_failed": "Could not update this mention. Try again."
   },
   "time": {
     "s_ago": "{n}s ago",
@@ -126,6 +143,10 @@
     "hide_date_headers": "Hide date headers",
     "hours_to_show": "Hours to show",
     "max_messages": "Maximum messages",
-    "section_history": "History"
+    "section_history": "History",
+    "target_mentions": "Mentions to-do list",
+    "no_todo_entities": "No Home Assistant to-do lists detected yet. Add Local To-do, then edit the card again.",
+    "hide_completed_mentions": "Hide handled mentions",
+    "section_mentions_behavior": "Mentions"
   }
 }

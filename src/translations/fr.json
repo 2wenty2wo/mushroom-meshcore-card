@@ -73,7 +73,24 @@
     "tx_power": "Puissance TX",
     "battery_voltage": "Tension de batterie",
     "firmware_label": "Micrologiciel {version}",
-    "confirm_action": "Êtes-vous sûr ?"
+    "confirm_action": "Êtes-vous sûr ?",
+    "select_mentions_prompt": "Sélectionnez la liste de tâches Home Assistant utilisée par l’automatisation des mentions MeshCore.",
+    "mentions_invalid_entity": "La cible de mentions « {id} » n’est pas une entité de liste de tâches.",
+    "mentions_not_found": "La liste de mentions « {id} » est introuvable.",
+    "mentions_title": "Mentions MeshCore",
+    "mentions_loading": "Chargement des mentions MeshCore…",
+    "mentions_loading_short": "Chargement…",
+    "mentions_unavailable": "Les mentions sont indisponibles. Vérifiez la connexion à la liste de tâches Home Assistant.",
+    "mentions_entity_unavailable": "La liste de mentions sélectionnée est indisponible.",
+    "mentions_empty": "Aucune mention MeshCore non traitée.",
+    "mentions_count_one": "1 mention non traitée",
+    "mentions_count": "{n} mentions non traitées",
+    "mentions_pending": "En attente",
+    "mentions_handled": "Traitées",
+    "mentions_channel": "sur {channel}",
+    "mentions_handle_label": "Marquer comme traitée : {item}",
+    "mentions_reopen_label": "Rouvrir la mention : {item}",
+    "mentions_update_failed": "Impossible de mettre à jour cette mention. Réessayez."
   },
   "time": {
     "s_ago": "il y a {n}s",
@@ -126,6 +143,10 @@
     "hide_date_headers": "Masquer les en-têtes de date",
     "hours_to_show": "Heures à afficher",
     "max_messages": "Nombre maximal de messages",
-    "section_history": "Historique"
+    "section_history": "Historique",
+    "target_mentions": "Liste de tâches des mentions",
+    "no_todo_entities": "Aucune liste de tâches Home Assistant détectée. Ajoutez Liste de tâches locale, puis modifiez à nouveau la carte.",
+    "hide_completed_mentions": "Masquer les mentions traitées",
+    "section_mentions_behavior": "Mentions"
   }
 }

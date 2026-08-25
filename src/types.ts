@@ -142,6 +142,20 @@ export interface MeshcoreChannelCardConfig {
   grid_options?: GridOptions;
 }
 
+export interface MeshcoreMentionsCardConfig {
+  type?: string;
+  entity?: string;
+  name?: string;
+  icon?: string;
+  icon_color?: string;
+  tap_action?: ActionConfig;
+  hold_action?: ActionConfig;
+  double_tap_action?: ActionConfig;
+  /** Completed mentions are hidden unless this is explicitly false. */
+  hide_completed?: boolean;
+  grid_options?: GridOptions;
+}
+
 // ── Discovery result types ────────────────────────────────────────────────────
 
 export interface HubInfo {
