@@ -1,0 +1,9 @@
+# Coverage is reported for visibility; it never fails CI or PR checks.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
