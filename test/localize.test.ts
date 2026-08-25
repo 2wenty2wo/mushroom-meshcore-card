@@ -34,4 +34,8 @@ describe("makeLocalize", () => {
   it("does not treat intermediate objects as translations", () => {
     expect(makeLocalize("en")("card")).toBe("card");
   });
+
+  it("stops descending once the path runs past a leaf string", () => {
+    expect(makeLocalize("en")("card.online.nope")).toBe("card.online.nope");
+  });
 });

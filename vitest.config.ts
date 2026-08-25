@@ -9,6 +9,8 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
+      // types.ts holds only type declarations — nothing executable to cover.
+      exclude: ["src/types.ts"],
       // lcov feeds the Codecov upload in CI; text prints a local summary.
       reporter: ["text", "lcov"],
     },

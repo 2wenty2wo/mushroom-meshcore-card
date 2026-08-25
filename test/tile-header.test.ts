@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { renderTileHeader, type TileHeaderOptions } from "../src/tile-header.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import {
+  hydrateTileInfo,
+  renderTileHeader,
+  type TileHeaderOptions,
+} from "../src/tile-header.js";
+import { defineOnce } from "./fixtures.js";
 
 const baseOptions: TileHeaderOptions = {
   displayName: "Spring Farm",
@@ -124,5 +129,39 @@ describe("renderTileHeader", () => {
     const html = renderTileHeader(undefined, { ...baseOptions, secondary: "" });
     expect(html).not.toContain('slot="secondary"');
     expect(html).toContain('aria-label="Spring Farm"');
+  });
+});
+
+// The upgrade-deferral path (hydrating before ha-tile-info is defined) lives
+// in tile-header-hydration.test.ts: element definitions cannot be undone, so
+// it needs a custom-element registry where ha-tile-info never pre-exists.
+describe("hydrateTileInfo", () => {
+  type HydratedTileInfo = HTMLElement & { primary?: string; secondary?: string };
+
+  beforeAll(() => {
+    defineOnce("ha-tile-info", class extends HTMLElement {});
+  });
+
+  function renderRoot(options: TileHeaderOptions = baseOptions): ShadowRoot {
+    const host = document.createElement("div");
+    const root = host.attachShadow({ mode: "open" });
+    root.innerHTML = renderTileHeader(undefined, options);
+    return root;
+  }
+
+  it("applies properties synchronously once the element is defined", () => {
+    const root = renderRoot();
+    hydrateTileInfo(root);
+    const info = root.querySelector("ha-tile-info") as HydratedTileInfo;
+    expect(info.primary).toBe("Spring Farm");
+    expect(info.secondary).toBe("Online");
+  });
+
+  it("hydrates an empty secondary when the slot is omitted", () => {
+    const root = renderRoot({ ...baseOptions, secondary: "" });
+    hydrateTileInfo(root);
+    const info = root.querySelector("ha-tile-info") as HydratedTileInfo;
+    expect(info.primary).toBe("Spring Farm");
+    expect(info.secondary).toBe("");
   });
 });
