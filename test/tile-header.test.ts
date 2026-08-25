@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   hydrateTileInfo,
   renderTileHeader,
   type TileHeaderOptions,
 } from "../src/tile-header.js";
+import { defineOnce } from "./fixtures.js";
 
 const baseOptions: TileHeaderOptions = {
   displayName: "Spring Farm",
@@ -131,8 +132,15 @@ describe("renderTileHeader", () => {
   });
 });
 
+// The upgrade-deferral path (hydrating before ha-tile-info is defined) lives
+// in tile-header-hydration.test.ts: element definitions cannot be undone, so
+// it needs a custom-element registry where ha-tile-info never pre-exists.
 describe("hydrateTileInfo", () => {
   type HydratedTileInfo = HTMLElement & { primary?: string; secondary?: string };
+
+  beforeAll(() => {
+    defineOnce("ha-tile-info", class extends HTMLElement {});
+  });
 
   function renderRoot(options: TileHeaderOptions = baseOptions): ShadowRoot {
     const host = document.createElement("div");
@@ -140,20 +148,6 @@ describe("hydrateTileInfo", () => {
     root.innerHTML = renderTileHeader(undefined, options);
     return root;
   }
-
-  // Runs before ha-tile-info is defined below, so it takes the deferred path.
-  it("waits for the ha-tile-info upgrade before applying properties", async () => {
-    const root = renderRoot();
-    hydrateTileInfo(root);
-    const info = root.querySelector("ha-tile-info") as HydratedTileInfo;
-    expect(info.primary).toBeUndefined();
-
-    customElements.define("ha-tile-info", class extends HTMLElement {});
-    await customElements.whenDefined("ha-tile-info");
-    await Promise.resolve();
-    expect(info.primary).toBe("Spring Farm");
-    expect(info.secondary).toBe("Online");
-  });
 
   it("applies properties synchronously once the element is defined", () => {
     const root = renderRoot();
