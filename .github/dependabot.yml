@@ -1,0 +1,30 @@
+# Third-party actions are pinned to full commit SHAs so a compromised or
+# retagged release cannot silently enter a workflow. That trades away the
+# automatic patch pickup a floating major tag gives, so Dependabot has to
+# supply it instead: it bumps each pinned SHA and rewrites the trailing
+# version comment, keeping the pins current without reintroducing tag drift.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Everything here is a devDependency — the published card is a single
+  # self-contained bundle with no runtime dependencies — so these updates
+  # affect the build and test toolchain rather than what users install.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore"
+    groups:
+      dev-dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
