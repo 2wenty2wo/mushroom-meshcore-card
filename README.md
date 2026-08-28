@@ -188,25 +188,6 @@ Card Mod is never required for the core layout or state styling.
 
 The cards use the active Home Assistant language and include English, French, Dutch, German, and Polish translations.
 
-## Development
-
-```bash
-npm ci
-npm run typecheck
-npm run check-translations
-npm run test
-npm run build
-npm run test:render
-```
-
-The production bundle is written to `dist/mushroom-meshcore-card.js`.
-
-### Unit tests
-
-`npm run test` runs the [Vitest](https://vitest.dev) suite in `test/` (use `npm run test:watch` while developing). The tests run against the TypeScript sources in a lightweight [happy-dom](https://github.com/capricorn86/happy-dom) environment with small hass fixtures from `test/fixtures.ts` — no Home Assistant instance is required. They cover config parsing and target validation for both cards, device-scoped entity discovery and matching, the formatting helpers, `icon_color` resolution, `tap_action`/`hold_action`/`double_tap_action` handling, channel message parsing, and cross-locale translation parity. `npm run test:render` remains a separate smoke test of the built bundle, so run it after `npm run build`. CI runs all of the above on every push to `main` and every pull request.
-
-`npm run test:coverage` runs the same suite with V8 coverage for `src/` and prints a summary (full lcov/HTML output lands in `coverage/`). CI uploads the lcov report to [Codecov](https://codecov.io/gh/2wenty2wo/mushroom-meshcore-card), which powers the coverage badge above; the Codecov statuses are informational and never fail a pull request.
-
 ## License
 
 MIT
