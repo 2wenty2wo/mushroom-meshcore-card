@@ -523,6 +523,73 @@ describe("node neighbors list", () => {
     expect(body).not.toContain("neighbors-section");
     expect(body).not.toContain("neighbors · 48h");
   });
+
+  it.each(["", "   "])("rejects an empty secs_ago value %j", (secsAgo) => {
+    const hass = createHass();
+    addEntity(
+      hass,
+      "sensor.meshcore_spring_neighbor_abcd01",
+      state(8.5, { secs_ago: secsAgo, resolved_name: "Unaged Neighbor" })
+    );
+    addEntity(
+      hass,
+      "sensor.meshcore_spring_neighbor_abcd02",
+      state(7.5, { secs_ago: 30, resolved_name: "Recent Neighbor" })
+    );
+    const { body } = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      hass
+    );
+    expect(body).not.toContain("Unaged Neighbor");
+    expect(body).toContain("Recent Neighbor");
+    expect(body).toContain("1 neighbor · 48h");
+    expect(body).toContain('<span class="count-badge">1</span>');
+  });
+
+  it.each([0, "0"])("accepts a real zero secs_ago value %j", (secsAgo) => {
+    const hass = createHass();
+    addEntity(
+      hass,
+      "sensor.meshcore_spring_neighbor_abcd03",
+      state(9, { secs_ago: secsAgo, resolved_name: "Just Heard" })
+    );
+    const { body } = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      hass
+    );
+    expect(body).toContain("Just Heard");
+    expect(body).toContain("Last seen: 0s");
+  });
+
+  it("distinguishes supported zero neighbors from unavailable telemetry", () => {
+    const unsupported = renderCard({
+      ...NODE_TARGET,
+      details_default_open: true,
+    }).body;
+    expect(unsupported).not.toContain("neighbors-section");
+    expect(unsupported).not.toContain("No neighbors heard in the last 48 hours");
+
+    const hass = createHass();
+    addEntity(hass, "sensor.meshcore_spring_neighbor_count", state(0));
+    const supported = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      hass
+    ).body;
+    expect(supported).toContain("0 neighbors · 48h");
+    expect(supported).toContain('<span class="count-badge">0</span>');
+    expect(supported).toContain("No neighbors heard in the last 48 hours");
+  });
+
+  it("does not treat an unavailable neighbor count entity as supported", () => {
+    const hass = createHass();
+    addEntity(hass, "sensor.meshcore_spring_neighbor_count", state("unavailable"));
+    const { body } = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      hass
+    );
+    expect(body).not.toContain("neighbors-section");
+    expect(body).not.toContain("0 neighbors · 48h");
+  });
 });
 
 describe("device card sizing and layout", () => {

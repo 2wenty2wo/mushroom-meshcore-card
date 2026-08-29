@@ -25,7 +25,8 @@ const EDITOR_STYLES = `
   .chip-help { margin: 0; color: var(--secondary-text-color); font-size: 12px; }
   .chip-zone { min-height: 42px; padding: 8px; border: 1px solid var(--divider-color); border-radius: 12px; }
   .chip-zone-title { margin: 0 0 6px; color: var(--secondary-text-color); font-size: 12px; font-weight: 500; }
-  ha-sortable { display: flex; min-height: 30px; flex-direction: column; gap: 6px; }
+  ha-sortable { display: block; min-height: 30px; }
+  .chip-sortable-list { display: flex; min-height: 30px; flex-direction: column; gap: 6px; }
   .chip-editor-item { display: flex; min-height: 36px; align-items: center; gap: 6px; padding: 0 6px; border-radius: 10px; background: var(--secondary-background-color); }
   .chip-drag { padding: 6px; border: 0; background: transparent; color: var(--secondary-text-color); cursor: grab; }
   .chip-name { min-width: 0; flex: 1; font-size: 14px; }
@@ -516,12 +517,17 @@ export class MeshcoreCardEditor extends HTMLElement {
         group?: string;
         handleSelector?: string;
         draggableSelector?: string;
+        rollback?: boolean;
       };
       if (typeof sortable.setAttribute === "function") sortable.setAttribute("data-zone", zone);
       sortable.group = "meshcore-card-chips";
       sortable.handleSelector = ".chip-drag";
       sortable.draggableSelector = ".chip-editor-item";
+      sortable.rollback = false;
       sortables[zone] = sortable;
+
+      const list = document.createElement("div");
+      list.className = "chip-sortable-list";
 
       for (const id of layout[zone]) {
         const item = document.createElement("div");
@@ -551,7 +557,8 @@ export class MeshcoreCardEditor extends HTMLElement {
           select.appendChild(option);
         }
         select.addEventListener("change", () => {
-          sortables[select.value]?.appendChild(item);
+          const destination = sortables[select.value]?.firstElementChild;
+          destination?.appendChild(item);
           this._saveChipLayout(details);
         });
         item.appendChild(select);
@@ -571,9 +578,13 @@ export class MeshcoreCardEditor extends HTMLElement {
           });
           item.appendChild(button);
         }
-        sortable.appendChild(item);
+        list.appendChild(item);
       }
-      sortable.addEventListener("drag-end", () => this._saveChipLayout(details));
+      sortable.appendChild(list);
+      // `ha-sortable` emits item-moved for same-list reorders and item-added
+      // after a cross-list drop. Both events fire after the DOM order changes.
+      sortable.addEventListener("item-moved", () => this._saveChipLayout(details));
+      sortable.addEventListener("item-added", () => this._saveChipLayout(details));
       wrapper.appendChild(sortable);
       body.appendChild(wrapper);
     }

@@ -421,8 +421,11 @@ export class MeshcoreCard extends HTMLElement {
       if (info.device_id !== deviceId) continue;
 
       if (/_neighbor_count$/.test(entityId)) {
-        supported = true;
-        countEntityId = entityId;
+        const count = this._reading(entityId, true).value;
+        if (count !== null) {
+          supported = true;
+          countEntityId = entityId;
+        }
         continue;
       }
 
@@ -445,9 +448,11 @@ export class MeshcoreCard extends HTMLElement {
       neighborMap.set(neighborMatch[1], data);
       const state = this._hass.states[entityId];
       const rawSecondsAgo = state?.attributes["secs_ago"];
-      const secondsAgo = rawSecondsAgo === null || rawSecondsAgo === undefined
-        ? NaN
-        : Number(rawSecondsAgo);
+      const secondsAgo = typeof rawSecondsAgo === "number"
+        ? rawSecondsAgo
+        : typeof rawSecondsAgo === "string" && rawSecondsAgo.trim()
+          ? Number(rawSecondsAgo)
+          : NaN;
       if (Number.isFinite(secondsAgo) && secondsAgo >= 0) {
         supported = true;
         data.secondsAgo = secondsAgo;
@@ -1020,7 +1025,7 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   private _renderNeighbors(snapshot: NeighborSnapshot, t: LocalizeFunc): string {
-    if (this._config?.show_neighbors === false) return "";
+    if (this._config?.show_neighbors === false || !snapshot.supported) return "";
 
     const neighbors = snapshot.neighbors;
     if (neighbors.length === 0) {

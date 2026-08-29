@@ -292,6 +292,13 @@ describe("MeshcoreCardEditor settings schema", () => {
 describe("MeshcoreCardEditor chip organizer", () => {
   it("shows complete target-specific default zones", () => {
     const { editor } = createEditor({ target: NODE_TARGET });
+    const sortables = Array.from(editor.querySelectorAll<HTMLElement>("ha-sortable"));
+    expect(sortables).toHaveLength(3);
+    for (const sortable of sortables) {
+      expect(sortable.children).toHaveLength(1);
+      expect((sortable.firstElementChild as HTMLElement).className).toBe("chip-sortable-list");
+      expect((sortable as HTMLElement & { rollback?: boolean }).rollback).toBe(false);
+    }
     const top = Array.from(editor.querySelectorAll<HTMLElement>('ha-sortable[data-zone="top"] .chip-editor-item'));
     const hidden = Array.from(editor.querySelectorAll<HTMLElement>('ha-sortable[data-zone="hidden"] .chip-editor-item'));
     expect(top.map((item) => item.dataset["chip"])).toEqual([
@@ -327,6 +334,31 @@ describe("MeshcoreCardEditor chip organizer", () => {
 
     editor.querySelector<HTMLButtonElement>(".chip-reset")!.click();
     expect(configs[configs.length - 1]!.chip_layout).toBeUndefined();
+  });
+
+  it("persists ha-sortable reorder and cross-zone events", () => {
+    const { editor, configs } = createEditor({ target: NODE_TARGET });
+    const top = editor.querySelector<HTMLElement>('ha-sortable[data-zone="top"]')!;
+    const details = editor.querySelector<HTMLElement>('ha-sortable[data-zone="details"]')!;
+    const topList = top.querySelector<HTMLElement>(".chip-sortable-list")!;
+    const detailsList = details.querySelector<HTMLElement>(".chip-sortable-list")!;
+    const sent = top.querySelector<HTMLElement>('[data-chip="sent"]')!;
+    const received = top.querySelector<HTMLElement>('[data-chip="received"]')!;
+
+    topList.insertBefore(received, sent);
+    top.dispatchEvent(new CustomEvent("item-moved", {
+      detail: { oldIndex: 1, newIndex: 0 },
+    }));
+    expect(configs[configs.length - 1]!.chip_layout?.top.slice(0, 2)).toEqual([
+      "received", "sent",
+    ]);
+
+    detailsList.appendChild(sent);
+    details.dispatchEvent(new CustomEvent("item-added", {
+      detail: { index: 0, data: "sent", item: sent },
+    }));
+    expect(configs[configs.length - 1]!.chip_layout?.top).not.toContain("sent");
+    expect(configs[configs.length - 1]!.chip_layout?.details).toContain("sent");
   });
 });
 
