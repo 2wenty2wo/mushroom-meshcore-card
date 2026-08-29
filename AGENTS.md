@@ -6,6 +6,13 @@ These instructions apply to the entire repository.
 
 This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve the upstream card's strong discovery and data handling, and concentrate changes on presentation, usability, and safe coexistence with the original `meshcore-card`.
 
+## Repository and pull-request target (non-negotiable)
+
+- **NEVER** create, open, submit, or retarget a pull request to [`jpettitt/meshcore-card`](https://github.com/jpettitt/meshcore-card).
+- Create pull requests **only** against [`2wenty2wo/mushroom-meshcore-card`](https://github.com/2wenty2wo/mushroom-meshcore-card).
+- Treat `jpettitt/meshcore-card` and any remote named `upstream` as read-only references. Never push branches or commits to them.
+- Before creating or updating a pull request, verify that the destination repository is exactly `2wenty2wo/mushroom-meshcore-card`.
+
 ## Architecture
 
 - `src/index.ts` registers the three cards and their card-picker metadata.
