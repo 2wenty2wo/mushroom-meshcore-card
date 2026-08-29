@@ -1,6 +1,7 @@
 import type {
   HomeAssistant,
   MeshcoreCardConfig,
+  MeshcoreChipId,
   HubInfo,
   NodeInfo,
 } from "./types.js";
@@ -17,10 +18,28 @@ import { STYLES } from "./styles.js";
 import { discoverHubs, discoverNodes, findEntityByDevice } from "./discovery.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
+import { effectiveChipLayout } from "./chip-layout.js";
 
 interface EntityReading {
   id: string | null;
   value: string | null;
+}
+
+interface NeighborInfo {
+  id: string;
+  name: string;
+  contactEntityId: string | null;
+  snr: number;
+  snrId: string;
+  secondsAgo: number | null;
+  seenCount: number | null;
+  seenId: string | null;
+}
+
+interface NeighborSnapshot {
+  supported: boolean;
+  countEntityId: string | null;
+  neighbors: NeighborInfo[];
 }
 
 interface NodeViewModel {
@@ -62,6 +81,7 @@ interface NodeViewModel {
   latitude: unknown;
   longitude: unknown;
   locationEntityId: string | null;
+  neighbors: NeighborSnapshot;
 }
 
 export class MeshcoreCard extends HTMLElement {
@@ -381,125 +401,107 @@ export class MeshcoreCard extends HTMLElement {
 
   // ── Neighbors helpers ──────────────────────────────────────────────────────
 
-  private _getNeighbors(deviceId: string): any[] {
-    if (!this._hass || !deviceId) return [];
-    
-    const neighbors: any[] = [];
-    const neighborMap = new Map<string, any>();
-    
-    // Find all neighbor entities for this device
+  private _getNeighbors(deviceId: string): NeighborSnapshot {
+    if (!this._hass || !deviceId) {
+      return { supported: false, countEntityId: null, neighbors: [] };
+    }
+
+    const neighborMap = new Map<string, {
+      snr?: number;
+      snrId?: string;
+      seenCount?: number;
+      seenId?: string;
+      secondsAgo?: number;
+      resolvedName?: string;
+    }>();
+    let supported = false;
+    let countEntityId: string | null = null;
+
     for (const [entityId, info] of Object.entries(this._hass.entities || {})) {
       if (info.device_id !== deviceId) continue;
-      
-      // Match neighbor_XXXXXX_seen entities (raw ID value)
+
+      if (/_neighbor_count$/.test(entityId)) {
+        supported = true;
+        countEntityId = entityId;
+        continue;
+      }
+
       const seenMatch = entityId.match(/_neighbor_([0-9a-f]+)_seen$/);
       if (seenMatch) {
-        const neighborId = seenMatch[1];
-        if (!neighborMap.has(neighborId)) {
-          neighborMap.set(neighborId, {});
-        }
-        const seenVal = this._val(entityId);
-        if (seenVal !== null && seenVal !== 'unknown' && seenVal !== 'unavailable') {
-          const existing = neighborMap.get(neighborId)!;
-          existing.rawSeen = seenVal;
-          existing.seenId = entityId;
+        const data = neighborMap.get(seenMatch[1]) ?? {};
+        neighborMap.set(seenMatch[1], data);
+        const rawCount = this._val(entityId);
+        const count = rawCount === null ? NaN : Number(rawCount);
+        if (Number.isFinite(count)) {
+          supported = true;
+          data.seenCount = count;
+          data.seenId = entityId;
         }
       }
-      
-      // Match neighbor_XXXXXX entities (SNR value)
+
       const neighborMatch = entityId.match(/_neighbor_([0-9a-f]+)$/);
-      if (neighborMatch && !entityId.endsWith('_seen')) {
-        const neighborId = neighborMatch[1];
-        if (!neighborMap.has(neighborId)) {
-          neighborMap.set(neighborId, {});
-        }
-        const val = this._val(entityId);
-        const state = this._hass?.states[entityId];
-        
-        // Get timestamp of LAST CHANGE - when SNR actually changed
-        let lastSeenTimestamp = null;
-        if (state && state.last_changed) {
-          lastSeenTimestamp = new Date(state.last_changed).getTime() / 1000;
-        } else if (state && state.last_updated) {
-          lastSeenTimestamp = new Date(state.last_updated).getTime() / 1000;
-        }
-        
-        // Only if we don't already have lastSeen from SEEN entity (or it's older)
-        const existing = neighborMap.get(neighborId)!;
-        const existingLastSeen = existing.lastSeen;
-        if (lastSeenTimestamp && (!existingLastSeen || lastSeenTimestamp < existingLastSeen)) {
-          existing.lastSeen = lastSeenTimestamp;
-        }
-        
-        if (val !== null && val !== 'unknown' && val !== 'unavailable') {
-          const numVal = parseFloat(val);
-          if (!isNaN(numVal)) {
-            existing.snr = numVal;
-            existing.snrId = entityId;
-          }
-        }
+      if (!neighborMatch || entityId.endsWith("_seen")) continue;
+      const data = neighborMap.get(neighborMatch[1]) ?? {};
+      neighborMap.set(neighborMatch[1], data);
+      const state = this._hass.states[entityId];
+      const rawSecondsAgo = state?.attributes["secs_ago"];
+      const secondsAgo = rawSecondsAgo === null || rawSecondsAgo === undefined
+        ? NaN
+        : Number(rawSecondsAgo);
+      if (Number.isFinite(secondsAgo) && secondsAgo >= 0) {
+        supported = true;
+        data.secondsAgo = secondsAgo;
+      }
+      const resolvedName = state?.attributes["resolved_name"];
+      if (typeof resolvedName === "string" && resolvedName.trim()) {
+        data.resolvedName = resolvedName.trim();
+      }
+      const rawSnr = this._val(entityId);
+      const snr = rawSnr === null ? NaN : Number(rawSnr);
+      if (Number.isFinite(snr)) {
+        data.snr = snr;
+        data.snrId = entityId;
       }
     }
-    
-    // Get neighbor names from contact entities
+
+    const neighbors: NeighborInfo[] = [];
     for (const [neighborId, data] of neighborMap) {
-      let neighborName = neighborId.substring(0, 8);
-      let contactEntityId = null;
-      
+      const recent = data.secondsAgo !== undefined
+        ? data.secondsAgo < 48 * 60 * 60
+        : (data.seenCount ?? 0) > 0;
+      if (!recent || data.snr === undefined || !data.snrId) continue;
+
+      let neighborName = data.resolvedName ?? neighborId.substring(0, 8);
+      let contactEntityId: string | null = null;
       for (const [entityId, state] of Object.entries(this._hass.states)) {
         if (!/^binary_sensor\.meshcore_.*_contact$/.test(entityId)) continue;
-        
         const advId = state.attributes["adv_id"];
-        if (advId && String(advId) === neighborId) {
-          neighborName = state.attributes["adv_name"] || neighborName;
-          contactEntityId = entityId;
-          break;
-        }
-        
-        if (entityId.includes(neighborId)) {
-          neighborName = state.attributes["adv_name"] || neighborName;
+        if ((advId && String(advId) === neighborId) || entityId.includes(neighborId)) {
+          if (!data.resolvedName) {
+            neighborName = String(state.attributes["adv_name"] || neighborName);
+          }
           contactEntityId = entityId;
           break;
         }
       }
-      
+
       neighbors.push({
         id: neighborId,
         name: neighborName,
-        contactEntityId: contactEntityId,
-        snr: data.snr ?? null,
-        snrId: data.snrId ?? null,
-        lastSeen: data.lastSeen ?? null,
-        rawSeen: data.rawSeen ?? null,
+        contactEntityId,
+        snr: data.snr,
+        snrId: data.snrId,
+        secondsAgo: data.secondsAgo ?? null,
+        seenCount: data.seenCount ?? null,
         seenId: data.seenId ?? null,
       });
     }
-    
-    // Sort by SNR (best first)
-    neighbors.sort((a, b) => {
-      const aSnr = a.snr !== null ? Number(a.snr) : -100;
-      const bSnr = b.snr !== null ? Number(b.snr) : -100;
-      return bSnr - aSnr;
-    });
-    
-    return neighbors;
+    neighbors.sort((a, b) => b.snr - a.snr);
+    return { supported, countEntityId, neighbors };
   }
 
-  private _getSnrClass(snr: number | string | null): string {
-    const v = Number(snr);
-    if (isNaN(v)) return 'dim';
-    if (v >= 10) return 'green';
-    if (v >= 6) return 'yellow';
-    if (v >= 0) return 'orange';
-    return 'red';
-  }
-
-  private _formatNeighborLastSeen(timestamp: number | null): string {
-    if (!timestamp) return '?';
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - timestamp;
-    
-    if (diff < 0) return '?';
+  private _formatNeighborAge(secondsAgo: number): string {
+    const diff = Math.max(0, secondsAgo);
     if (diff < 60) {
       const seconds = Math.floor(diff);
       return `${seconds}s`;
@@ -552,6 +554,30 @@ export class MeshcoreCard extends HTMLElement {
     </span>`;
   }
 
+  private _staticDetailChip(value: unknown, label: string): string {
+    if (value === null || value === undefined || value === "") return "";
+    return `<span class="chip static-chip" role="note" aria-label="${escapeHtml(`${label} ${String(value)}`)}"><span class="chip-label">${escapeHtml(label)} </span>${escapeHtml(value)}</span>`;
+  }
+
+  private _neighborCountChip(
+    snapshot: NeighborSnapshot,
+    t: LocalizeFunc,
+    details: boolean
+  ): string {
+    if (this._config?.show_neighbors === false || !snapshot.supported) return "";
+    const count = snapshot.neighbors.length;
+    const label = t(count === 1 ? "card.neighbor_48h_one" : "card.neighbors_48h", { n: count });
+    if (details) {
+      return snapshot.countEntityId
+        ? this._chip(snapshot.countEntityId, `${t("card.neighbors_label")} `, String(count))
+        : this._staticDetailChip(count, t("card.neighbors_label"));
+    }
+    if (!snapshot.countEntityId) {
+      return this._staticChip(label, "mdi:access-point-network", label);
+    }
+    return `<button type="button" class="quick-chip clickable" part="quick-chip" data-entity="${escapeHtml(snapshot.countEntityId)}" aria-label="${escapeHtml(label)}"><ha-ripple></ha-ripple><ha-icon icon="mdi:access-point-network"></ha-icon><span>${escapeHtml(label)}</span></button>`;
+  }
+
   /** Collapsed Details disclosure shared by hub and node bodies. */
   private _renderDetailsDisclosure(key: string, body: string, t: LocalizeFunc): string {
     if (!body || this._config?.hide_details) return "";
@@ -597,10 +623,12 @@ export class MeshcoreCard extends HTMLElement {
     const battPct   = this._reading(battPctId, true);
     const battV     = this._reading(battVId, true);
     const nodeCount = this._reading(countId, true).value;
-    const freq      = this._reading(freqId, true).value;
-    const bw        = this._reading(bwId, true).value;
-    const sf        = this._reading(sfId, true).value;
-    const txPow     = this._reading(txPowId, true).value;
+    const freqReading = this._reading(freqId, true);
+    const bwReading = this._reading(bwId, true);
+    const sfReading = this._reading(sfId, true);
+    const txPowReading = this._reading(txPowId, true);
+    const ch1VReading = this._reading(ch1VId, true);
+    const rateLimReading = this._reading(rateLimId, true);
     const lat       = this._reading(latId, true).value;
     const lon       = this._reading(lonId, true).value;
 
@@ -636,23 +664,46 @@ export class MeshcoreCard extends HTMLElement {
     );
 
     const battery = cfg?.hide_battery ? "" : this._batteryBlock(battPct, battV, t);
-    const quickChips = cfg?.hide_quick_stats
-      ? ""
-      : [
-          this._staticChip(hwModel, "mdi:chip"),
-          this._staticChip(
-            firmware,
-            "mdi:memory",
-            t("card.firmware_label", { version: String(firmware) })
-          ),
-        ].join("");
+    if (freqReading.value !== null) {
+      freqReading.value = Number(freqReading.value).toFixed(3);
+    }
 
-    const technical = [
-      freq  ? this._chip(freqId, "", `${parseFloat(freq).toFixed(3)} MHz`) : "",
-      bw    ? this._chip(bwId, "", `${bw} kHz`) : "",
-      sf    ? this._chip(sfId, "", `SF${sf}`) : "",
-      txPow ? this._chip(txPowId, "", `${txPow} dBm`) : "",
-    ].join("");
+    const renderHubChip = (id: MeshcoreChipId, details: boolean): string => {
+      if (id === "hardware") {
+        return details
+          ? this._staticDetailChip(hwModel, t("card.hardware"))
+          : this._staticChip(hwModel, "mdi:chip");
+      }
+      if (id === "firmware") {
+        return details
+          ? this._staticDetailChip(firmware, t("card.firmware"))
+          : this._staticChip(firmware, "mdi:memory", firmware
+            ? t("card.firmware_label", { version: String(firmware) })
+            : undefined);
+      }
+      const descriptors: Partial<Record<MeshcoreChipId, [EntityReading, string, string, string]>> = {
+        frequency: [freqReading, t("card.frequency"), " MHz", "mdi:sine-wave"],
+        bandwidth: [bwReading, t("card.bandwidth"), " kHz", "mdi:arrow-expand-horizontal"],
+        spreading_factor: [sfReading, "SF", "", "mdi:signal-variant"],
+        tx_power: [txPowReading, t("card.tx_power"), " dBm", "mdi:transmission-tower-export"],
+        ch1_voltage: [ch1VReading, t("card.chip_ch1"), " V", "mdi:flash"],
+        rate_limiter: [rateLimReading, t("card.chip_rate"), " tok", "mdi:speedometer"],
+      };
+      const descriptor = descriptors[id];
+      if (!descriptor) return "";
+      const [reading, label, unit, icon] = descriptor;
+      if (id === "spreading_factor" && reading.id && reading.value !== null) {
+        return details
+          ? this._chip(reading.id, "", `SF${reading.value}`)
+          : this._quickChip({ ...reading, value: `SF${reading.value}` }, label, "", icon);
+      }
+      return details
+        ? this._detailChip(reading, label, unit)
+        : this._quickChip(reading, label, unit.trimStart(), icon);
+    };
+    const layout = effectiveChipLayout({ type: "hub", id: pubkey }, cfg ?? {});
+    const quickChips = layout.top.map((id) => renderHubChip(id, false)).join("");
+    const detailChips = layout.details.map((id) => renderHubChip(id, true)).join("");
 
     const mqtt = mqttIds.map((id) => {
       const v   = this._val(id);
@@ -664,19 +715,13 @@ export class MeshcoreCard extends HTMLElement {
       return this._chip(id, "", lbl, v ? "mqtt-ok" : "mqtt-err");
     }).join("");
 
-    const other = [
-      this._exists(ch1VId) ? this._chip(ch1VId, t("card.chip_ch1"), (this._val(ch1VId) ?? "—") + "V") : "",
-      this._exists(rateLimId) ? this._chip(rateLimId, t("card.chip_rate"), (this._val(rateLimId) ?? "—") + " tok") : "",
-    ].join("");
-
     const location = lat !== null && lon !== null
       ? `<section class="detail-section"><h4>${escapeHtml(t("card.location_section"))}</h4>${this._locLink(lat, lon, latId, t)}</section>`
       : "";
 
-    const detailsBody = this._detailSection(t("card.technical_section"), technical)
+    const detailsBody = this._detailSection(t("card.chips_section"), detailChips)
       + location
-      + this._detailSection(t("card.mqtt_section"), mqtt)
-      + this._detailSection(t("card.other_section"), other);
+      + this._detailSection(t("card.mqtt_section"), mqtt);
 
     return `${header}
       <div class="device-body ${online ? "" : "node-offline"}">
@@ -849,6 +894,7 @@ export class MeshcoreCard extends HTMLElement {
       latitude: lat,
       longitude: lon,
       locationEntityId: locId,
+      neighbors: this._getNeighbors(deviceId),
     };
   }
 
@@ -879,41 +925,62 @@ export class MeshcoreCard extends HTMLElement {
     return `<section class="detail-section"><h4>${escapeHtml(title)}</h4><div class="detail-chips">${contents}</div></section>`;
   }
 
+  private _renderNodeChip(id: MeshcoreChipId, details: boolean, vm: NodeViewModel, t: LocalizeFunc): string {
+    if (id === "firmware") {
+      return details
+        ? this._staticDetailChip(vm.firmwareVersion, t("card.firmware"))
+        : this._staticChip(vm.firmwareVersion, "mdi:memory", vm.firmwareVersion
+          ? t("card.firmware_label", { version: vm.firmwareVersion })
+          : undefined);
+    }
+    if (id === "neighbor_count") return this._neighborCountChip(vm.neighbors, t, details);
+
+    const descriptors: Partial<Record<MeshcoreChipId, [EntityReading, string, string, string]>> = {
+      sent: [vm.sent, t("card.traffic_sent"), "", "mdi:arrow-up"],
+      received: [vm.received, t("card.traffic_received"), "", "mdi:arrow-down"],
+      temperature: [vm.temperature, t("card.telemetry_temp"), "°C", "mdi:thermometer"],
+      uptime: [vm.uptime, t("card.uptime_label"), "", "mdi:timer-outline"],
+      route: [vm.route, t("card.routing_path"), "", "mdi:routes"],
+      path_length: [vm.pathLength, t("card.path_length"), "", "mdi:map-marker-distance"],
+      spreading_factor: [vm.spreadingFactor, "SF", "", "mdi:signal-variant"],
+      frequency: [vm.frequency, t("card.frequency"), " MHz", "mdi:sine-wave"],
+      bandwidth: [vm.bandwidth, t("card.bandwidth"), " kHz", "mdi:arrow-expand-horizontal"],
+      tx_power: [vm.txPower, t("card.tx_power"), " dBm", "mdi:transmission-tower-export"],
+      relayed: [vm.relayed, t("card.traffic_relayed"), "", "mdi:repeat"],
+      canceled: [vm.canceled, t("card.traffic_canceled"), "", "mdi:cancel"],
+      duplicate: [vm.duplicate, t("card.traffic_duplicate"), "", "mdi:content-duplicate"],
+      tx_airtime: [vm.txAirtime, t("card.tx_airtime_label"), "%", "mdi:upload-network"],
+      rx_airtime: [vm.rxAirtime, t("card.rx_airtime_label"), "%", "mdi:download-network"],
+      queue_length: [vm.queueLength, t("card.chip_queue"), "", "mdi:tray-full"],
+      tx_rate: [vm.txRate, t("card.chip_tx_rate"), "", "mdi:upload"],
+      rx_rate: [vm.rxRate, t("card.chip_rx_rate"), "", "mdi:download"],
+      humidity: [vm.humidity, t("card.telemetry_humidity"), "%", "mdi:water-percent"],
+      illuminance: [vm.illuminance, t("card.telemetry_lux"), " lx", "mdi:brightness-5"],
+      pressure: [vm.pressure, t("card.telemetry_pressure"), " hPa", "mdi:gauge"],
+    };
+    const descriptor = descriptors[id];
+    if (!descriptor) return "";
+    const [reading, label, unit, icon] = descriptor;
+    if (id === "spreading_factor" && reading.id && reading.value !== null) {
+      return details
+        ? this._chip(reading.id, "", `SF${reading.value}`)
+        : this._quickChip({ ...reading, value: `SF${reading.value}` }, label, "", icon);
+    }
+    return details
+      ? this._detailChip(reading, label, unit)
+      : this._quickChip(reading, label, unit.trimStart(), icon);
+  }
+
   private _renderNodeDetails(vm: NodeViewModel, t: LocalizeFunc): string {
-    const technical = [
-      this._detailChip(vm.route, t("card.routing_path")),
-      this._detailChip(vm.pathLength, t("card.path_length")),
-      this._detailChip(vm.spreadingFactor, "SF"),
-      this._detailChip(vm.frequency, t("card.frequency"), " MHz"),
-      this._detailChip(vm.bandwidth, t("card.bandwidth"), " kHz"),
-      this._detailChip(vm.txPower, t("card.tx_power"), " dBm"),
-    ].join("");
-
-    const statistics = [
-      this._detailChip(vm.relayed, t("card.traffic_relayed")),
-      this._detailChip(vm.canceled, t("card.traffic_canceled")),
-      this._detailChip(vm.duplicate, t("card.traffic_duplicate")),
-      this._detailChip(vm.txAirtime, t("card.tx_airtime_label"), "%"),
-      this._detailChip(vm.rxAirtime, t("card.rx_airtime_label"), "%"),
-      this._detailChip(vm.queueLength, t("card.chip_queue")),
-      this._detailChip(vm.txRate, t("card.chip_tx_rate")),
-      this._detailChip(vm.rxRate, t("card.chip_rx_rate")),
-    ].join("");
-
-    const telemetry = [
-      this._detailChip(vm.humidity, t("card.telemetry_humidity"), "%"),
-      this._detailChip(vm.illuminance, t("card.telemetry_lux"), " lx"),
-      this._detailChip(vm.pressure, t("card.telemetry_pressure"), " hPa"),
-    ].join("");
+    const layout = effectiveChipLayout({ type: "node", id: vm.node.name }, this._config ?? {});
+    const chips = layout.details.map((id) => this._renderNodeChip(id, true, vm, t)).join("");
 
     const location = vm.latitude !== null && vm.longitude !== null
       ? `<section class="detail-section"><h4>${escapeHtml(t("card.location_section"))}</h4>${this._locLink(vm.latitude, vm.longitude, vm.locationEntityId, t)}</section>`
       : "";
-    const neighbours = this._renderNeighbors(vm.node, t);
-    const body = this._detailSection(t("card.technical_section"), technical)
-      + this._detailSection(t("card.traffic_section"), statistics)
+    const neighbours = this._renderNeighbors(vm.neighbors, t);
+    const body = this._detailSection(t("card.chips_section"), chips)
       + location
-      + this._detailSection(t("card.telemetry_section"), telemetry)
       + neighbours;
     return this._renderDetailsDisclosure(vm.node.deviceId, body, t);
   }
@@ -937,88 +1004,69 @@ export class MeshcoreCard extends HTMLElement {
     const battery = cfg?.hide_battery
       ? ""
       : this._batteryBlock(vm.batteryPct, vm.batteryVoltage, t);
-    const quickChips = cfg?.hide_quick_stats ? "" : [
-      cfg?.show_firmware === true && vm.firmwareVersion
-        ? this._staticChip(
-            vm.firmwareVersion,
-            "mdi:memory",
-            t("card.firmware_label", { version: vm.firmwareVersion })
-          )
-        : "",
-      this._quickChip(vm.sent, t("card.traffic_sent"), "", "mdi:arrow-up"),
-      this._quickChip(vm.received, t("card.traffic_received"), "", "mdi:arrow-down"),
-      this._quickChip(vm.temperature, t("card.telemetry_temp"), "°C", "mdi:thermometer"),
-      this._quickChip(vm.uptime, t("card.uptime_label"), "", "mdi:timer-outline"),
-      vm.batteryPct.value === null && !cfg?.hide_battery
-        ? this._quickChip(vm.batteryVoltage, t("card.battery_voltage"), "V", "mdi:flash")
-        : "",
-    ].join("");
+    const layout = effectiveChipLayout({ type: "node", id: vm.node.name }, cfg ?? {});
+    const quickChips = layout.top.map((id) => this._renderNodeChip(id, false, vm, t)).join("");
+    const voltageFallback = vm.batteryPct.value === null && !cfg?.hide_battery
+      ? this._quickChip(vm.batteryVoltage, t("card.battery_voltage"), "V", "mdi:flash")
+      : "";
 
     return `${this._renderNodeHeader(vm, t)}
       <div class="device-body">
         ${metrics ? `<div class="metrics-grid trim-section" part="metrics">${metrics}</div>` : ""}
         ${battery ? `<div class="trim-section">${battery}</div>` : ""}
-        ${quickChips ? `<div class="quick-chip-row trim-section">${quickChips}</div>` : ""}
+        ${quickChips || voltageFallback ? `<div class="quick-chip-row trim-section">${quickChips}${voltageFallback}</div>` : ""}
         ${this._renderNodeDetails(vm, t)}
       </div>`;
   }
 
-  private _renderNeighbors(node: NodeInfo, t: LocalizeFunc): string {
+  private _renderNeighbors(snapshot: NeighborSnapshot, t: LocalizeFunc): string {
     if (this._config?.show_neighbors === false) return "";
 
-    const neighbors = this._getNeighbors(node.deviceId);
-    const neighborsWithSnr = neighbors.filter(n => n.snr !== null && !isNaN(parseFloat(n.snr)));
-    
-    if (neighborsWithSnr.length === 0) {
+    const neighbors = snapshot.neighbors;
+    if (neighbors.length === 0) {
       return `
         <div class="neighbors-section">
           <div class="neighbors-header">
-            <span>${escapeHtml(t("card.neighbors_label") || "Neighbors")}</span>
-            <span class="count-badge">${neighborsWithSnr.length}</span>
+            <span>${escapeHtml(t("card.neighbors_label"))}</span>
+            <span class="count-badge">0</span>
           </div>
-          <div style="font-size: 11px; color: var(--secondary-text-color); text-align: center; padding: 8px;">
-            ${escapeHtml(t("card.no_neighbors_info") || "No information about neighbors")}
-          </div>
+          <div class="neighbors-empty">${escapeHtml(t("card.no_recent_neighbors"))}</div>
         </div>
       `;
     }
-    
-    // Cap the list (neighbors are sorted best-SNR-first, so the cap keeps
-    // the strongest links); the count badge still shows the full total.
+
     const cap = this._config?.max_neighbors;
-    const shownNeighbors = cap && cap > 0 ? neighborsWithSnr.slice(0, cap) : neighborsWithSnr;
+    const shownNeighbors = cap && cap > 0 ? neighbors.slice(0, cap) : neighbors;
 
     const neighborRows = shownNeighbors.map(n => {
-      const snr = parseFloat(n.snr).toFixed(1);
-      const snrClass = this._getSnrClass(snr);
-      const timeString = this._formatNeighborLastSeen(n.lastSeen);
-      const rawSeen = n.rawSeen || null;
-      const lastSeenLabel = t("card.neighbor_last_seen") || "Last seen";
-      const contactsLabel = t("card.neighbor_contacts") || "Connections (48h)";
+      const snr = n.snr.toFixed(1);
+      const timeString = n.secondsAgo === null
+        ? t("card.within_48h")
+        : this._formatNeighborAge(n.secondsAgo);
+      const lastSeenLabel = t("card.neighbor_last_seen");
+      const contactsLabel = t("card.neighbor_contacts");
       const nameEntityId = n.contactEntityId || n.snrId;
-      const name = nameEntityId
-        ? `<button type="button" class="neighbor-name clickable" data-entity="${escapeHtml(nameEntityId)}">${escapeHtml(n.name)}</button>`
-        : `<span class="neighbor-name">${escapeHtml(n.name)}</span>`;
-      
+      const name = `<button type="button" class="neighbor-name clickable" data-entity="${escapeHtml(nameEntityId)}">${escapeHtml(n.name)}</button>`;
+
       return `
         <div class="neighbor-row">
           <div class="neighbor-main">
             ${name}
-            <button type="button" class="neighbor-snr ${snrClass} clickable" data-entity="${escapeHtml(n.snrId || "")}" aria-label="${escapeHtml(t("card.snr_label"))} ${escapeHtml(snr)} dB"><ha-ripple></ha-ripple><ha-icon icon="mdi:signal"></ha-icon>${escapeHtml(snr)} dB</button>
+            <button type="button" class="neighbor-snr clickable" data-entity="${escapeHtml(n.snrId)}" aria-label="${escapeHtml(t("card.snr_label"))} ${escapeHtml(snr)} dB"><ha-ripple></ha-ripple><ha-icon icon="mdi:signal"></ha-icon>${escapeHtml(snr)} dB</button>
           </div>
           <div class="neighbor-stats">
             <span class="neighbor-stat"><ha-icon icon="mdi:clock-outline"></ha-icon>${escapeHtml(lastSeenLabel)}: ${escapeHtml(timeString)}</span>
-            ${rawSeen ? `<span class="neighbor-stat"><ha-icon icon="mdi:link-variant"></ha-icon>${escapeHtml(contactsLabel)}: ${escapeHtml(rawSeen)}x</span>` : ""}
+            ${n.seenCount !== null ? `<span class="neighbor-stat"><ha-icon icon="mdi:link-variant"></ha-icon>${escapeHtml(contactsLabel)}: ${escapeHtml(n.seenCount)}x</span>` : ""}
           </div>
         </div>
       `;
-    }).join('');
-    
+    }).join("");
+
     return `
       <div class="neighbors-section">
         <div class="neighbors-header">
-          <span>${escapeHtml(t("card.neighbors_label") || "Neighbors")}</span>
-          <span class="count-badge">${neighborsWithSnr.length}</span>
+          <span>${escapeHtml(t("card.neighbors_label"))}</span>
+          <span class="count-badge">${neighbors.length}</span>
         </div>
         <div class="neighbors-list">
           ${neighborRows}

@@ -88,6 +88,40 @@ export type MeshcoreCardTarget =
   | { type: "hub"; id: string }
   | { type: "node"; id: string };
 
+export type MeshcoreChipId =
+  | "hardware"
+  | "firmware"
+  | "sent"
+  | "received"
+  | "temperature"
+  | "uptime"
+  | "neighbor_count"
+  | "route"
+  | "path_length"
+  | "spreading_factor"
+  | "frequency"
+  | "bandwidth"
+  | "tx_power"
+  | "relayed"
+  | "canceled"
+  | "duplicate"
+  | "tx_airtime"
+  | "rx_airtime"
+  | "queue_length"
+  | "tx_rate"
+  | "rx_rate"
+  | "humidity"
+  | "illuminance"
+  | "pressure"
+  | "ch1_voltage"
+  | "rate_limiter";
+
+export interface MeshcoreChipLayout {
+  top: MeshcoreChipId[];
+  details: MeshcoreChipId[];
+  hidden: MeshcoreChipId[];
+}
+
 export interface GridOptions {
   rows?: number | "auto";
   columns?: number | "full";
@@ -112,6 +146,7 @@ export interface MeshcoreCardConfig {
   show_firmware?: boolean;
   hide_details?: boolean;
   details_default_open?: boolean;
+  chip_layout?: MeshcoreChipLayout;
   battery_entity?: string;
   voltage_entity?: string;
   location_entity?: string;

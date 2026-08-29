@@ -152,6 +152,7 @@ describe("MeshcoreCardEditor target selection", () => {
       name: "My hub",
       hide_battery: true,
       battery_entity: "sensor.batt",
+      chip_layout: { top: ["hardware"], details: [], hidden: ["firmware"] },
       map_metro: "smf",
     });
     selectTarget(forms(editor)[0]!, JSON.stringify(NODE_TARGET));
@@ -160,6 +161,7 @@ describe("MeshcoreCardEditor target selection", () => {
     expect(config.name).toBeUndefined();
     expect(config.hide_battery).toBeUndefined();
     expect(config.battery_entity).toBeUndefined();
+    expect(config.chip_layout).toBeUndefined();
     // map_metro is not device-specific and survives the switch.
     expect(config.map_metro).toBe("smf");
   });
@@ -216,7 +218,7 @@ describe("MeshcoreCardEditor settings schema", () => {
       t("editor.section_behavior"),
     ]);
     expect(fieldNames(schema[0]!)).toContain("hide_metrics");
-    expect(fieldNames(schema[0]!)).toContain("show_firmware");
+    expect(fieldNames(schema[0]!)).not.toContain("show_firmware");
     expect(fieldNames(schema[2]!)).toEqual([
       "battery_entity",
       "voltage_entity",
@@ -287,6 +289,47 @@ describe("MeshcoreCardEditor settings schema", () => {
   });
 });
 
+describe("MeshcoreCardEditor chip organizer", () => {
+  it("shows complete target-specific default zones", () => {
+    const { editor } = createEditor({ target: NODE_TARGET });
+    const top = Array.from(editor.querySelectorAll<HTMLElement>('ha-sortable[data-zone="top"] .chip-editor-item'));
+    const hidden = Array.from(editor.querySelectorAll<HTMLElement>('ha-sortable[data-zone="hidden"] .chip-editor-item'));
+    expect(top.map((item) => item.dataset["chip"])).toEqual([
+      "sent", "received", "temperature", "uptime", "neighbor_count",
+    ]);
+    expect(hidden.map((item) => item.dataset["chip"])).toContain("firmware");
+  });
+
+  it("moves a chip between zones and replaces legacy visibility flags", () => {
+    const { editor, configs } = createEditor({
+      target: NODE_TARGET,
+      show_firmware: true,
+      hide_quick_stats: false,
+    });
+    const item = editor.querySelector<HTMLElement>('[data-chip="sent"]')!;
+    const select = item.querySelector<HTMLSelectElement>("select")!;
+    select.value = "hidden";
+    select.dispatchEvent(new Event("change"));
+    const config = configs[configs.length - 1]!;
+    expect(config.chip_layout?.hidden).toContain("sent");
+    expect(config.chip_layout?.top).not.toContain("sent");
+    expect(config.show_firmware).toBeUndefined();
+    expect(config.hide_quick_stats).toBeUndefined();
+  });
+
+  it("uses the keyboard order controls and can reset to defaults", () => {
+    const { editor, configs } = createEditor({ target: NODE_TARGET });
+    const received = editor.querySelector<HTMLElement>('[data-chip="received"]')!;
+    const up = Array.from(received.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↑")!;
+    up.click();
+    expect(configs[configs.length - 1]!.chip_layout?.top.slice(0, 2)).toEqual(["received", "sent"]);
+
+    editor.querySelector<HTMLButtonElement>(".chip-reset")!.click();
+    expect(configs[configs.length - 1]!.chip_layout).toBeUndefined();
+  });
+});
+
 describe("MeshcoreCardEditor settings edits", () => {
   function editNodeSettings(
     initial: MeshcoreCardConfig,
@@ -332,6 +375,15 @@ describe("MeshcoreCardEditor settings edits", () => {
     expect(config.max_neighbors).toBe(3);
     expect(config.map_provider).toBe("meshmapper");
     expect(config.map_metro).toBe("smf");
+  });
+
+  it("preserves legacy chip flags during unrelated form edits", () => {
+    const config = editNodeSettings(
+      { target: NODE_TARGET, hide_quick_stats: true, show_firmware: true },
+      { name: "Renamed" }
+    );
+    expect(config.hide_quick_stats).toBe(true);
+    expect(config.show_firmware).toBe(true);
   });
 
   it("drops defaults so the stored config stays clean", () => {

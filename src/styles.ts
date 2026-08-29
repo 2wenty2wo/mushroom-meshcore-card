@@ -469,6 +469,12 @@ export const STYLES: string = `
     justify-content: space-between;
   }
   .neighbors-list { display: flex; flex-direction: column; gap: 6px; }
+  .neighbors-empty {
+    padding: 8px;
+    color: var(--secondary-text-color, #727272);
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    text-align: center;
+  }
   .neighbor-row {
     padding: var(--mush-spacing, 10px);
     border-radius: var(--mushroom-meshcore-control-radius);
@@ -527,9 +533,6 @@ export const STYLES: string = `
     line-height: 0;
     --mdc-icon-size: 14px;
   }
-  .green { color: var(--mushroom-meshcore-success-color); }
-  .yellow, .orange { color: var(--mushroom-meshcore-warning-color); }
-  .red { color: var(--mushroom-meshcore-danger-color); }
   .blue { color: var(--mushroom-meshcore-info-color); }
 
   .empty {

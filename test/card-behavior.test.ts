@@ -252,7 +252,7 @@ describe("hub rendering details", () => {
     expect(body).toContain("mqtt-ok");
     expect(body).toContain("mqtt.example");
     expect(body).toContain("mqtt-err");
-    expect(body).toContain("3.7V");
+    expect(body).toContain("3.7 V");
     expect(body).toContain("10 tok");
     expect(body).toContain("-34.92866, 138.59863");
     // innerHTML serialization escapes & in the href.
@@ -401,6 +401,27 @@ describe("node rendering details", () => {
     expect(body).toContain("-35.02000, 138.57000");
     expect(body).toContain("https://analyzer.letsmesh.net/map?lat=-35.02000");
   });
+
+  it("renders explicit top and details chip zones in configured order", () => {
+    const { body } = renderCard({
+      ...NODE_TARGET,
+      details_default_open: true,
+      chip_layout: {
+        top: ["received"],
+        details: ["sent", "temperature"],
+        hidden: [],
+      },
+    });
+    const quickRow = body.match(/<div class="quick-chip-row[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+    const detailRow = body.match(/<div class="detail-chips">([\s\S]*?)<\/div>/)?.[1] ?? "";
+    expect(quickRow).toContain(nodeEntity("nb_recv"));
+    expect(quickRow).not.toContain(nodeEntity("nb_sent"));
+    expect(detailRow).toContain(nodeEntity("nb_sent"));
+    expect(detailRow).toContain(nodeEntity("temperature"));
+    expect(detailRow.indexOf(nodeEntity("nb_sent"))).toBeLessThan(
+      detailRow.indexOf(nodeEntity("temperature"))
+    );
+  });
 });
 
 describe("node neighbors list", () => {
@@ -418,21 +439,24 @@ describe("node neighbors list", () => {
     const hass = createHass();
     const ago = (seconds: number): string =>
       new Date(Date.now() - seconds * 1000).toISOString();
-    const neighbor = (id: string, snr: number, seconds: number): void =>
+    const neighbor = (id: string, snr: number, seconds: number, resolvedName?: string): void =>
       addEntity(
         hass,
         `sensor.meshcore_spring_neighbor_${id}`,
-        state(snr, {}, ago(seconds))
+        state(snr, { secs_ago: seconds, ...(resolvedName ? { resolved_name: resolvedName } : {}) }, ago(seconds))
       );
-    neighbor("aaaa01", 12.5, 30);
+    neighbor("aaaa01", 12.5, 30, "Ridge Repeater");
     neighbor("bbbb02", 7, 300);
     neighbor("cccc03", 3, 7200);
     neighbor("dddd04", -5, 3 * 86400);
-    // Some integrations only stamp last_updated; the age falls back to it.
+    neighbor("ffff06", 20, 48 * 60 * 60);
+    // A timestamp-only legacy entity is excluded unless its rolling `_seen`
+    // companion proves activity inside the 48-hour window.
     const staleChanged = state(1.5, {}, ago(600));
     staleChanged.last_changed = "";
     addEntity(hass, "sensor.meshcore_spring_neighbor_eeee05", staleChanged);
     addEntity(hass, "sensor.meshcore_spring_neighbor_aaaa01_seen", state(7));
+    addEntity(hass, "sensor.meshcore_spring_neighbor_eeee05_seen", state(2));
     addEntity(
       hass,
       "binary_sensor.meshcore_55733c_ridge_contact",
@@ -448,29 +472,28 @@ describe("node neighbors list", () => {
     return hass;
   }
 
-  it("lists neighbors sorted by SNR with names, classes, and ages", () => {
+  it("lists only strict 48-hour neighbors sorted by raw SNR", () => {
     const { body } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       neighborHass()
     );
-    expect(body).toContain('<span class="count-badge">5</span>');
-    // Contact entities resolve names via adv_id, then via the entity id.
+    expect(body).toContain('<span class="count-badge">4</span>');
+    expect(body).toContain("4 neighbors · 48h");
+    // resolved_name is preferred; contact entities remain a fallback.
     expect(body).toContain("Ridge Repeater");
     expect(body).toContain("Valley Node");
     expect(body).toContain("cccc03");
-    expect(body).toContain("neighbor-snr green");
-    expect(body).toContain("neighbor-snr yellow");
-    expect(body).toContain("neighbor-snr orange");
-    expect(body).toContain("neighbor-snr red");
+    expect(body).not.toMatch(/neighbor-snr (green|yellow|orange|red)/);
     expect(body).toContain("12.5 dB");
-    // Ages: 30s, 5m, 2h (ceil), 3d, and 10m from the last_updated fallback.
+    // Ages come only from secs_ago. The seen-only fallback stays deliberately broad.
     expect(body).toContain(": 30s");
     expect(body).toContain(": 5m");
     expect(body).toContain(": 2h");
-    expect(body).toContain(": 3d");
-    expect(body).toContain(": 10m");
+    expect(body).toContain(": within 48h");
+    expect(body).not.toContain("dddd04");
+    expect(body).not.toContain("ffff06");
     // The seen counter renders as the connection count.
-    expect(body).toContain(": 7x");
+    expect(body).toContain("Receptions (48h): 7x");
     expect(body).toContain(
       'data-entity="binary_sensor.meshcore_55733c_ridge_contact"'
     );
@@ -485,7 +508,7 @@ describe("node neighbors list", () => {
       { ...NODE_TARGET, details_default_open: true, max_neighbors: 2 },
       neighborHass()
     );
-    expect(body).toContain('<span class="count-badge">5</span>');
+    expect(body).toContain('<span class="count-badge">4</span>');
     expect(body).toContain("Ridge Repeater");
     expect(body).toContain("Valley Node");
     expect(body).not.toContain("cccc03");
@@ -498,6 +521,7 @@ describe("node neighbors list", () => {
       neighborHass()
     );
     expect(body).not.toContain("neighbors-section");
+    expect(body).not.toContain("neighbors · 48h");
   });
 });
 
