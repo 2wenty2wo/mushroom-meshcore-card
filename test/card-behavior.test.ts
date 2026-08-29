@@ -260,6 +260,34 @@ describe("hub rendering details", () => {
     expect(body).toContain("long=138.59863");
   });
 
+  it("renders hub chips in both custom destinations", () => {
+    const hass = enrichedHubHass();
+    const { body } = renderCard({
+      ...HUB_TARGET,
+      details_default_open: true,
+      chip_layout: {
+        top: ["spreading_factor", "frequency"],
+        details: ["hardware", "firmware"],
+        hidden: [],
+      },
+    }, hass);
+    const quickRow = body.match(/<div class="quick-chip-row[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+    const detailRow = body.match(/<div class="detail-chips">([\s\S]*?)<\/div>/)?.[1] ?? "";
+    expect(quickRow).toContain("SF10");
+    expect(quickRow).toContain("915.125 MHz");
+    expect(detailRow).toContain("Hardware");
+    expect(detailRow).toContain("Test Hub");
+    expect(detailRow).toContain("Firmware");
+    expect(detailRow).toContain("1.0");
+
+    const sfDetails = renderCard({
+      ...HUB_TARGET,
+      details_default_open: true,
+      chip_layout: { top: [], details: ["spreading_factor"], hidden: [] },
+    }, hass).body;
+    expect(sfDetails.match(/<div class="detail-chips">([\s\S]*?)<\/div>/)?.[1]).toContain("SF10");
+  });
+
   it("links to a MeshMapper metro when configured", () => {
     const { body } = renderCard(
       {
@@ -421,6 +449,34 @@ describe("node rendering details", () => {
     expect(detailRow.indexOf(nodeEntity("nb_sent"))).toBeLessThan(
       detailRow.indexOf(nodeEntity("temperature"))
     );
+  });
+
+  it("renders node firmware, spreading factor, and frequency in custom zones", () => {
+    const hass = createHass();
+    addEntity(hass, nodeEntity("spreading_factor"), state(9));
+    addEntity(hass, nodeEntity("frequency"), state(915.5));
+    const topMetrics = renderCard({
+      ...NODE_TARGET,
+      details_default_open: true,
+      chip_layout: {
+        top: ["spreading_factor", "frequency"],
+        details: ["firmware"],
+        hidden: [],
+      },
+    }, hass).body;
+    const quickRow = topMetrics.match(/<div class="quick-chip-row[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+    const detailRow = topMetrics.match(/<div class="detail-chips">([\s\S]*?)<\/div>/)?.[1] ?? "";
+    expect(quickRow).toContain("SF9");
+    expect(quickRow).toContain("915.5 MHz");
+    expect(detailRow).toContain("Firmware");
+    expect(detailRow).toContain("v1.14.0");
+
+    const sfDetails = renderCard({
+      ...NODE_TARGET,
+      details_default_open: true,
+      chip_layout: { top: [], details: ["spreading_factor"], hidden: [] },
+    }, hass).body;
+    expect(sfDetails.match(/<div class="detail-chips">([\s\S]*?)<\/div>/)?.[1]).toContain("SF9");
   });
 });
 
@@ -589,6 +645,70 @@ describe("node neighbors list", () => {
     );
     expect(body).not.toContain("neighbors-section");
     expect(body).not.toContain("0 neighbors · 48h");
+  });
+
+  it("renders an entity-backed or static neighbor count in Details", () => {
+    const withCount = createHass();
+    addEntity(withCount, "sensor.meshcore_spring_neighbor_count", state(0));
+    const entityBacked = renderCard({
+      ...NODE_TARGET,
+      details_default_open: true,
+      chip_layout: { top: [], details: ["neighbor_count"], hidden: [] },
+    }, withCount).body;
+    expect(entityBacked).toContain('data-entity="sensor.meshcore_spring_neighbor_count"');
+    expect(entityBacked).toContain('<span class="chip-label">Neighbors ');
+
+    const withoutCount = createHass();
+    addEntity(
+      withoutCount,
+      "sensor.meshcore_spring_neighbor_aabb01",
+      state(6.5, { secs_ago: 30, resolved_name: "Static Count Neighbor" })
+    );
+    const staticCount = renderCard({
+      ...NODE_TARGET,
+      details_default_open: true,
+      chip_layout: { top: [], details: ["neighbor_count"], hidden: [] },
+    }, withoutCount).body;
+    expect(staticCount).toContain('<span class="chip static-chip"');
+    expect(staticCount).toContain('<span class="chip-label">Neighbors ');
+  });
+
+  it("formats neighbor ages beyond one day", () => {
+    const hass = createHass();
+    addEntity(
+      hass,
+      "sensor.meshcore_spring_neighbor_aabb02",
+      state(4, { secs_ago: 25 * 60 * 60, resolved_name: "Day Old Neighbor" })
+    );
+    const { body } = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      hass
+    );
+    expect(body).toContain("Day Old Neighbor");
+    expect(body).toContain("Last seen: 1d");
+  });
+
+  it("ignores neighbor registry entries whose states are missing", () => {
+    const hass = createHass();
+    const seenOnlyId = "sensor.meshcore_spring_neighbor_aabb03_seen";
+    const seenEntry = registryEntry(NODE_DEVICE_ID);
+    seenEntry.entity_id = seenOnlyId;
+    hass.entities[seenOnlyId] = seenEntry;
+    addEntity(hass, "sensor.meshcore_spring_neighbor_aabb03", state(5));
+
+    const snrOnlyId = "sensor.meshcore_spring_neighbor_aabb04";
+    const snrEntry = registryEntry(NODE_DEVICE_ID);
+    snrEntry.entity_id = snrOnlyId;
+    hass.entities[snrOnlyId] = snrEntry;
+    addEntity(hass, "sensor.meshcore_spring_neighbor_aabb04_seen", state(2));
+
+    const { body } = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      hass
+    );
+    expect(body).toContain("0 neighbors · 48h");
+    expect(body).not.toContain("aabb03");
+    expect(body).not.toContain("aabb04");
   });
 });
 

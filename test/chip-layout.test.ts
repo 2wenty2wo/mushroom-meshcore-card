@@ -35,4 +35,20 @@ describe("chip layouts", () => {
     expect(layout.hidden).toContain("firmware");
     expect(layout.hidden).toContain("neighbor_count");
   });
+
+  it("treats malformed non-array YAML zones as empty", () => {
+    const config = {
+      chip_layout: {
+        top: null,
+        details: {},
+        hidden: "firmware",
+      },
+    } as unknown as MeshcoreCardConfig;
+    const layout = effectiveChipLayout(NODE, config);
+    expect(layout.top).toEqual([]);
+    expect(layout.details).toEqual([]);
+    expect(layout.hidden).toEqual(expect.arrayContaining([
+      "firmware", "sent", "received", "neighbor_count",
+    ]));
+  });
 });

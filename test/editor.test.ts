@@ -332,6 +332,22 @@ describe("MeshcoreCardEditor chip organizer", () => {
     up.click();
     expect(configs[configs.length - 1]!.chip_layout?.top.slice(0, 2)).toEqual(["received", "sent"]);
 
+    const down = Array.from(received.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↓")!;
+    down.click();
+    expect(configs[configs.length - 1]!.chip_layout?.top.slice(0, 2)).toEqual(["sent", "received"]);
+
+    const beforeNoOps = configs.length;
+    const sent = editor.querySelector<HTMLElement>('[data-chip="sent"]')!;
+    Array.from(sent.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↑")!
+      .click();
+    const neighborCount = editor.querySelector<HTMLElement>('[data-chip="neighbor_count"]')!;
+    Array.from(neighborCount.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↓")!
+      .click();
+    expect(configs).toHaveLength(beforeNoOps);
+
     editor.querySelector<HTMLButtonElement>(".chip-reset")!.click();
     expect(configs[configs.length - 1]!.chip_layout).toBeUndefined();
   });
