@@ -8,6 +8,7 @@ import type {
   MeshcoreChannelCardConfig,
 } from "./types.js";
 import { HeaderActionController } from "./actions.js";
+import { dateKey, dateLabel, timeLabel } from "./date-time.js";
 import { escapeHtml } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
@@ -540,78 +541,16 @@ export class MeshcoreChannelCard extends HTMLElement {
     }, STREAM_RENDER_DELAY);
   }
 
-  private _formatOptions(): {
-    locale: string;
-    timeZone?: string;
-    hour12?: boolean;
-  } {
-    const locale =
-      this._hass?.language ?? this._hass?.locale?.language ?? navigator.language;
-    const zoneMode = this._hass?.locale?.time_zone;
-    const timeZone =
-      zoneMode === "server" ? this._hass?.config?.time_zone : undefined;
-    const timeFormat = this._hass?.locale?.time_format;
-    const hour12 =
-      timeFormat === "12" ? true : timeFormat === "24" ? false : undefined;
-    return { locale, timeZone, hour12 };
-  }
-
-  private _formatter(
-    options: Intl.DateTimeFormatOptions
-  ): Intl.DateTimeFormat {
-    const format = this._formatOptions();
-    try {
-      return new Intl.DateTimeFormat(format.locale, {
-        ...options,
-        timeZone: format.timeZone,
-      });
-    } catch {
-      return new Intl.DateTimeFormat(undefined, options);
-    }
-  }
-
   private _dateKey(date: Date): string {
-    const parts = this._formatter({
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      calendar: "gregory",
-      numberingSystem: "latn",
-    } as Intl.DateTimeFormatOptions).formatToParts(date);
-    const get = (type: Intl.DateTimeFormatPartTypes) =>
-      parts.find((part) => part.type === type)?.value ?? "";
-    return `${get("year")}-${get("month")}-${get("day")}`;
-  }
-
-  private _previousDateKey(date: Date): string {
-    const [year, month, day] = this._dateKey(date).split("-").map(Number);
-    const previous = new Date(Date.UTC(year!, month! - 1, day! - 1));
-    return previous.toISOString().slice(0, 10);
+    return dateKey(this._hass, date);
   }
 
   private _dateLabel(date: Date): string {
-    const t = this._localize();
-    const key = this._dateKey(date);
-    const today = this._dateKey(new Date());
-    const yesterday = this._previousDateKey(new Date());
-    const dateText = this._formatter({
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }).format(date);
-    if (key === today) return `${t("card.today")} · ${dateText}`;
-    if (key === yesterday) return `${t("card.yesterday")} · ${dateText}`;
-    return dateText;
+    return dateLabel(this._hass, date, this._localize());
   }
 
   private _timeLabel(date: Date): string {
-    const { hour12 } = this._formatOptions();
-    return this._formatter({
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12,
-    }).format(date);
+    return timeLabel(this._hass, date);
   }
 
   private _renderMessages(): string {

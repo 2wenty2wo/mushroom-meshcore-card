@@ -504,6 +504,228 @@ describe("mentions card rendering", () => {
     expect(body).toContain(t("card.mentions_count_one"));
   });
 
+  it("renders valid timestamp metadata with Channels-style date and time labels", async () => {
+    vi.setSystemTime(new Date("2026-08-29T12:00:00Z"));
+    const mock = createConnection();
+    const hass = createMentionsHass(mock);
+    hass.locale = {
+      language: "en",
+      time_format: "24",
+      time_zone: "server",
+    };
+    hass.config = { time_zone: "UTC" };
+    const { card } = await createCard({ entity: TODO_ENTITY }, mock, hass);
+    feed(mock, [
+      {
+        uid: "timed",
+        summary: "Alice on Public: timestamped",
+        status: "needs_action",
+        description: "meshcore_received_at: 2026-08-29T10:15:30+00:00",
+      },
+    ]);
+
+    expect(card.shadowRoot!.querySelector(".date-header")?.textContent).toBe(
+      "Today · August 29, 2026"
+    );
+    const time = card.shadowRoot!.querySelector("time.mention-time");
+    expect(time?.textContent).toBe("10:15:30");
+    expect(time?.getAttribute("datetime")).toBe("2026-08-29T10:15:30.000Z");
+    expect(card.shadowRoot!.querySelector(".mention-description")).toBeNull();
+    expect(shadowBody(card)).not.toContain("meshcore_received_at:");
+  });
+
+  it("treats only a full valid timestamp marker as metadata", async () => {
+    const { card, mock } = await createCard();
+    const descriptions = [
+      "Notes from the automation",
+      " meshcore_received_at: 2026-08-29T10:15:30Z",
+      "meshcore_received_at: 2026-08-29T10:15:30",
+      "meshcore_received_at: not-an-iso-timestamp",
+      "meshcore_received_at: 2026-08-29T10:15:30Z\nextra",
+      "meshcore_received_at: 2026-02-31T10:15:30Z",
+      "meshcore_received_at: 2026-08-29T24:15:30Z",
+      "meshcore_received_at: 2026-08-29T10:60:30Z",
+      "meshcore_received_at: 2026-08-29T10:15:30+99:00",
+    ];
+    feed(
+      mock,
+      descriptions.map((description, index) => ({
+        uid: `legacy-${index}`,
+        summary: `Sender on Public: legacy ${index}`,
+        status: "needs_action",
+        description,
+      }))
+    );
+
+    expect(card.shadowRoot!.querySelectorAll(".mention-description")).toHaveLength(
+      descriptions.length
+    );
+    expect(card.shadowRoot!.querySelector("time")).toBeNull();
+    expect(card.shadowRoot!.querySelectorAll(".date-header")).toHaveLength(1);
+    expect(card.shadowRoot!.querySelector(".date-header")?.textContent).toBe(
+      t("card.mentions_earlier")
+    );
+    for (const description of descriptions) {
+      expect(card.shadowRoot!.textContent).toContain(description);
+    }
+  });
+
+  it("sorts timestamped mentions newest-first with stable ties and legacy items last", async () => {
+    vi.setSystemTime(new Date("2026-08-29T12:00:00Z"));
+    const mock = createConnection();
+    const hass = createMentionsHass(mock);
+    hass.locale = { language: "en", time_zone: "server" };
+    hass.config = { time_zone: "UTC" };
+    const { card } = await createCard({ entity: TODO_ENTITY }, mock, hass);
+    feed(mock, [
+      pendingItem("legacy-a", "Legacy on Public: first legacy"),
+      {
+        ...pendingItem("tie-a", "Tie A on Public: first tie"),
+        description: "meshcore_received_at: 2026-08-29T10:00:00Z",
+      },
+      {
+        ...pendingItem("older", "Older on Public: yesterday"),
+        description: "meshcore_received_at: 2026-08-28T22:00:00Z",
+      },
+      {
+        ...pendingItem("newest", "Newest on Public: latest"),
+        description: "meshcore_received_at: 2026-08-29T11:00:00Z",
+      },
+      {
+        ...pendingItem("tie-b", "Tie B on Public: second tie"),
+        description: "meshcore_received_at: 2026-08-29T10:00:00Z",
+      },
+      pendingItem("legacy-b", "Legacy on Public: second legacy"),
+    ]);
+
+    const rowIds = Array.from(
+      card.shadowRoot!.querySelectorAll<HTMLElement>("[data-mention-row]")
+    ).map((row) => row.dataset["mentionRow"]);
+    expect(rowIds).toEqual([
+      "newest",
+      "tie-a",
+      "tie-b",
+      "older",
+      "legacy-a",
+      "legacy-b",
+    ]);
+    const headers = Array.from(
+      card.shadowRoot!.querySelectorAll(".date-header")
+    ).map((header) => header.textContent);
+    expect(headers[0]).toContain(t("card.today"));
+    expect(headers[1]).toContain(t("card.yesterday"));
+    expect(headers[2]).toBe(t("card.mentions_earlier"));
+  });
+
+  it("groups and sorts pending and handled mentions independently", async () => {
+    const { card, mock } = await createCard({
+      entity: TODO_ENTITY,
+      hide_completed: false,
+      hide_date_headers: true,
+    });
+    feed(mock, [
+      {
+        ...pendingItem("pending-old", "Pending on Public: old"),
+        description: "meshcore_received_at: 2026-08-28T09:00:00Z",
+      },
+      {
+        uid: "handled-new",
+        summary: "Handled on Public: new",
+        status: "completed",
+        description: "meshcore_received_at: 2026-08-29T11:00:00Z",
+      },
+      {
+        ...pendingItem("pending-new", "Pending on Public: new"),
+        description: "meshcore_received_at: 2026-08-29T10:00:00Z",
+      },
+      {
+        uid: "handled-old",
+        summary: "Handled on Public: old",
+        status: "completed",
+        description: "meshcore_received_at: 2026-08-27T11:00:00Z",
+      },
+    ]);
+
+    const pending = card.shadowRoot!.querySelector(
+      `section[aria-label="${t("card.mentions_pending")}"]`
+    )!;
+    const handled = card.shadowRoot!.querySelector(
+      `section[aria-label="${t("card.mentions_handled")}"]`
+    )!;
+    expect(
+      Array.from(pending.querySelectorAll<HTMLElement>("[data-mention-row]")).map(
+        (row) => row.dataset["mentionRow"]
+      )
+    ).toEqual(["pending-new", "pending-old"]);
+    expect(
+      Array.from(handled.querySelectorAll<HTMLElement>("[data-mention-row]")).map(
+        (row) => row.dataset["mentionRow"]
+      )
+    ).toEqual(["handled-new", "handled-old"]);
+  });
+
+  it("honors timestamp and date-header visibility without changing grouping", async () => {
+    const { card, mock } = await createCard({
+      entity: TODO_ENTITY,
+      hide_timestamps: true,
+    });
+    feed(mock, [
+      pendingItem("legacy", "Legacy on Public: legacy"),
+      {
+        ...pendingItem("timed", "Timed on Public: timed"),
+        description: "meshcore_received_at: 2026-08-29T10:00:00Z",
+      },
+    ]);
+    expect(card.shadowRoot!.querySelector("time")).toBeNull();
+    expect(card.shadowRoot!.querySelectorAll(".date-group")).toHaveLength(2);
+    expect(shadowBody(card)).toContain(t("card.mentions_earlier"));
+
+    card.setConfig({ entity: TODO_ENTITY, hide_date_headers: true });
+    expect(card.shadowRoot!.querySelector("time.mention-time")).not.toBeNull();
+    expect(card.shadowRoot!.querySelectorAll(".date-group")).toHaveLength(2);
+    expect(card.shadowRoot!.querySelector(".date-header")).toBeNull();
+    expect(shadowBody(card)).not.toContain(t("card.mentions_earlier"));
+    expect(
+      Array.from(
+        card.shadowRoot!.querySelectorAll<HTMLElement>("[data-mention-row]")
+      ).map((row) => row.dataset["mentionRow"])
+    ).toEqual(["timed", "legacy"]);
+  });
+
+  it("uses the Home Assistant server time zone and 12-hour preference", async () => {
+    vi.setSystemTime(new Date("2026-08-30T00:00:00Z"));
+    const mock = createConnection();
+    const hass = createMentionsHass(mock);
+    hass.language = "en-AU";
+    hass.locale = {
+      language: "en-AU",
+      time_format: "12",
+      time_zone: "server",
+    };
+    hass.config = { time_zone: "Australia/Sydney" };
+    const { card } = await createCard({ entity: TODO_ENTITY }, mock, hass);
+    const receivedAt = new Date("2026-08-29T23:30:00Z");
+    feed(mock, [
+      {
+        ...pendingItem(),
+        description: `meshcore_received_at: ${receivedAt.toISOString()}`,
+      },
+    ]);
+
+    expect(card.shadowRoot!.querySelector(".date-header")?.textContent).toContain(
+      t("card.today")
+    );
+    expect(card.shadowRoot!.querySelector("time")?.textContent).toBe(
+      new Intl.DateTimeFormat("en-AU", {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+        timeZone: "Australia/Sydney",
+      }).format(receivedAt)
+    );
+  });
+
   it("uses flat divided rows while retaining the checkbox control", async () => {
     const { card, mock } = await createCard();
     feed(mock, [pendingItem()]);

@@ -87,6 +87,7 @@
     "mentions_count": "{n} unhandled mentions",
     "mentions_pending": "Pending",
     "mentions_handled": "Handled",
+    "mentions_earlier": "Earlier mentions",
     "mentions_channel": "on {channel}",
     "mentions_handle_label": "Mark handled: {item}",
     "mentions_reopen_label": "Reopen mention: {item}",

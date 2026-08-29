@@ -87,6 +87,7 @@
     "mentions_count": "{n} unbearbeitete Erwähnungen",
     "mentions_pending": "Offen",
     "mentions_handled": "Erledigt",
+    "mentions_earlier": "Frühere Erwähnungen",
     "mentions_channel": "auf {channel}",
     "mentions_handle_label": "Als erledigt markieren: {item}",
     "mentions_reopen_label": "Erwähnung erneut öffnen: {item}",

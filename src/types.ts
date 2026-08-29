@@ -153,6 +153,8 @@ export interface MeshcoreMentionsCardConfig {
   double_tap_action?: ActionConfig;
   /** Completed mentions are hidden unless this is explicitly false. */
   hide_completed?: boolean;
+  hide_timestamps?: boolean;
+  hide_date_headers?: boolean;
   grid_options?: GridOptions;
 }
 

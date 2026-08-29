@@ -1,0 +1,117 @@
+blueprint:
+  name: MeshCore Mentions
+  description: >-
+    Records MeshCore channel messages that mention one of your configured
+    companion names in a Local To-do list for the Mushroom MeshCore Mentions
+    card. Notifications can optionally be sent to one or more notify entities.
+  domain: automation
+  author: 2wenty2wo
+  source_url: https://github.com/2wenty2wo/mushroom-meshcore-card/blob/main/blueprints/automation/meshcore/mention_notifications.yaml
+  homeassistant:
+    min_version: 2026.5.0
+  input:
+    mention_settings:
+      name: Mention matching
+      icon: mdi:at
+      input:
+        companion_names:
+          name: Companion names
+          description: >-
+            Add every name people may use to tag you, in priority order. The
+            first configured name found as @Name or @[Name] is used.
+          selector:
+            text:
+              multiple: true
+        todo_entity:
+          name: Mentions to-do list
+          description: >-
+            Select the Local To-do list used by the Mushroom MeshCore Mentions
+            card.
+          selector:
+            entity:
+              filter:
+                - domain: todo
+                  integration: local_todo
+    notification_settings:
+      name: Notifications
+      icon: mdi:bell-outline
+      description: Optionally send each recorded mention to notify entities.
+      collapsed: true
+      input:
+        notification_targets:
+          name: Notify entities
+          description: Leave empty to record mentions without notifications.
+          default: []
+          selector:
+            entity:
+              filter:
+                - domain: notify
+              multiple: true
+
+mode: parallel
+max: 10
+
+variables:
+  companion_names: !input companion_names
+  todo_entity: !input todo_entity
+  notification_targets: !input notification_targets
+  message_text: >-
+    {{ trigger.event.data.message | default("", true) | string }}
+  sender_name: >-
+    {% set sender = trigger.event.data.sender_name | default("", true) | string | trim -%}
+    {{ sender if sender else "Unknown" }}
+  channel_name: >-
+    {% set channel = trigger.event.data.channel | default("", true) | string | trim -%}
+    {% if channel -%}
+      {{ channel }}
+    {% elif trigger.event.data.channel_idx is defined and trigger.event.data.channel_idx is not none -%}
+      channel {{ trigger.event.data.channel_idx }}
+    {% else -%}
+      Unknown channel
+    {% endif %}
+  received_at: >-
+    {% set raw_timestamp = trigger.event.data.timestamp | default("", true) -%}
+    {% set parsed_timestamp = as_datetime(raw_timestamp, none) if raw_timestamp is string else none -%}
+    {{ parsed_timestamp.isoformat() if parsed_timestamp is not none and parsed_timestamp.tzinfo is not none else now().isoformat() }}
+  tagged_companion: >-
+    {% set match = namespace(name="") -%}
+    {% set haystack = message_text | lower -%}
+    {% for configured_name in companion_names -%}
+      {% set name = configured_name | string | trim -%}
+      {% set lowered_name = name | lower -%}
+      {% if not match.name and name and (("@" ~ lowered_name) in haystack or ("@[" ~ lowered_name ~ "]") in haystack) -%}
+        {% set match.name = name -%}
+      {% endif -%}
+    {% endfor -%}
+    {{ match.name }}
+  summary: >-
+    {{ sender_name }} on {{ channel_name }}: {{ message_text }}
+
+triggers:
+  - trigger: event
+    event_type: meshcore_message
+    event_data:
+      message_type: channel
+
+conditions:
+  - condition: template
+    value_template: "{{ tagged_companion | string | length > 0 }}"
+
+actions:
+  - action: todo.add_item
+    target:
+      entity_id: !input todo_entity
+    data:
+      item: "{{ summary }}"
+      description: "meshcore_received_at: {{ received_at }}"
+  - if:
+      - condition: template
+        value_template: "{{ notification_targets | length > 0 }}"
+    then:
+      - action: notify.send_message
+        continue_on_error: true
+        target:
+          entity_id: !input notification_targets
+        data:
+          title: "📡 MeshCore tag: {{ tagged_companion }}"
+          message: "{{ summary }}"

@@ -87,6 +87,7 @@
     "mentions_count": "{n} onverwerkte vermeldingen",
     "mentions_pending": "Openstaand",
     "mentions_handled": "Afgehandeld",
+    "mentions_earlier": "Eerdere vermeldingen",
     "mentions_channel": "op {channel}",
     "mentions_handle_label": "Markeren als afgehandeld: {item}",
     "mentions_reopen_label": "Vermelding heropenen: {item}",
