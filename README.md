@@ -150,14 +150,14 @@ The Mentions card uses the bundled **MeshCore Mentions** automation blueprint to
 
 Installing the dashboard card through HACS and importing the automation blueprint are separate steps: HACS installs the frontend resource, while the blueprint runs the background mention detection and optional notifications.
 
-1. Create or choose a **Local To-do** list in Home Assistant.
+1. Create a new **Local To-do** list named **MeshCore Mentions** and keep it dedicated to mention records rather than personal tasks.
 2. Import the blueprint above and create an automation from it.
-3. Enter the companion names that should count as mentions, select the Local To-do entity, and optionally select notification entities.
-4. Add the Mentions card and select that same Local To-do entity.
+3. Enter the companion names that should count as mentions, select the new **MeshCore Mentions** entity, and optionally select notification entities.
+4. Add the Mentions card and select that same **MeshCore Mentions** entity.
 
 ```yaml
 type: custom:mushroom-meshcore-mentions-card
-entity: todo.meshcore_tags
+entity: todo.meshcore_mentions
 icon: mdi:at
 icon_color: orange
 hide_completed: true
@@ -173,9 +173,9 @@ grid_options:
   columns: full
 ```
 
-Each item written as `sender on channel: message` is shown as a structured sender, channel, and message row. Blueprint-created items also carry their received time, allowing the card to group them by date and show Channels-style timestamps. Legacy items without that metadata remain available under **Earlier mentions**. Use the checkbox to mark a mention handled; turn off **Hide handled mentions** to view handled items and reopen one.
+Each item written as `sender on channel: message` is shown as a structured sender, channel, and message row. Blueprint-created items also carry their received time, allowing the card to group them by date and show Channels-style timestamps. Items without that metadata remain available under **Earlier mentions**. Use the checkbox to mark a mention handled; turn off **Hide handled mentions** to view handled items and reopen one.
 
-If you used the previous standalone automation, reuse its Local To-do list so your history is preserved. Disable the legacy automation before enabling the blueprint to prevent duplicate entries, then send one test mention. See the [MeshCore Mentions blueprint guide](docs/mentions-blueprint.md) for complete setup, migration, testing, and troubleshooting details.
+See the [MeshCore Mentions blueprint guide](docs/mentions-blueprint.md) for complete setup, testing, and troubleshooting details.
 
 
 ## Theme and Card Mod compatibility

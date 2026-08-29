@@ -6,7 +6,7 @@ The **MeshCore Mentions** automation blueprint listens for channel-message event
 
 - Home Assistant 2026.5.0 or later
 - The [MeshCore integration](https://github.com/meshcore-dev/meshcore-ha), configured and emitting `meshcore_message` events
-- A **Local To-do** list that the automation can write and the card can update
+- A dedicated **Local To-do** list named **MeshCore Mentions** that the automation can write and the card can update
 - Mushroom MeshCore Card installed through HACS or manually
 
 The frontend installation and blueprint import are independent. HACS installs `mushroom-meshcore-card.js`; it does not create an automation, listen for events, or send notifications. Importing the blueprint does not install the dashboard card.
@@ -17,7 +17,7 @@ The frontend installation and blueprint import are independent. HACS installs `m
 
 The permanent source is [`blueprints/automation/meshcore/mention_notifications.yaml`](https://github.com/2wenty2wo/mushroom-meshcore-card/blob/main/blueprints/automation/meshcore/mention_notifications.yaml). A Blueprint Exchange post is not required to import it.
 
-1. In Home Assistant, create a Local To-do list under **Settings → Devices & services → Add integration → Local To-do** if you do not already have one.
+1. In Home Assistant, create a new Local To-do list named **MeshCore Mentions** under **Settings → Devices & services → Add integration → Local To-do**. Keep it separate from personal tasks.
 2. Use the import button above, review the blueprint, and select **Import blueprint**.
 3. Create an automation from **MeshCore Mentions**.
 4. Configure the inputs below, save the automation, and make sure it is enabled.
@@ -26,7 +26,7 @@ The permanent source is [`blueprints/automation/meshcore/mention_notifications.y
 ### Inputs
 
 - **Companion names** (`companion_names`) is an ordered list of names that may be tagged. Matching is case-insensitive and recognizes both `@Name` and `@[Name]` anywhere in a channel message. Blank entries are ignored and the first configured match wins, so put longer or more specific names first when names overlap.
-- **Local To-do entity** (`todo_entity`) is where mentions are stored. Select the same entity in the Mentions card. Keeping an existing list preserves its history.
+- **Local To-do entity** (`todo_entity`) is where mentions are stored. Select the dedicated **MeshCore Mentions** entity in both the blueprint and the Mentions card.
 - **Notification entities** (`notification_targets`) is optional and may contain multiple `notify` entities. Leave it empty when only the card inbox is wanted.
 
 The automation listens only to `meshcore_message` events whose `message_type` is `channel`. For a matched message, it first adds a To-do item, then sends optional notifications. A notification failure therefore does not prevent the card entry from being created.
@@ -49,13 +49,13 @@ meshcore_received_at: 2026-08-29T12:00:00+10:00
 
 The event's timezone-aware ISO timestamp is used when valid; otherwise the automation records its current time. This fallback also covers timezone-less timestamps from older MeshCore integration versions. The card interprets a description as timestamp metadata only when the entire description is that marker with a valid ISO timestamp. Other descriptions remain ordinary visible descriptions.
 
-Timestamped items are grouped by received date and sorted newest-first. Items created by the legacy automation do not contain trustworthy received timestamps, so they are preserved without an invented date and displayed last under **Earlier mentions**. Pending and handled items are grouped separately.
+Timestamped items are grouped by received date and sorted newest-first. Items without trustworthy received timestamps are displayed last under **Earlier mentions** rather than being assigned an invented date. Pending and handled items are grouped separately.
 
 ## Card configuration
 
 ```yaml
 type: custom:mushroom-meshcore-mentions-card
-entity: todo.meshcore_tags
+entity: todo.meshcore_mentions
 hide_completed: true
 hide_timestamps: false
 hide_date_headers: false
@@ -64,17 +64,6 @@ grid_options:
 ```
 
 Dates and times are visible by default and follow Home Assistant's locale, time-zone, and clock settings. `hide_timestamps` hides the time on each row without changing its group or ordering. `hide_date_headers` hides date headings, including **Earlier mentions**. Disable `hide_completed` to show handled mentions and reopen them from the card.
-
-## Migrate from the standalone automation
-
-1. Keep the existing Local To-do integration and list; do not delete its entity or items.
-2. Import the new blueprint and create an automation that targets that existing To-do entity.
-3. Copy your companion-name variants into `companion_names` and select any desired notification entities.
-4. Disable the copied automation from `Meshcore-Tag-HA-Notification` **before** enabling the blueprint. Running both will create duplicate To-do items and notifications.
-5. Enable the blueprint automation and send one test mention.
-6. Confirm the new item appears in the existing list and Mentions card, then remove the old automation when you are satisfied with the migration.
-
-Existing entries remain usable. Only new entries created by the blueprint receive date/time metadata.
 
 ## Test without waiting for a radio message
 
@@ -95,9 +84,9 @@ Confirm that exactly one item is added to the configured Local To-do list, that 
 
 - **No item is created:** Confirm the automation is enabled, the event has `message_type: channel`, and the message contains a configured `@Name` or `@[Name]`. Check the automation trace for the actual event data and matching result.
 - **The item exists but is not in the card:** Verify that the card's `entity` is exactly the same Local To-do entity selected in the blueprint, then reload the dashboard.
-- **Duplicate items or notifications:** Disable or remove the previous standalone automation and check that only one automation was created from this blueprint.
+- **Duplicate items or notifications:** Check that only one enabled automation was created from this blueprint.
 - **No notification arrives:** Notifications are optional. Confirm at least one available `notify` entity is selected and inspect the automation trace. To-do creation occurs first, so the card entry may still succeed.
-- **An item appears under Earlier mentions:** Legacy entries and entries without a valid full-description `meshcore_received_at:` marker intentionally have no displayed received time.
+- **An item appears under Earlier mentions:** Entries without a valid full-description `meshcore_received_at:` marker intentionally have no displayed received time.
 - **A description is shown as text:** The card deliberately preserves descriptions that are not exactly the reserved timestamp marker. This avoids misreading user-created To-do content.
 - **The sender or channel looks wrong:** Inspect the `sender_name`, `channel`, and `channel_idx` fields on the source `meshcore_message` event. The automation cannot recover identity data that the integration did not provide.
 

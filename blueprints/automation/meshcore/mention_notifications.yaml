@@ -25,8 +25,9 @@ blueprint:
         todo_entity:
           name: Mentions to-do list
           description: >-
-            Select the Local To-do list used by the Mushroom MeshCore Mentions
-            card.
+            Select a dedicated Local To-do list named MeshCore Mentions. Use
+            the same entity in the Mushroom MeshCore Mentions card, and do not
+            mix these records with personal tasks.
           selector:
             entity:
               filter:
