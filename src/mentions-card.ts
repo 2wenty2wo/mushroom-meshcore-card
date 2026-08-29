@@ -1,4 +1,5 @@
 import { HeaderActionController } from "./actions.js";
+import { dateKey, dateLabel, timeLabel } from "./date-time.js";
 import { escapeHtml } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
@@ -44,6 +45,19 @@ const MENTIONS_STYLES = `
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
     font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
+  }
+
+  .date-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 0 5px;
+    background: var(--mushroom-meshcore-card-background);
+    color: var(--secondary-text-color, #727272);
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: 500;
     letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
@@ -110,6 +124,14 @@ const MENTIONS_STYLES = `
     display: flex;
     min-width: 0;
     align-items: baseline;
+    justify-content: space-between;
+    gap: var(--mush-spacing, 10px);
+  }
+
+  .mention-identity {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
     gap: 6px;
   }
 
@@ -132,6 +154,15 @@ const MENTIONS_STYLES = `
     line-height: var(--mushroom-meshcore-secondary-line-height);
   }
 
+  .mention-time {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color, #727272);
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
+  }
+
   .mention-message,
   .mention-description,
   .mention-fallback {
@@ -147,6 +178,8 @@ const MENTIONS_STYLES = `
     letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
     line-height: var(--mushroom-meshcore-primary-line-height);
   }
+
+  .mention-meta .mention-fallback { margin-top: 0; }
 
   .mention-description {
     margin-top: 4px;
@@ -201,6 +234,59 @@ interface ParsedMention {
   sender: string;
   channel: string;
   message: string;
+}
+
+interface MentionItemView {
+  item: TodoItem;
+  receivedAt: Date | null;
+  sourceIndex: number;
+}
+
+const RECEIVED_AT_RE =
+  /^meshcore_received_at: ((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2})))$/;
+
+function parseReceivedAt(description?: string | null): Date | null {
+  if (typeof description !== "string") return null;
+  const match = RECEIVED_AT_RE.exec(description);
+  if (!match) return null;
+  const year = Number(match[2]);
+  const month = Number(match[3]);
+  const day = Number(match[4]);
+  const hour = Number(match[5]);
+  const minute = Number(match[6]);
+  const second = Number(match[7]);
+  const offsetHour = match[8] === undefined ? 0 : Number(match[8]);
+  const offsetMinute = match[9] === undefined ? 0 : Number(match[9]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    leapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth[month - 1]! ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    return null;
+  }
+  const receivedAt = new Date(match[1]!);
+  return Number.isNaN(receivedAt.getTime()) ? null : receivedAt;
 }
 
 function parseMention(summary: string): ParsedMention | null {
@@ -517,7 +603,11 @@ export class MeshcoreMentionsCard extends HTMLElement {
     }
   }
 
-  private _renderItem(item: TodoItem, completed: boolean): string {
+  private _renderItem(
+    item: TodoItem,
+    completed: boolean,
+    receivedAt: Date | null
+  ): string {
     const t = this._localize();
     const parsed = parseMention(item.summary);
     const label = completed
@@ -534,14 +624,22 @@ export class MeshcoreMentionsCard extends HTMLElement {
         completed ? '<ha-icon icon="mdi:check"></ha-icon>' : ""
       }</span>
     </button>`;
+    const time =
+      receivedAt && !this._config?.hide_timestamps
+        ? `<time class="mention-time" datetime="${escapeHtml(
+            receivedAt.toISOString()
+          )}">${escapeHtml(timeLabel(this._hass, receivedAt))}</time>`
+        : "";
     const summary = parsed
-      ? `<div class="mention-meta"><strong class="mention-sender">${escapeHtml(
+      ? `<div class="mention-meta"><div class="mention-identity"><strong class="mention-sender">${escapeHtml(
           parsed.sender
         )}</strong><span class="mention-channel">${escapeHtml(
           t("card.mentions_channel", { channel: parsed.channel })
-        )}</span></div><div class="mention-message">${escapeHtml(parsed.message)}</div>`
-      : `<div class="mention-fallback">${escapeHtml(item.summary)}</div>`;
-    const description = item.description?.trim()
+        )}</span></div>${time}</div><div class="mention-message">${escapeHtml(parsed.message)}</div>`
+      : `<div class="mention-meta"><div class="mention-fallback">${escapeHtml(
+          item.summary
+        )}</div>${time}</div>`;
+    const description = !receivedAt && item.description?.trim()
       ? `<div class="mention-description">${escapeHtml(item.description)}</div>`
       : "";
     return `<article class="mention-row${completed ? " completed" : ""}" data-mention-row="${escapeHtml(
@@ -549,13 +647,61 @@ export class MeshcoreMentionsCard extends HTMLElement {
     )}">${checkbox}<div class="mention-copy">${summary}${description}</div></article>`;
   }
 
+  private _renderGroups(items: TodoItem[], completed: boolean): string {
+    const views: MentionItemView[] = items.map((item, sourceIndex) => ({
+      item,
+      receivedAt: parseReceivedAt(item.description),
+      sourceIndex,
+    }));
+    const timestamped = views
+      .filter(
+        (view): view is MentionItemView & { receivedAt: Date } =>
+          view.receivedAt !== null
+      )
+      .sort(
+        (left, right) =>
+          right.receivedAt.getTime() - left.receivedAt.getTime() ||
+          left.sourceIndex - right.sourceIndex
+      );
+    const groups = new Map<string, { date: Date; entries: MentionItemView[] }>();
+    for (const view of timestamped) {
+      const key = dateKey(this._hass, view.receivedAt);
+      const group = groups.get(key);
+      if (group) group.entries.push(view);
+      else groups.set(key, { date: view.receivedAt, entries: [view] });
+    }
+    const hideHeaders = this._config?.hide_date_headers === true;
+    const dated = Array.from(groups.values())
+      .map((group) => {
+        const header = hideHeaders
+          ? ""
+          : `<div class="date-header">${escapeHtml(
+              dateLabel(this._hass, group.date, this._localize())
+            )}</div>`;
+        const rows = group.entries
+          .map((view) => this._renderItem(view.item, completed, view.receivedAt))
+          .join("");
+        return `<section class="date-group">${header}<div class="mention-list">${rows}</div></section>`;
+      })
+      .join("");
+    const legacy = views.filter((view) => view.receivedAt === null);
+    if (!legacy.length) return dated;
+    const legacyHeader = hideHeaders
+      ? ""
+      : `<div class="date-header">${escapeHtml(
+          this._localize()("card.mentions_earlier")
+        )}</div>`;
+    const legacyRows = legacy
+      .map((view) => this._renderItem(view.item, completed, null))
+      .join("");
+    return `${dated}<section class="date-group legacy-mentions">${legacyHeader}<div class="mention-list">${legacyRows}</div></section>`;
+  }
+
   private _renderSection(label: string, items: TodoItem[], completed: boolean): string {
     if (!items.length) return "";
     return `<section class="mention-section" aria-label="${escapeHtml(label)}">
       <div class="mention-section-label">${escapeHtml(label)}</div>
-      <div class="mention-list">${items
-        .map((item) => this._renderItem(item, completed))
-        .join("")}</div>
+      ${this._renderGroups(items, completed)}
     </section>`;
   }
 
@@ -579,9 +725,7 @@ export class MeshcoreMentionsCard extends HTMLElement {
       )}</div>`;
     }
     if (this._config?.hide_completed !== false) {
-      return `<div class="mention-list">${pending
-        .map((item) => this._renderItem(item, false))
-        .join("")}</div>`;
+      return this._renderGroups(pending, false);
     }
     return `${this._renderSection(
       t("card.mentions_pending"),
@@ -696,6 +840,7 @@ const ACTION_SETTING_KEYS = [
   "hold_action",
   "double_tap_action",
 ] as const;
+const BOOLEAN_SETTING_KEYS = ["hide_timestamps", "hide_date_headers"] as const;
 
 export class MeshcoreMentionsCardEditor extends HTMLElement {
   private _hass?: HomeAssistant;
@@ -810,6 +955,16 @@ export class MeshcoreMentionsCardEditor extends HTMLElement {
         label: t("editor.hide_completed_mentions"),
         selector: { boolean: {} },
       },
+      {
+        name: "hide_timestamps",
+        label: t("editor.hide_timestamps"),
+        selector: { boolean: {} },
+      },
+      {
+        name: "hide_date_headers",
+        label: t("editor.hide_date_headers"),
+        selector: { boolean: {} },
+      },
     ];
     const section = (
       title: string,
@@ -844,6 +999,8 @@ export class MeshcoreMentionsCardEditor extends HTMLElement {
       hold_action: this._config?.hold_action,
       double_tap_action: this._config?.double_tap_action,
       hide_completed: this._config?.hide_completed !== false,
+      hide_timestamps: this._config?.hide_timestamps === true,
+      hide_date_headers: this._config?.hide_date_headers === true,
     };
     form.addEventListener("value-changed", (event: Event) => {
       const value = (
@@ -870,6 +1027,10 @@ export class MeshcoreMentionsCardEditor extends HTMLElement {
       }
       if (value["hide_completed"] === false) config.hide_completed = false;
       else delete config.hide_completed;
+      for (const key of BOOLEAN_SETTING_KEYS) {
+        if (value[key] === true) config[key] = true;
+        else delete config[key];
+      }
       this._dispatchConfig(config);
     });
     return form;

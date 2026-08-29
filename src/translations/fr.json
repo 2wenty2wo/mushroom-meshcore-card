@@ -87,6 +87,7 @@
     "mentions_count": "{n} mentions non traitées",
     "mentions_pending": "En attente",
     "mentions_handled": "Traitées",
+    "mentions_earlier": "Mentions antérieures",
     "mentions_channel": "sur {channel}",
     "mentions_handle_label": "Marquer comme traitée : {item}",
     "mentions_reopen_label": "Rouvrir la mention : {item}",

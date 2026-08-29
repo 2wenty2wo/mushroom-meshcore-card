@@ -87,6 +87,7 @@
     "mentions_count": "{n} nieobsłużonych wzmianek",
     "mentions_pending": "Oczekujące",
     "mentions_handled": "Obsłużone",
+    "mentions_earlier": "Wcześniejsze wzmianki",
     "mentions_channel": "na {channel}",
     "mentions_handle_label": "Oznacz jako obsłużoną: {item}",
     "mentions_reopen_label": "Otwórz ponownie wzmiankę: {item}",
