@@ -147,7 +147,6 @@ The history defaults to 24 hours and at most 200 messages. Dates and timestamps 
 ```yaml
 type: custom:mushroom-meshcore-mentions-card
 entity: todo.meshcore_tags
-name: MeshCore Mentions
 icon: mdi:at
 icon_color: orange
 hide_completed: true

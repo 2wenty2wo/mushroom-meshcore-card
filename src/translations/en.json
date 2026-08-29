@@ -77,7 +77,7 @@
     "select_mentions_prompt": "Select the Home Assistant to-do list used by the MeshCore mentions automation.",
     "mentions_invalid_entity": "The selected mentions target “{id}” is not a to-do entity.",
     "mentions_not_found": "The selected mentions list “{id}” was not found.",
-    "mentions_title": "MeshCore Mentions",
+    "mentions_title": "Mentions",
     "mentions_loading": "Loading MeshCore mentions…",
     "mentions_loading_short": "Loading…",
     "mentions_unavailable": "Mentions are unavailable. Check the Home Assistant to-do list connection.",
