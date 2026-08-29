@@ -290,6 +290,22 @@ describe("MeshcoreCardEditor settings schema", () => {
 });
 
 describe("MeshcoreCardEditor chip organizer", () => {
+  it("uses locale and English fallbacks when hass language is absent", () => {
+    const { editor } = createEditor({ target: NODE_TARGET }, null);
+    const internal = editor as unknown as {
+      _chipOrganizer(target: typeof NODE_TARGET): HTMLElement;
+    };
+    expect(internal._chipOrganizer(NODE_TARGET).querySelector("summary")?.textContent)
+      .toBe(t("editor.section_chips"));
+
+    const localeOnly = createHass();
+    localeOnly.language = undefined as unknown as string;
+    localeOnly.locale = { language: "de" };
+    editor.hass = localeOnly;
+    expect(internal._chipOrganizer(NODE_TARGET).querySelector(".chip-zone-title")?.textContent)
+      .toBe(makeLocalize("de")("editor.chips_top"));
+  });
+
   it("shows complete target-specific default zones", () => {
     const { editor } = createEditor({ target: NODE_TARGET });
     const sortables = Array.from(editor.querySelectorAll<HTMLElement>("ha-sortable"));

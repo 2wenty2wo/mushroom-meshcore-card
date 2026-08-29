@@ -288,6 +288,17 @@ describe("hub rendering details", () => {
     expect(sfDetails.match(/<div class="detail-chips">([\s\S]*?)<\/div>/)?.[1]).toContain("SF10");
   });
 
+  it("omits a static detail chip when its hub metadata is absent", () => {
+    const hass = createHass();
+    hass.states[hubEntity("node_status")]!.attributes = {};
+    const { body } = renderCard({
+      ...HUB_TARGET,
+      details_default_open: true,
+      chip_layout: { top: [], details: ["hardware"], hidden: [] },
+    }, hass);
+    expect(body).not.toContain('<span class="chip-label">Hardware ');
+  });
+
   it("links to a MeshMapper metro when configured", () => {
     const { body } = renderCard(
       {
@@ -528,6 +539,18 @@ describe("node neighbors list", () => {
     return hass;
   }
 
+  it("returns an unsupported snapshot without neighbor context", () => {
+    const card = document.createElement("mushroom-meshcore-card") as MeshcoreCard;
+    const internal = card as unknown as {
+      _getNeighbors(deviceId: string): unknown;
+    };
+    const unsupported = { supported: false, countEntityId: null, neighbors: [] };
+
+    expect(internal._getNeighbors(NODE_DEVICE_ID)).toEqual(unsupported);
+    card.hass = createHass();
+    expect(internal._getNeighbors("")).toEqual(unsupported);
+  });
+
   it("lists only strict 48-hour neighbors sorted by raw SNR", () => {
     const { body } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
@@ -556,6 +579,29 @@ describe("node neighbors list", () => {
     // Best SNR first.
     expect(body.indexOf("Ridge Repeater")).toBeLessThan(
       body.indexOf("Valley Node")
+    );
+  });
+
+  it("keeps the neighbor ID when a matching contact has no name", () => {
+    const hass = createHass();
+    addEntity(
+      hass,
+      "sensor.meshcore_spring_neighbor_cafe01",
+      state(8.5, { secs_ago: 15 })
+    );
+    addEntity(
+      hass,
+      "binary_sensor.meshcore_cafe01_contact",
+      state("on", { adv_id: "cafe01" }),
+      HUB_DEVICE_ID
+    );
+    const { body } = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      hass
+    );
+
+    expect(body).toContain(
+      'data-entity="binary_sensor.meshcore_cafe01_contact">cafe01</button>'
     );
   });
 

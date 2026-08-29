@@ -497,7 +497,8 @@ export class MeshcoreCardEditor extends HTMLElement {
     help.textContent = t("editor.chips_help");
     body.appendChild(help);
 
-    const layout = effectiveChipLayout(target, this._config ?? {});
+    // The organizer is only mounted after _renderEditor confirms a target.
+    const layout = effectiveChipLayout(target, this._config!);
     const zoneLabels: Record<keyof MeshcoreChipLayout, string> = {
       top: t("editor.chips_top"),
       details: t("editor.chips_details"),

@@ -694,8 +694,8 @@ export class MeshcoreCard extends HTMLElement {
         ch1_voltage: [ch1VReading, t("card.chip_ch1"), " V", "mdi:flash"],
         rate_limiter: [rateLimReading, t("card.chip_rate"), " tok", "mdi:speedometer"],
       };
-      const descriptor = descriptors[id];
-      if (!descriptor) return "";
+      // effectiveChipLayout limits hub layouts to the descriptor keys above.
+      const descriptor = descriptors[id]!;
       const [reading, label, unit, icon] = descriptor;
       if (id === "spreading_factor" && reading.id && reading.value !== null) {
         return details
@@ -706,7 +706,7 @@ export class MeshcoreCard extends HTMLElement {
         ? this._detailChip(reading, label, unit)
         : this._quickChip(reading, label, unit.trimStart(), icon);
     };
-    const layout = effectiveChipLayout({ type: "hub", id: pubkey }, cfg ?? {});
+    const layout = effectiveChipLayout({ type: "hub", id: pubkey }, cfg!);
     const quickChips = layout.top.map((id) => renderHubChip(id, false)).join("");
     const detailChips = layout.details.map((id) => renderHubChip(id, true)).join("");
 
@@ -963,8 +963,9 @@ export class MeshcoreCard extends HTMLElement {
       illuminance: [vm.illuminance, t("card.telemetry_lux"), " lx", "mdi:brightness-5"],
       pressure: [vm.pressure, t("card.telemetry_pressure"), " hPa", "mdi:gauge"],
     };
-    const descriptor = descriptors[id];
-    if (!descriptor) return "";
+    // effectiveChipLayout limits node layouts to the special cases above or
+    // the descriptor keys in this map.
+    const descriptor = descriptors[id]!;
     const [reading, label, unit, icon] = descriptor;
     if (id === "spreading_factor" && reading.id && reading.value !== null) {
       return details
@@ -977,7 +978,7 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   private _renderNodeDetails(vm: NodeViewModel, t: LocalizeFunc): string {
-    const layout = effectiveChipLayout({ type: "node", id: vm.node.name }, this._config ?? {});
+    const layout = effectiveChipLayout({ type: "node", id: vm.node.name }, this._config!);
     const chips = layout.details.map((id) => this._renderNodeChip(id, true, vm, t)).join("");
 
     const location = vm.latitude !== null && vm.longitude !== null
@@ -1009,7 +1010,7 @@ export class MeshcoreCard extends HTMLElement {
     const battery = cfg?.hide_battery
       ? ""
       : this._batteryBlock(vm.batteryPct, vm.batteryVoltage, t);
-    const layout = effectiveChipLayout({ type: "node", id: vm.node.name }, cfg ?? {});
+    const layout = effectiveChipLayout({ type: "node", id: vm.node.name }, cfg!);
     const quickChips = layout.top.map((id) => this._renderNodeChip(id, false, vm, t)).join("");
     const voltageFallback = vm.batteryPct.value === null && !cfg?.hide_battery
       ? this._quickChip(vm.batteryVoltage, t("card.battery_voltage"), "V", "mdi:flash")
