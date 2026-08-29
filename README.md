@@ -144,6 +144,8 @@ The history defaults to 24 hours and at most 200 messages. Dates and timestamps 
 
 ## Mentions card
 
+<img src="/screenshots/mentions-card.png" alt="Mushroom MeshCore Mentions Card">
+
 The Mentions card uses the bundled **MeshCore Mentions** automation blueprint to detect tags and write them to a Local To-do list. Home Assistant 2026.5.0 or later is required for the blueprint. Import it, create an automation from it, and then select the same Local To-do entity in the card.
 
 [![Import the MeshCore Mentions blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2F2wenty2wo%2Fmushroom-meshcore-card%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fmeshcore%2Fmention_notifications.yaml)
