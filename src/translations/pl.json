@@ -77,7 +77,7 @@
     "select_mentions_prompt": "Wybierz listę zadań Home Assistant używaną przez automatyzację wzmianek MeshCore.",
     "mentions_invalid_entity": "Wybrany cel wzmianek „{id}” nie jest encją listy zadań.",
     "mentions_not_found": "Nie znaleziono wybranej listy wzmianek „{id}”.",
-    "mentions_title": "Wzmianki MeshCore",
+    "mentions_title": "Wzmianki",
     "mentions_loading": "Wczytywanie wzmianek MeshCore…",
     "mentions_loading_short": "Wczytywanie…",
     "mentions_unavailable": "Wzmianki są niedostępne. Sprawdź połączenie z listą zadań Home Assistant.",

@@ -77,7 +77,7 @@
     "select_mentions_prompt": "Sélectionnez la liste de tâches Home Assistant utilisée par l’automatisation des mentions MeshCore.",
     "mentions_invalid_entity": "La cible de mentions « {id} » n’est pas une entité de liste de tâches.",
     "mentions_not_found": "La liste de mentions « {id} » est introuvable.",
-    "mentions_title": "Mentions MeshCore",
+    "mentions_title": "Mentions",
     "mentions_loading": "Chargement des mentions MeshCore…",
     "mentions_loading_short": "Chargement…",
     "mentions_unavailable": "Les mentions sont indisponibles. Vérifiez la connexion à la liste de tâches Home Assistant.",

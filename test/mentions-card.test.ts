@@ -471,6 +471,13 @@ describe("mentions card subscription lifecycle", () => {
 });
 
 describe("mentions card rendering", () => {
+  it("uses the localized Mentions title by default", async () => {
+    const { card, mock } = await createCard();
+    feed(mock, [pendingItem()]);
+    const primary = card.shadowRoot!.querySelector('[slot="primary"]');
+    expect(primary?.textContent).toBe("Mentions");
+  });
+
   it("parses sender, last channel delimiter, message, and description safely", async () => {
     const { card, mock } = await createCard();
     feed(mock, [
@@ -495,6 +502,31 @@ describe("mentions card rendering", () => {
     expect(body).not.toContain("Bob on Team");
     expect(card.shadowRoot!.querySelector("admin")).toBeNull();
     expect(body).toContain(t("card.mentions_count_one"));
+  });
+
+  it("uses flat divided rows while retaining the checkbox control", async () => {
+    const { card, mock } = await createCard();
+    feed(mock, [pendingItem()]);
+    const style = card.shadowRoot!.querySelector("style")!.textContent!;
+    const listRule = style.match(/\.mention-list\s*\{([^}]*)\}/)?.[1] ?? "";
+    const rowRule = style.match(/\.mention-row\s*\{([^}]*)\}/)?.[1] ?? "";
+    const checkboxRule =
+      style.match(/\.mention-checkbox\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(listRule).toContain("gap: 0");
+    expect(rowRule).toContain("padding: 8px 0");
+    expect(rowRule).toContain(
+      "border-bottom: 1px solid var(--mushroom-meshcore-border-color)"
+    );
+    expect(rowRule).not.toContain("border-radius");
+    expect(rowRule).not.toContain("background");
+    expect(checkboxRule).toContain(
+      "width: var(--mushroom-meshcore-control-height)"
+    );
+    expect(checkboxRule).toContain(
+      "height: var(--mushroom-meshcore-control-height)"
+    );
+    expect(card.shadowRoot!.querySelector('[role="checkbox"]')).not.toBeNull();
   });
 
   it("falls back to the exact escaped summary for malformed formats", async () => {
@@ -623,7 +655,10 @@ describe("mentions card rendering", () => {
     });
     feed(mock, [pendingItem()]);
     const body = shadowBody(card);
-    expect(body).toContain("Radio Mentions");
+    const primary = card.shadowRoot!.querySelector(
+      'ha-tile-info [slot="primary"]'
+    );
+    expect(primary?.textContent).toBe("Radio Mentions");
     expect(body).toContain("mdi:message-alert");
     expect(body).toContain("--orange-color");
     expect(body).toContain('class="mentions-card grid-rows"');

@@ -77,7 +77,7 @@
     "select_mentions_prompt": "Selecteer de Home Assistant-takenlijst die door de MeshCore-vermeldingsautomatisering wordt gebruikt.",
     "mentions_invalid_entity": "Het geselecteerde vermeldingsdoel ‘{id}’ is geen takenlijstentiteit.",
     "mentions_not_found": "De geselecteerde vermeldingenlijst ‘{id}’ is niet gevonden.",
-    "mentions_title": "MeshCore-vermeldingen",
+    "mentions_title": "Vermeldingen",
     "mentions_loading": "MeshCore-vermeldingen laden…",
     "mentions_loading_short": "Laden…",
     "mentions_unavailable": "Vermeldingen zijn niet beschikbaar. Controleer de verbinding met de Home Assistant-takenlijst.",

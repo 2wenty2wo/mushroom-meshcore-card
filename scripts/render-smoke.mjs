@@ -945,7 +945,7 @@ assert.deepEqual(mentionsSubscription.params, {
 });
 assert.equal(mentionsSubscription.options.resubscribe, false);
 assert.match(mentionsCard.shadowRoot.innerHTML, /Loading MeshCore mentions/);
-assert.equal(mentionsCard.shadowRoot.querySelector("ha-tile-info").primary, "MeshCore Mentions");
+assert.equal(mentionsCard.shadowRoot.querySelector("ha-tile-info").primary, "Mentions");
 assert.equal(mentionsCard.shadowRoot.querySelector("ha-tile-info").secondary, "Loading…");
 
 const mentionItems = [

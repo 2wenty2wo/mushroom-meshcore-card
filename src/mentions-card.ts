@@ -51,15 +51,15 @@ const MENTIONS_STYLES = `
   .mention-list {
     display: flex;
     flex-direction: column;
-    gap: var(--mush-chip-spacing, 8px);
+    gap: 0;
   }
 
   .mention-row {
     display: grid;
     grid-template-columns: var(--mushroom-meshcore-control-height) minmax(0, 1fr);
-    align-items: start;
-    border-radius: var(--mushroom-meshcore-control-radius);
-    background: var(--mushroom-meshcore-surface);
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--mushroom-meshcore-border-color);
   }
 
   .mention-row.completed { opacity: 0.62; }
@@ -104,7 +104,6 @@ const MENTIONS_STYLES = `
 
   .mention-copy {
     min-width: 0;
-    padding: 8px 10px 8px 0;
   }
 
   .mention-meta {

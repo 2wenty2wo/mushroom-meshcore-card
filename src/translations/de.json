@@ -77,7 +77,7 @@
     "select_mentions_prompt": "Wählen Sie die von der MeshCore-Erwähnungsautomatisierung verwendete Home-Assistant-Aufgabenliste aus.",
     "mentions_invalid_entity": "Das ausgewählte Erwähnungsziel „{id}“ ist keine Aufgabenentität.",
     "mentions_not_found": "Die ausgewählte Erwähnungsliste „{id}“ wurde nicht gefunden.",
-    "mentions_title": "MeshCore-Erwähnungen",
+    "mentions_title": "Erwähnungen",
     "mentions_loading": "MeshCore-Erwähnungen werden geladen…",
     "mentions_loading_short": "Wird geladen…",
     "mentions_unavailable": "Erwähnungen sind nicht verfügbar. Prüfen Sie die Verbindung zur Home-Assistant-Aufgabenliste.",
