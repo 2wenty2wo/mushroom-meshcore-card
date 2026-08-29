@@ -61,7 +61,7 @@ Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, a
 
 ### Configuration
 
-The visual editor groups settings into Mushroom-style Appearance, Interactions, and entity-override sections, and exposes only the settings relevant to the selected device. Entity overrides remain optional because device-scoped automatic matching is the default.
+The visual editor includes a drag-and-drop chip organizer with ordered **Top**, **Details**, and **Hidden** areas, alongside Mushroom-style Appearance, Interactions, and entity-override sections. Every drag operation has equivalent destination and order controls for keyboard use. Entity overrides remain optional because device-scoped automatic matching is the default.
 
 ```yaml
 type: custom:mushroom-meshcore-card
@@ -80,10 +80,22 @@ double_tap_action:
   action: none
 hide_battery: false
 hide_metrics: false
-hide_quick_stats: false
-show_firmware: false
 hide_details: false
 details_default_open: false
+chip_layout:
+  top:
+    - sent
+    - received
+    - temperature
+    - uptime
+    - neighbor_count
+  details:
+    - route
+    - path_length
+    - frequency
+    - bandwidth
+  hidden:
+    - firmware
 battery_entity: sensor.example_battery
 voltage_entity: sensor.example_voltage
 location_entity: sensor.example_location
@@ -100,6 +112,8 @@ grid_options:
 ```
 
 `tap_action`, `hold_action`, and `double_tap_action` accept the standard Home Assistant action config (`more-info`, `navigate`, `url`, `perform-action`, `none`), including the optional `confirmation:` prompt, and apply to the device header; individual metrics and chips always open their own entity's more-info dialog. `icon_color` accepts the Mushroom/Tile color names (`red`, `blue`, `deep-purple`, …) or a plain CSS color (`#rrggbb`, `rgb(…)`, `hsl(…)`, named colors), and applies while the device is online.
+
+The editor writes a complete `chip_layout`; chips omitted from all three YAML lists are treated as hidden. Existing configurations without `chip_layout` retain their current quick-chip behavior, including the legacy `hide_quick_stats` and `show_firmware` options. The neighbour count and list include only neighbours provably heard within the integration's rolling 48-hour window. `show_neighbors: false` hides both, while `max_neighbors` limits only the visible rows and not the reported total.
 
 Hub cards use the same public card type:
 

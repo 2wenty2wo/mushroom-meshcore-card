@@ -229,6 +229,23 @@ describe("hostile channel traffic", () => {
     // sender/body boundary happened to fall.
     expectRenderedAsText(card.shadowRoot, payload);
   });
+
+  it.each(PAYLOADS)("escapes a crafted neighbour resolved_name: %s", (payload) => {
+    const hass = createHass();
+    addEntity(
+      hass,
+      "sensor.meshcore_spring_neighbor_aaaa01",
+      state(12.5, { secs_ago: 10, resolved_name: payload })
+    );
+
+    const card = renderCard(
+      { target: { type: "node", id: NODE_NAME }, details_default_open: true },
+      hass
+    );
+
+    expectNoInjection(card.shadowRoot);
+    expectRenderedAsText(card.shadowRoot, payload);
+  });
 });
 
 describe("hostile mention text", () => {

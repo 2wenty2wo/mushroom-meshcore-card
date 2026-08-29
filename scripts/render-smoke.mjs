@@ -486,6 +486,7 @@ editor.setConfig({
   show_neighbors: false,
   map_provider: "meshmapper",
   map_metro: "smf",
+  chip_layout: { top: ["sent"], details: ["received"], hidden: ["firmware"] },
   grid_options: { rows: 4 },
   nodes: { "Spring Farm": { enabled: true } },
 });
@@ -493,12 +494,12 @@ editor.hass = createHass();
 const editorForms = editor.querySelectorAll("ha-form");
 const targetForm = editorForms[0];
 const settingsForm = editorForms[1];
-assert.match(JSON.stringify(settingsForm.schema), /show_firmware/);
-assert.equal(settingsForm.data.show_firmware, false);
+assert.doesNotMatch(JSON.stringify(settingsForm.schema), /show_firmware/);
+assert.equal(editor.querySelectorAll("ha-sortable").length, 3);
 settingsForm.listeners.get("value-changed")({
-  detail: { value: { ...settingsForm.data, show_firmware: true } },
+  detail: { value: { ...settingsForm.data, name: "Renamed" } },
 });
-assert.equal(editor.lastEvent?.detail?.config.show_firmware, true);
+assert.equal(editor.lastEvent?.detail?.config.name, "Renamed");
 targetForm.listeners.get("value-changed")({
   detail: { value: { target: JSON.stringify({ type: "hub", id: "55733c" }) } },
 });
@@ -507,6 +508,7 @@ assert.deepEqual(switchedConfig.target, { type: "hub", id: "55733c" });
 assert.equal(switchedConfig.battery_entity, undefined);
 assert.equal(switchedConfig.show_neighbors, undefined);
 assert.equal(switchedConfig.show_firmware, undefined);
+assert.equal(switchedConfig.chip_layout, undefined);
 assert.equal(switchedConfig.nodes, undefined);
 assert.equal(switchedConfig.map_provider, "meshmapper");
 assert.equal(switchedConfig.map_metro, "smf");

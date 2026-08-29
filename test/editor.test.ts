@@ -152,6 +152,7 @@ describe("MeshcoreCardEditor target selection", () => {
       name: "My hub",
       hide_battery: true,
       battery_entity: "sensor.batt",
+      chip_layout: { top: ["hardware"], details: [], hidden: ["firmware"] },
       map_metro: "smf",
     });
     selectTarget(forms(editor)[0]!, JSON.stringify(NODE_TARGET));
@@ -160,6 +161,7 @@ describe("MeshcoreCardEditor target selection", () => {
     expect(config.name).toBeUndefined();
     expect(config.hide_battery).toBeUndefined();
     expect(config.battery_entity).toBeUndefined();
+    expect(config.chip_layout).toBeUndefined();
     // map_metro is not device-specific and survives the switch.
     expect(config.map_metro).toBe("smf");
   });
@@ -216,7 +218,7 @@ describe("MeshcoreCardEditor settings schema", () => {
       t("editor.section_behavior"),
     ]);
     expect(fieldNames(schema[0]!)).toContain("hide_metrics");
-    expect(fieldNames(schema[0]!)).toContain("show_firmware");
+    expect(fieldNames(schema[0]!)).not.toContain("show_firmware");
     expect(fieldNames(schema[2]!)).toEqual([
       "battery_entity",
       "voltage_entity",
@@ -287,6 +289,111 @@ describe("MeshcoreCardEditor settings schema", () => {
   });
 });
 
+describe("MeshcoreCardEditor chip organizer", () => {
+  it("uses locale and English fallbacks when hass language is absent", () => {
+    const { editor } = createEditor({ target: NODE_TARGET }, null);
+    const internal = editor as unknown as {
+      _chipOrganizer(target: typeof NODE_TARGET): HTMLElement;
+    };
+    expect(internal._chipOrganizer(NODE_TARGET).querySelector("summary")?.textContent)
+      .toBe(t("editor.section_chips"));
+
+    const localeOnly = createHass();
+    localeOnly.language = undefined as unknown as string;
+    localeOnly.locale = { language: "de" };
+    editor.hass = localeOnly;
+    expect(internal._chipOrganizer(NODE_TARGET).querySelector(".chip-zone-title")?.textContent)
+      .toBe(makeLocalize("de")("editor.chips_top"));
+  });
+
+  it("shows complete target-specific default zones", () => {
+    const { editor } = createEditor({ target: NODE_TARGET });
+    const sortables = Array.from(editor.querySelectorAll<HTMLElement>("ha-sortable"));
+    expect(sortables).toHaveLength(3);
+    for (const sortable of sortables) {
+      expect(sortable.children).toHaveLength(1);
+      expect((sortable.firstElementChild as HTMLElement).className).toBe("chip-sortable-list");
+      expect((sortable as HTMLElement & { rollback?: boolean }).rollback).toBe(false);
+    }
+    const top = Array.from(editor.querySelectorAll<HTMLElement>('ha-sortable[data-zone="top"] .chip-editor-item'));
+    const hidden = Array.from(editor.querySelectorAll<HTMLElement>('ha-sortable[data-zone="hidden"] .chip-editor-item'));
+    expect(top.map((item) => item.dataset["chip"])).toEqual([
+      "sent", "received", "temperature", "uptime", "neighbor_count",
+    ]);
+    expect(hidden.map((item) => item.dataset["chip"])).toContain("firmware");
+  });
+
+  it("moves a chip between zones and replaces legacy visibility flags", () => {
+    const { editor, configs } = createEditor({
+      target: NODE_TARGET,
+      show_firmware: true,
+      hide_quick_stats: false,
+    });
+    const item = editor.querySelector<HTMLElement>('[data-chip="sent"]')!;
+    const select = item.querySelector<HTMLSelectElement>("select")!;
+    select.value = "hidden";
+    select.dispatchEvent(new Event("change"));
+    const config = configs[configs.length - 1]!;
+    expect(config.chip_layout?.hidden).toContain("sent");
+    expect(config.chip_layout?.top).not.toContain("sent");
+    expect(config.show_firmware).toBeUndefined();
+    expect(config.hide_quick_stats).toBeUndefined();
+  });
+
+  it("uses the keyboard order controls and can reset to defaults", () => {
+    const { editor, configs } = createEditor({ target: NODE_TARGET });
+    const received = editor.querySelector<HTMLElement>('[data-chip="received"]')!;
+    const up = Array.from(received.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↑")!;
+    up.click();
+    expect(configs[configs.length - 1]!.chip_layout?.top.slice(0, 2)).toEqual(["received", "sent"]);
+
+    const down = Array.from(received.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↓")!;
+    down.click();
+    expect(configs[configs.length - 1]!.chip_layout?.top.slice(0, 2)).toEqual(["sent", "received"]);
+
+    const beforeNoOps = configs.length;
+    const sent = editor.querySelector<HTMLElement>('[data-chip="sent"]')!;
+    Array.from(sent.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↑")!
+      .click();
+    const neighborCount = editor.querySelector<HTMLElement>('[data-chip="neighbor_count"]')!;
+    Array.from(neighborCount.querySelectorAll<HTMLButtonElement>(".chip-order"))
+      .find((button) => button.textContent === "↓")!
+      .click();
+    expect(configs).toHaveLength(beforeNoOps);
+
+    editor.querySelector<HTMLButtonElement>(".chip-reset")!.click();
+    expect(configs[configs.length - 1]!.chip_layout).toBeUndefined();
+  });
+
+  it("persists ha-sortable reorder and cross-zone events", () => {
+    const { editor, configs } = createEditor({ target: NODE_TARGET });
+    const top = editor.querySelector<HTMLElement>('ha-sortable[data-zone="top"]')!;
+    const details = editor.querySelector<HTMLElement>('ha-sortable[data-zone="details"]')!;
+    const topList = top.querySelector<HTMLElement>(".chip-sortable-list")!;
+    const detailsList = details.querySelector<HTMLElement>(".chip-sortable-list")!;
+    const sent = top.querySelector<HTMLElement>('[data-chip="sent"]')!;
+    const received = top.querySelector<HTMLElement>('[data-chip="received"]')!;
+
+    topList.insertBefore(received, sent);
+    top.dispatchEvent(new CustomEvent("item-moved", {
+      detail: { oldIndex: 1, newIndex: 0 },
+    }));
+    expect(configs[configs.length - 1]!.chip_layout?.top.slice(0, 2)).toEqual([
+      "received", "sent",
+    ]);
+
+    detailsList.appendChild(sent);
+    details.dispatchEvent(new CustomEvent("item-added", {
+      detail: { index: 0, data: "sent", item: sent },
+    }));
+    expect(configs[configs.length - 1]!.chip_layout?.top).not.toContain("sent");
+    expect(configs[configs.length - 1]!.chip_layout?.details).toContain("sent");
+  });
+});
+
 describe("MeshcoreCardEditor settings edits", () => {
   function editNodeSettings(
     initial: MeshcoreCardConfig,
@@ -332,6 +439,15 @@ describe("MeshcoreCardEditor settings edits", () => {
     expect(config.max_neighbors).toBe(3);
     expect(config.map_provider).toBe("meshmapper");
     expect(config.map_metro).toBe("smf");
+  });
+
+  it("preserves legacy chip flags during unrelated form edits", () => {
+    const config = editNodeSettings(
+      { target: NODE_TARGET, hide_quick_stats: true, show_firmware: true },
+      { name: "Renamed" }
+    );
+    expect(config.hide_quick_stats).toBe(true);
+    expect(config.show_firmware).toBe(true);
   });
 
   it("drops defaults so the stored config stays clean", () => {

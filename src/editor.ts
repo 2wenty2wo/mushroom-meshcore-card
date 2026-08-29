@@ -3,6 +3,8 @@ import type {
   HomeAssistant,
   MeshcoreCardConfig,
   MeshcoreCardTarget,
+  MeshcoreChipId,
+  MeshcoreChipLayout,
   HubInfo,
   NodeInfo,
   HaFormSchema,
@@ -12,10 +14,25 @@ import type {
 } from "./types.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
 import { makeLocalize } from "./localize.js";
+import { effectiveChipLayout } from "./chip-layout.js";
 
 const EDITOR_STYLES = `
   .meshcore-editor { display: flex; flex-direction: column; gap: 8px; }
   ha-alert { display: block; margin: 8px 0; }
+  .chip-organizer { border-top: 1px solid var(--divider-color); border-bottom: 1px solid var(--divider-color); }
+  .chip-organizer summary { padding: 14px 4px; cursor: pointer; font-weight: 500; }
+  .chip-organizer-body { display: grid; gap: 12px; padding: 0 4px 14px; }
+  .chip-help { margin: 0; color: var(--secondary-text-color); font-size: 12px; }
+  .chip-zone { min-height: 42px; padding: 8px; border: 1px solid var(--divider-color); border-radius: 12px; }
+  .chip-zone-title { margin: 0 0 6px; color: var(--secondary-text-color); font-size: 12px; font-weight: 500; }
+  ha-sortable { display: block; min-height: 30px; }
+  .chip-sortable-list { display: flex; min-height: 30px; flex-direction: column; gap: 6px; }
+  .chip-editor-item { display: flex; min-height: 36px; align-items: center; gap: 6px; padding: 0 6px; border-radius: 10px; background: var(--secondary-background-color); }
+  .chip-drag { padding: 6px; border: 0; background: transparent; color: var(--secondary-text-color); cursor: grab; }
+  .chip-name { min-width: 0; flex: 1; font-size: 14px; }
+  .chip-destination { max-width: 104px; }
+  .chip-order { padding: 4px 6px; border: 0; background: transparent; color: var(--primary-text-color); cursor: pointer; }
+  .chip-reset { justify-self: start; padding: 8px 12px; border: 1px solid var(--divider-color); border-radius: 12px; background: transparent; color: var(--primary-text-color); cursor: pointer; }
 `;
 
 const DEVICE_SETTING_KEYS = [
@@ -29,6 +46,7 @@ const DEVICE_SETTING_KEYS = [
   "hide_metrics",
   "hide_quick_stats",
   "show_firmware",
+  "chip_layout",
   "hide_details",
   "details_default_open",
   "battery_entity",
@@ -57,8 +75,6 @@ const STRING_SETTING_KEYS = ["name", "icon", "icon_color"] as const;
 const BOOLEAN_SETTING_KEYS = [
   "hide_battery",
   "hide_metrics",
-  "hide_quick_stats",
-  "show_firmware",
   "hide_details",
   "details_default_open",
 ] as const;
@@ -73,6 +89,7 @@ export class MeshcoreCardEditor extends HTMLElement {
   private _hass?: HomeAssistant;
   private _config?: MeshcoreCardConfig;
   private _discoveryFp = "";
+  private _chipsOpen = true;
 
   setConfig(config: MeshcoreCardConfig): void {
     // HA echoes our own config-changed dispatch back through setConfig; a
@@ -224,10 +241,6 @@ export class MeshcoreCardEditor extends HTMLElement {
       ...(isNode
         ? [{ name: "hide_metrics", label: t("editor.hide_metrics"), selector: { boolean: {} } } as HaFormFieldSchema]
         : []),
-      { name: "hide_quick_stats", label: t("editor.hide_quick_stats"), selector: { boolean: {} } },
-      ...(isNode
-        ? [{ name: "show_firmware", label: t("editor.show_firmware"), selector: { boolean: {} } } as HaFormFieldSchema]
-        : []),
       { name: "hide_details", label: t("editor.hide_details"), selector: { boolean: {} } },
       { name: "details_default_open", label: t("editor.details_default_open"), selector: { boolean: {} } },
     ];
@@ -338,7 +351,6 @@ export class MeshcoreCardEditor extends HTMLElement {
       hold_action: config.hold_action,
       double_tap_action: config.double_tap_action,
       hide_battery: config.hide_battery === true,
-      hide_quick_stats: config.hide_quick_stats === true,
       hide_details: config.hide_details === true,
       details_default_open: config.details_default_open === true,
       battery_entity: config.battery_entity ?? null,
@@ -348,7 +360,6 @@ export class MeshcoreCardEditor extends HTMLElement {
     };
     if (target.type === "node") {
       data["hide_metrics"] = config.hide_metrics === true;
-      data["show_firmware"] = config.show_firmware === true;
       data["location_entity"] = config.location_entity ?? null;
       data["temperature_entity"] = config.temperature_entity ?? null;
       data["humidity_entity"] = config.humidity_entity ?? null;
@@ -416,6 +427,186 @@ export class MeshcoreCardEditor extends HTMLElement {
     return form;
   }
 
+  private _chipLabel(id: MeshcoreChipId, t: ReturnType<typeof makeLocalize>): string {
+    const keys: Record<MeshcoreChipId, string> = {
+      hardware: "card.hardware",
+      firmware: "card.firmware",
+      sent: "card.traffic_sent",
+      received: "card.traffic_received",
+      temperature: "card.telemetry_temp",
+      uptime: "card.uptime_label",
+      neighbor_count: "card.neighbors_48h_label",
+      route: "card.routing_path",
+      path_length: "card.path_length",
+      spreading_factor: "card.spreading_factor",
+      frequency: "card.frequency",
+      bandwidth: "card.bandwidth",
+      tx_power: "card.tx_power",
+      relayed: "card.traffic_relayed",
+      canceled: "card.traffic_canceled",
+      duplicate: "card.traffic_duplicate",
+      tx_airtime: "card.tx_airtime_label",
+      rx_airtime: "card.rx_airtime_label",
+      queue_length: "card.chip_queue",
+      tx_rate: "card.chip_tx_rate",
+      rx_rate: "card.chip_rx_rate",
+      humidity: "card.telemetry_humidity",
+      illuminance: "card.telemetry_lux",
+      pressure: "card.telemetry_pressure",
+      ch1_voltage: "card.chip_ch1",
+      rate_limiter: "card.chip_rate",
+    };
+    return t(keys[id]);
+  }
+
+  private _readChipLayout(organizer: HTMLElement): MeshcoreChipLayout {
+    const read = (zone: string): MeshcoreChipId[] =>
+      Array.from(organizer.querySelectorAll<HTMLElement>(`ha-sortable[data-zone="${zone}"] .chip-editor-item`))
+        .map((item) => item.getAttribute("data-chip") as MeshcoreChipId)
+        .filter(Boolean);
+    return { top: read("top"), details: read("details"), hidden: read("hidden") };
+  }
+
+  private _saveChipLayout(organizer: HTMLElement): void {
+    for (const zone of ["top", "details", "hidden"]) {
+      organizer.querySelectorAll<HTMLSelectElement>(`ha-sortable[data-zone="${zone}"] .chip-destination`)
+        .forEach((select) => { select.value = zone; });
+    }
+    const config: MeshcoreCardConfig = { ...this._config };
+    config.chip_layout = this._readChipLayout(organizer);
+    delete config.hide_quick_stats;
+    delete config.show_firmware;
+    this._removeLegacyFields(config);
+    this._dispatchConfig(config);
+  }
+
+  private _chipOrganizer(target: MeshcoreCardTarget): HTMLElement {
+    const t = makeLocalize(this._hass?.language ?? this._hass?.locale?.language ?? "en");
+    const details = document.createElement("details");
+    details.className = "chip-organizer";
+    details.open = this._chipsOpen;
+    details.addEventListener("toggle", () => { this._chipsOpen = details.open; });
+    const summary = document.createElement("summary");
+    summary.textContent = t("editor.section_chips");
+    details.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "chip-organizer-body";
+    const help = document.createElement("p");
+    help.className = "chip-help";
+    help.textContent = t("editor.chips_help");
+    body.appendChild(help);
+
+    // The organizer is only mounted after _renderEditor confirms a target.
+    const layout = effectiveChipLayout(target, this._config!);
+    const zoneLabels: Record<keyof MeshcoreChipLayout, string> = {
+      top: t("editor.chips_top"),
+      details: t("editor.chips_details"),
+      hidden: t("editor.chips_hidden"),
+    };
+    const sortables: Record<string, HTMLElement> = {};
+
+    for (const zone of ["top", "details", "hidden"] as const) {
+      const wrapper = document.createElement("section");
+      wrapper.className = "chip-zone";
+      const heading = document.createElement("h4");
+      heading.className = "chip-zone-title";
+      heading.textContent = zoneLabels[zone];
+      wrapper.appendChild(heading);
+
+      const sortable = document.createElement("ha-sortable") as HTMLElement & {
+        group?: string;
+        handleSelector?: string;
+        draggableSelector?: string;
+        rollback?: boolean;
+      };
+      if (typeof sortable.setAttribute === "function") sortable.setAttribute("data-zone", zone);
+      sortable.group = "meshcore-card-chips";
+      sortable.handleSelector = ".chip-drag";
+      sortable.draggableSelector = ".chip-editor-item";
+      sortable.rollback = false;
+      sortables[zone] = sortable;
+
+      const list = document.createElement("div");
+      list.className = "chip-sortable-list";
+
+      for (const id of layout[zone]) {
+        const item = document.createElement("div");
+        item.className = "chip-editor-item";
+        if (typeof item.setAttribute === "function") item.setAttribute("data-chip", id);
+
+        const drag = document.createElement("button");
+        drag.type = "button";
+        drag.className = "chip-drag";
+        drag.textContent = "☰";
+        if (typeof drag.setAttribute === "function") drag.setAttribute("aria-label", t("editor.chip_drag", { name: this._chipLabel(id, t) }));
+        item.appendChild(drag);
+
+        const name = document.createElement("span");
+        name.className = "chip-name";
+        name.textContent = this._chipLabel(id, t);
+        item.appendChild(name);
+
+        const select = document.createElement("select");
+        select.className = "chip-destination";
+        if (typeof select.setAttribute === "function") select.setAttribute("aria-label", t("editor.chip_destination", { name: this._chipLabel(id, t) }));
+        for (const destination of ["top", "details", "hidden"] as const) {
+          const option = document.createElement("option");
+          option.value = destination;
+          option.textContent = zoneLabels[destination];
+          option.selected = destination === zone;
+          select.appendChild(option);
+        }
+        select.addEventListener("change", () => {
+          const destination = sortables[select.value]?.firstElementChild;
+          destination?.appendChild(item);
+          this._saveChipLayout(details);
+        });
+        item.appendChild(select);
+
+        for (const [direction, symbol] of [[-1, "↑"], [1, "↓"]] as const) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "chip-order";
+          button.textContent = symbol;
+          if (typeof button.setAttribute === "function") button.setAttribute("aria-label", t(direction < 0 ? "editor.chip_move_up" : "editor.chip_move_down", { name: this._chipLabel(id, t) }));
+          button.addEventListener("click", () => {
+            const sibling = direction < 0 ? item.previousElementSibling : item.nextElementSibling;
+            if (!sibling) return;
+            if (direction < 0) item.parentElement?.insertBefore(item, sibling);
+            else item.parentElement?.insertBefore(sibling, item);
+            this._saveChipLayout(details);
+          });
+          item.appendChild(button);
+        }
+        list.appendChild(item);
+      }
+      sortable.appendChild(list);
+      // `ha-sortable` emits item-moved for same-list reorders and item-added
+      // after a cross-list drop. Both events fire after the DOM order changes.
+      sortable.addEventListener("item-moved", () => this._saveChipLayout(details));
+      sortable.addEventListener("item-added", () => this._saveChipLayout(details));
+      wrapper.appendChild(sortable);
+      body.appendChild(wrapper);
+    }
+
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "chip-reset";
+    reset.textContent = t("editor.chips_reset");
+    reset.addEventListener("click", () => {
+      const config: MeshcoreCardConfig = { ...this._config };
+      delete config.chip_layout;
+      delete config.hide_quick_stats;
+      delete config.show_firmware;
+      this._dispatchConfig(config);
+      this._renderEditor();
+    });
+    body.appendChild(reset);
+    details.appendChild(body);
+    return details;
+  }
+
   private _renderEditor(): void {
     if (!this._config) return;
     while (this.lastChild) this.removeChild(this.lastChild);
@@ -436,7 +627,10 @@ export class MeshcoreCardEditor extends HTMLElement {
       container.appendChild(alert);
     } else {
       container.appendChild(this._targetForm(hubs, nodes));
-      if (this._config.target) container.appendChild(this._settingsForm(this._config.target));
+      if (this._config.target) {
+        container.appendChild(this._chipOrganizer(this._config.target));
+        container.appendChild(this._settingsForm(this._config.target));
+      }
     }
     this.appendChild(container);
   }
