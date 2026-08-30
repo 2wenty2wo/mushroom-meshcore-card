@@ -35,10 +35,18 @@ interface EntityReading {
   value: string | null;
 }
 
+type NodeConnectivityState = "online" | "offline" | "unknown";
+
+interface EntityLookupOptions {
+  domain?: string;
+  enabledOnly?: boolean;
+  platform?: string;
+}
+
 interface NodeViewModel {
   node: NodeInfo;
   displayName: string;
-  online: boolean;
+  connectivity: NodeConnectivityState;
   isRepeater: boolean;
   isSensor: boolean;
   icon: string;
@@ -197,21 +205,34 @@ export class MeshcoreCard extends HTMLElement {
     this._hass = hass;
     const overrides = this._overrideEntityIds();
     const target = this._config?.target;
-    const deviceFp = target?.type === "node"
-      ? Object.values(hass.devices)
-          .filter(
-            (device) =>
-              (device.name_by_user || device.name || device.id) === target.id
-          )
-          .map((device) => JSON.stringify([device.id, device.sw_version ?? null]))
-          .sort()
-          .join("|")
-      : "";
+    const targetDevices = target?.type === "node"
+      ? Object.values(hass.devices).filter(
+          (device) =>
+            (device.name_by_user || device.name || device.id) === target.id
+        )
+      : [];
+    const deviceFp = targetDevices
+      .map((device) => JSON.stringify([device.id, device.sw_version ?? null]))
+      .sort()
+      .join("|");
+    const targetDeviceIds = new Set(targetDevices.map((device) => device.id));
+    const onlineRegistryFp = Object.entries(hass.entities)
+      .filter(
+        ([entityId, info]) =>
+          entityId.startsWith("binary_sensor.") &&
+          info.platform === "meshcore" &&
+          !!info.device_id &&
+          targetDeviceIds.has(info.device_id) &&
+          /_online(?:_|$)/.test(entityId)
+      )
+      .map(([entityId, info]) => `${entityId}:${info.disabled_by ?? "enabled"}`)
+      .sort()
+      .join("|");
     const stateFp = Object.entries(hass.states)
       .filter(([id]) => id.includes("meshcore") || overrides.has(id))
       .map(([id, s]) => `${id}=${s.state}@${s.last_changed}`)
       .join("|");
-    const fp = `${stateFp}|device=${deviceFp}`;
+    const fp = `${stateFp}|device=${deviceFp}|online-registry=${onlineRegistryFp}`;
     if (fp === this._fp) return;
     this._fp = fp;
     const now = Date.now();
@@ -258,10 +279,24 @@ export class MeshcoreCard extends HTMLElement {
     deviceId: string,
     metric: string,
     ePrefix: string,
-    eSuffix: string
+    eSuffix: string,
+    options?: EntityLookupOptions
   ): string | null {
     if (!this._hass?.entities) return null;
-    return findEntityByDevice(this._hass.entities, deviceId, metric, ePrefix, eSuffix);
+    const entities = options
+      ? Object.fromEntries(
+          Object.entries(this._hass.entities).filter(([entityId, info]) => {
+            if (options.domain && !entityId.startsWith(`${options.domain}.`)) {
+              return false;
+            }
+            if (options.platform && info.platform !== options.platform) {
+              return false;
+            }
+            return !options.enabledOnly || info.disabled_by == null;
+          })
+        )
+      : this._hass.entities;
+    return findEntityByDevice(entities, deviceId, metric, ePrefix, eSuffix);
   }
 
   // ── Discovery ─────────────────────────────────────────────────────────────
@@ -301,7 +336,9 @@ export class MeshcoreCard extends HTMLElement {
     icon: string,
     online: boolean,
     primaryEntityId: string | null,
-    trailing = ""
+    trailing = "",
+    inactiveState: "offline" | "unknown" = "offline",
+    inactiveBadgeIcon?: string
   ): string {
     return renderTileHeader(this._config, {
       displayName,
@@ -310,6 +347,8 @@ export class MeshcoreCard extends HTMLElement {
       active: online,
       primaryEntityId,
       trailing,
+      inactiveState,
+      inactiveBadgeIcon,
     });
   }
 
@@ -747,7 +786,21 @@ export class MeshcoreCard extends HTMLElement {
     const p = (m: string) => this._findEntityByDevice(deviceId, m, ePrefix, eSuffix);
 
     // Common entities
-    const statusId  = p("online") ?? p("status");
+    const authoritativeOnlineId = this._findEntityByDevice(
+      deviceId,
+      "online",
+      ePrefix,
+      eSuffix,
+      { domain: "binary_sensor", enabledOnly: true, platform: "meshcore" }
+    );
+    const legacyOnlineStatusId = this._findEntityByDevice(
+      deviceId,
+      "online",
+      ePrefix,
+      eSuffix,
+      { domain: "sensor", enabledOnly: true, platform: "meshcore" }
+    );
+    const statusId  = legacyOnlineStatusId ?? p("status");
     const successId = p("request_successes");
     const rssiId    = p("last_rssi");
     const snrId     = p("last_snr");
@@ -827,20 +880,37 @@ export class MeshcoreCard extends HTMLElement {
     })();
     const isSensor = !isRepeater && !!(p("temperature") || p("humidity") || p("illuminance"));
 
-    // If the device has an uptime sensor (repeaters do), trust that:
-    // it counts as "up" while we've heard a fresh state in the last 6 hours.
-    // Otherwise fall back to request_successes / status text.
-    const uptimeState = uptimeId ? this._hass?.states[uptimeId] : null;
-    let online: boolean;
-    if (uptimeState) {
-      if (["unavailable", "unknown"].includes(uptimeState.state)) {
-        online = false;
-      } else {
-        const ts = new Date(uptimeState.last_updated).getTime();
-        online = !isNaN(ts) && (Date.now() - ts) < 6 * 3600 * 1000;
-      }
+    // meshcore-ha's enabled, device-scoped connectivity binary sensor is the
+    // authority when present. Its unknown state intentionally means the node
+    // has not yet been polled successfully during this integration session.
+    let connectivity: NodeConnectivityState;
+    if (authoritativeOnlineId) {
+      const onlineState = this._hass?.states[authoritativeOnlineId]?.state
+        .trim()
+        .toLowerCase();
+      connectivity = onlineState === "on"
+        ? "online"
+        : onlineState === "off"
+          ? "offline"
+          : "unknown";
     } else {
-      online = successes !== null ? Number(successes) > 0 : isOnlineState(status);
+      // Compatibility fallback for older integrations, or when users have
+      // explicitly disabled the dedicated online entity.
+      const uptimeState = uptimeId ? this._hass?.states[uptimeId] : null;
+      let legacyOnline: boolean;
+      if (uptimeState) {
+        if (["unavailable", "unknown"].includes(uptimeState.state)) {
+          legacyOnline = false;
+        } else {
+          const ts = new Date(uptimeState.last_updated).getTime();
+          legacyOnline = !isNaN(ts) && (Date.now() - ts) < 6 * 3600 * 1000;
+        }
+      } else {
+        legacyOnline = successes !== null
+          ? Number(successes) > 0
+          : isOnlineState(status);
+      }
+      connectivity = legacyOnline ? "online" : "offline";
     }
 
     // RF settings are retained in the collapsed detail area.
@@ -866,12 +936,12 @@ export class MeshcoreCard extends HTMLElement {
     return {
       node,
       displayName: displayName.trim(),
-      online,
+      connectivity,
       isRepeater,
       isSensor,
       icon: isRepeater ? "mdi:radio-tower" : isSensor ? "mdi:access-point" : "mdi:radio-handheld",
       firmwareVersion: this._firmwareVersion(deviceId),
-      primaryEntityId: contactId ?? statusId ?? uptimeId ?? rssiId,
+      primaryEntityId: authoritativeOnlineId ?? contactId ?? statusId ?? uptimeId ?? rssiId,
       lastSeen,
       rssi: this._reading(rssiId, true),
       snr: this._reading(snrId, true),
@@ -907,9 +977,9 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   private _renderNodeHeader(vm: NodeViewModel, t: LocalizeFunc): string {
-    const stateLabel = t(vm.online ? "card.online" : "card.offline");
+    const stateLabel = t(`card.${vm.connectivity}`);
     const lastSeen = vm.lastSeen
-      ? vm.online
+      ? vm.connectivity === "online"
         ? vm.lastSeen
         : t("card.last_seen", { time: vm.lastSeen })
       : "";
@@ -918,8 +988,11 @@ export class MeshcoreCard extends HTMLElement {
       vm.displayName,
       secondary,
       vm.icon,
-      vm.online,
-      vm.primaryEntityId
+      vm.connectivity === "online",
+      vm.primaryEntityId,
+      "",
+      vm.connectivity === "unknown" ? "unknown" : "offline",
+      vm.connectivity === "unknown" ? "mdi:help" : undefined
     );
   }
 
@@ -1000,7 +1073,7 @@ export class MeshcoreCard extends HTMLElement {
     viewModel?: NodeViewModel
   ): string {
     const vm = viewModel ?? this._buildNodeViewModel(node, t);
-    if (!vm.online) {
+    if (vm.connectivity !== "online") {
       return this._renderNodeHeader(vm, t);
     }
 
@@ -1070,9 +1143,9 @@ export class MeshcoreCard extends HTMLElement {
       return;
     }
     const vm = this._buildNodeViewModel(node, t);
-    this._cardSize = vm.online ? 5 : 1;
+    this._cardSize = vm.connectivity === "online" ? 5 : 1;
     this._seedDetails(node.deviceId);
-    this._setBody(this._renderNode(node, t, vm), !vm.online);
+    this._setBody(this._renderNode(node, t, vm), vm.connectivity !== "online");
   }
 
   private _setBody(body: string, offlineNode = false): void {

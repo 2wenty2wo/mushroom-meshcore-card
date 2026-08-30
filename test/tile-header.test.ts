@@ -105,8 +105,10 @@ describe("renderTileHeader", () => {
       const html = renderTileHeader(undefined, {
         ...baseOptions,
         active: false,
+        inactiveState: "unknown",
         inactiveBadgeIcon: "mdi:message-off",
       });
+      expect(html).toContain('class="device-header-row unknown"');
       expect(html).toContain('icon="mdi:message-off"');
     });
 

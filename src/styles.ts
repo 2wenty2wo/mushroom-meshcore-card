@@ -148,7 +148,7 @@ export const STYLES: string = `
     text-align: left;
   }
 
-  /* The offline badge overhangs the icon shape; the header must not clip it. */
+  /* The inactive badge overhangs the icon shape; the header must not clip it. */
   .device-header.clickable { overflow: visible; }
 
   .device-header-row > .count-badge { margin-right: var(--mush-spacing, 10px); }
@@ -193,11 +193,11 @@ export const STYLES: string = `
     flex: 0 0 36px;
   }
 
-  .device-header-row.offline .device-icon-shape {
+  .device-header-row:is(.offline, .unknown) .device-icon-shape {
     background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.08);
   }
 
-  .device-header-row.offline .device-icon-shape ha-tile-icon {
+  .device-header-row:is(.offline, .unknown) .device-icon-shape ha-tile-icon {
     --tile-icon-color: var(--mushroom-meshcore-muted-color);
   }
 

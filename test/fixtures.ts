@@ -17,6 +17,7 @@ export const NODE_DEVICE_ID = "node-device";
 export const NODE_NAME = "Spring Farm";
 export const NODE_PREFIX = "sensor.meshcore_spring_";
 export const NODE_SUFFIX = "_spring_farm";
+export const NODE_ONLINE_ENTITY = "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm";
 
 export const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
 
