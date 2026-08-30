@@ -6,7 +6,7 @@ const NODE = { type: "node", id: "Test" } as const;
 const HUB = { type: "hub", id: "abc123" } as const;
 
 describe("chip layouts", () => {
-  it("keeps current defaults and adds neighbor count for nodes", () => {
+  it("keeps top defaults and groups node Details defaults by category", () => {
     expect(defaultChipLayout(NODE).top).toEqual([
       "sent", "received", "temperature", "uptime", "neighbor_count",
     ]);
@@ -18,21 +18,14 @@ describe("chip layouts", () => {
       "bandwidth",
       "tx_power",
       "relayed",
-      "canceled",
-      "duplicate",
       "sent_direct",
       "sent_flood",
       "received_direct",
       "received_flood",
-      "direct_duplicates",
-      "flood_duplicates",
-      "queue_full_events",
-      "receive_errors",
       "tx_airtime",
       "rx_airtime",
       "tx_airtime_total",
       "rx_airtime_total",
-      "queue_length",
       "tx_rate",
       "rx_rate",
       "sent_direct_rate",
@@ -42,6 +35,13 @@ describe("chip layouts", () => {
       "direct_duplicates_rate",
       "flood_duplicates_rate",
       "receive_errors_rate",
+      "canceled",
+      "duplicate",
+      "direct_duplicates",
+      "flood_duplicates",
+      "queue_length",
+      "queue_full_events",
+      "receive_errors",
       "request_successes",
       "request_failures",
       "humidity",
