@@ -107,6 +107,16 @@ User-visible strings belong in the localisation system rather than inline render
 
 Use the existing localisation helpers and run the translation check after changes.
 
+## Pull requests, labels, and releases
+
+Before preparing, opening, or updating a pull request or GitHub release, read and follow [`docs/releasing.md`](docs/releasing.md).
+
+- Every pull request must use the single best matching release label: `breaking-change`, `enhancement`, `bug`, `documentation`, `translation`, `maintenance`, or `dependencies`. Use `skip-changelog` instead for internal-only changes that should not appear in HACS update notes.
+- An agent that creates or updates a pull request must apply the label when its tools allow it. If it cannot apply labels, it must identify the required label in its handoff.
+- Pull-request titles and summaries should describe the user-visible outcome. Include the verification performed and call out migration or compatibility requirements.
+- Do not bump versions, create or push tags, create releases, or publish drafts unless the user explicitly requests a release operation.
+- When a release is requested, use the curated-draft or direct-tag flow in `docs/releasing.md`. Preserve existing release titles and bodies, use full SemVer matching `package.json` and `package-lock.json`, and publish only to `2wenty2wo/mushroom-meshcore-card`.
+
 ## Development and verification
 
 Install and verify with:
@@ -115,6 +125,7 @@ Install and verify with:
 npm ci
 npm run typecheck
 npm run check-translations
+npm test
 npm run build
 npm run test:render
 git diff --check

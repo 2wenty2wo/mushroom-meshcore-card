@@ -2,5 +2,5 @@
   "name": "Mushroom MeshCore Card",
   "render_readme": true,
   "filename": "mushroom-meshcore-card.js",
-  "logo": "assets/logo.png"
+  "hide_default_branch": true
 }

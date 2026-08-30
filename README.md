@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="assets/logo.svg" alt="Mushroom MeshCore Card" width="140"><br>
+  <img src="https://raw.githubusercontent.com/2wenty2wo/mushroom-meshcore-card/main/assets/logo.png" alt="Mushroom MeshCore Card" width="140"><br>
   Mushroom MeshCore Card
 </h1>
 
@@ -46,7 +46,7 @@ Mushroom and Card Mod are optional. The card uses their public theme conventions
 
 ## Main card
 
-<img src="/screenshots/main-card.png" alt="Mushroom MeshCore Main Card">
+![Mushroom MeshCore Main Card](screenshots/main-card.png)
 
 ```yaml
 type: custom:mushroom-meshcore-card
@@ -129,7 +129,7 @@ voltage_entity: sensor.example_voltage
 
 ## Channel card
 
-<img src="/screenshots/channel-card.png" alt="Mushroom MeshCore Channel Card">
+![Mushroom MeshCore Channel Card](screenshots/channel-card.png)
 
 ```yaml
 type: custom:mushroom-meshcore-channel-card
@@ -158,7 +158,7 @@ The history defaults to 24 hours and at most 200 messages. Dates and timestamps 
 
 ## Mentions card
 
-<img src="/screenshots/mentions-card.png" alt="Mushroom MeshCore Mentions Card">
+![Mushroom MeshCore Mentions Card](screenshots/mentions-card.png)
 
 The Mentions card uses the bundled **MeshCore Mentions** automation blueprint to detect tags and write them to a Local To-do list. Home Assistant 2026.5.0 or later is required for the blueprint. Import it, create an automation from it, and then select the same Local To-do entity in the card.
 
