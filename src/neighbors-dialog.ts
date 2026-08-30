@@ -118,6 +118,11 @@ export class MushroomMeshcoreNeighborsDialog extends HTMLElement {
     if (value && this.isConnected) this._render(value);
   }
 
+  // Compatibility with Home Assistant's legacy persistent-dialog lifecycle.
+  public showDialog(params: NeighborsDialogParams): void {
+    this.params = params;
+  }
+
   public connectedCallback(): void {
     if (this._params) this._render(this._params);
   }

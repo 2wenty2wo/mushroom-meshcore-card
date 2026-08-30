@@ -71,6 +71,7 @@ interface ShowDialogDetail {
 
 interface TestDialogElement extends HTMLElement {
   params: Record<string, unknown>;
+  showDialog(params: Record<string, unknown>): void;
   closeDialog(): void;
 }
 
@@ -666,6 +667,25 @@ describe("node neighbors list", () => {
     expect(root.textContent).toContain("12.5 dB");
     expect(root.textContent).toContain("Last seen: 30s");
     expect(root.textContent).toContain("Receptions (48h): 7x");
+  });
+
+  it("supports Home Assistant's legacy showDialog initialization hook", async () => {
+    const hass = neighborHass();
+    const { card } = renderCard(NODE_TARGET, hass);
+    const detail = clickForDialog(
+      card,
+      card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+    );
+    await detail.dialogImport();
+    const dialog = document.createElement(detail.dialogTag) as TestDialogElement;
+
+    document.body.appendChild(dialog);
+    dialog.showDialog(detail.dialogParams);
+
+    expect(
+      dialog.shadowRoot!.querySelector(".count-badge")?.textContent
+    ).toBe("4");
+    expect(dialog.shadowRoot!.querySelectorAll(".neighbor-row")).toHaveLength(4);
   });
 
   it("applies max_neighbors in the dialog while retaining the full count", async () => {
