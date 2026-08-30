@@ -49,9 +49,50 @@ interface ShowDialogDetail {
     routes: readonly ChannelPathDialogRoute[];
     contacts: readonly { publicKey: string; name: string }[];
     contactsPromise?: Promise<readonly { publicKey: string; name: string }[]>;
+    closeLabel: string;
     returnFocus?: HTMLElement;
     resolveReturnFocus?: () => HTMLElement | undefined;
   };
+}
+
+interface TestLogbookEntry {
+  when: number;
+  name: string;
+  message?: string;
+  entity_id?: string;
+  context_id?: string;
+}
+
+interface TestNormalizedRoute {
+  key?: string;
+  hopCount?: number;
+  pathSegments?: string[];
+  hashSizeBytes?: 1 | 2 | 3;
+  direct: boolean;
+  scope?: string;
+  regionScoped: boolean;
+}
+
+interface TestRoutingRecord {
+  topHopCount?: number;
+  selectedRouteKey?: string;
+  selectedRoute?: TestNormalizedRoute;
+  routes?: TestNormalizedRoute[];
+}
+
+interface ChannelCardInternals {
+  _selectedConfigEntryId(): string | null;
+  _stateRouteContacts(): readonly { publicKey: string; name: string }[];
+  _entryKey(entry: TestLogbookEntry): string;
+  _renderRouteDetails(entry: TestLogbookEntry): string;
+  _showChannelPathsDialog(dialogId: string, returnFocus: HTMLElement): void;
+  _currentPathDialogTrigger(dialogId: string): HTMLElement | undefined;
+  _entries: Map<string, TestLogbookEntry>;
+  _routingByDialogId: Map<string, TestRoutingRecord>;
+}
+
+function cardInternals(card: MeshcoreChannelCard): ChannelCardInternals {
+  return card as unknown as ChannelCardInternals;
 }
 
 function subscriptionName(params: Record<string, unknown>): string {
@@ -2159,9 +2200,88 @@ describe("channel routing normalization and presentation", () => {
     }
     expect(pill(row, "mdi:routes")).toBeNull();
   });
+
+  it("handles defensive route-detail and dialog fallbacks", async () => {
+    const { card, mock, hass } = await createCard();
+    hass.localize = (key) => key === "ui.common.close" ? "Dismiss" : key;
+    const row = await renderRoutedMessage(card, mock, "defensive dialog routes");
+    const returnFocus = row.querySelector<HTMLElement>("[data-channel-paths]")!;
+    const internals = cardInternals(card);
+    const entry = internals._entries.values().next().value;
+    const dialogRecord = internals._routingByDialogId.entries().next().value;
+    expect(entry).toBeDefined();
+    expect(dialogRecord).toBeDefined();
+    const [dialogId, record] = dialogRecord!;
+    const shown: ShowDialogDetail[] = [];
+    card.addEventListener("show-dialog", ((event: CustomEvent<ShowDialogDetail>) => {
+      shown.push(event.detail);
+    }) as EventListener);
+
+    const emptyRoute: TestNormalizedRoute = {
+      pathSegments: [],
+      direct: false,
+      regionScoped: false,
+    };
+    record.routes = [emptyRoute];
+    record.selectedRoute = emptyRoute;
+    record.selectedRouteKey = undefined;
+    record.topHopCount = undefined;
+    expect(internals._renderRouteDetails(entry!)).toBe("");
+    internals._showChannelPathsDialog(dialogId, returnFocus);
+    expect(shown).toHaveLength(0);
+
+    record.routes = [];
+    record.selectedRoute = undefined;
+    internals._showChannelPathsDialog(dialogId, returnFocus);
+    expect(shown).toHaveLength(0);
+
+    const scopeOnlyRoute: TestNormalizedRoute = {
+      key: "scope-only",
+      direct: false,
+      regionScoped: true,
+    };
+    record.routes = [scopeOnlyRoute];
+    record.selectedRoute = scopeOnlyRoute;
+    record.selectedRouteKey = scopeOnlyRoute.key;
+    internals._showChannelPathsDialog(dialogId, returnFocus);
+    expect(shown[shown.length - 1]?.dialogParams.routes[0]?.hopCount).toBe(0);
+    expect(shown[shown.length - 1]?.dialogParams.closeLabel).toBe("Dismiss");
+
+    const pathOnlyRoute: TestNormalizedRoute = {
+      key: "1:AA,BB",
+      pathSegments: ["AA", "BB"],
+      hashSizeBytes: 1,
+      direct: false,
+      regionScoped: false,
+    };
+    record.routes = [pathOnlyRoute];
+    record.selectedRoute = pathOnlyRoute;
+    record.selectedRouteKey = pathOnlyRoute.key;
+    internals._showChannelPathsDialog(dialogId, returnFocus);
+    expect(shown[shown.length - 1]?.dialogParams.routes[0]?.hopCount).toBe(2);
+  });
 });
 
 describe("channel route contact resolution", () => {
+  it("handles missing card state in contact and dialog helpers", () => {
+    const card = document.createElement(
+      "mushroom-meshcore-channel-card"
+    ) as MeshcoreChannelCard;
+    const internals = cardInternals(card);
+    const returnFocus = document.createElement("button");
+
+    expect(internals._selectedConfigEntryId()).toBeNull();
+    expect(internals._stateRouteContacts()).toEqual([]);
+    expect(internals._entryKey({ when: 1, name: "No message" })).toBe("\u00001\u0000\u0000");
+    expect(internals._showChannelPathsDialog("missing", returnFocus)).toBeUndefined();
+
+    const findTrigger = internals._currentPathDialogTrigger as unknown as (
+      this: { shadowRoot: ShadowRoot | null },
+      dialogId: string
+    ) => HTMLElement | undefined;
+    expect(findTrigger.call({ shadowRoot: null }, "missing")).toBeUndefined();
+  });
+
   it("ignores a stale or unknown path-dialog trigger", async () => {
     const { card } = await createCard();
     const shown = vi.fn();
@@ -2309,6 +2429,12 @@ describe("channel route contact resolution", () => {
             adv_name: "Duplicate key",
             type: 2,
           },
+          null,
+          {
+            public_key: "D40000112233",
+            adv_name: " \u202E ",
+            type: 2,
+          },
         ],
       },
     });
@@ -2405,6 +2531,11 @@ describe("channel route contact resolution", () => {
       adv_name: "Same prefix",
       type: 2,
     });
+    addContactState(hass, "binary_sensor.meshcore_same_name_full", HUB_DEVICE_ID, {
+      public_key: "E50000112233",
+      adv_name: "Same full name",
+      type: 2,
+    });
     let resolveResponse!: (value: unknown) => void;
     const response = new Promise<unknown>((resolve) => {
       resolveResponse = resolve;
@@ -2429,6 +2560,7 @@ describe("channel route contact resolution", () => {
         { public_key: "C30000112233", adv_name: "Fresh exact name", type: 2 },
         { public_key: "B20000112233", adv_name: "New cached contact", type: 2 },
         { pubkey_prefix: "D40000", adv_name: "Same prefix", type: 2 },
+        { public_key: "E5FF00112233", adv_name: "Same full name", type: 2 },
       ],
     });
     await expect(first.dialogParams.contactsPromise).resolves.toEqual([
@@ -2436,6 +2568,7 @@ describe("channel route contact resolution", () => {
       { publicKey: "C30000112233", name: "Fresh exact name" },
       { publicKey: "B20000112233", name: "New cached contact" },
       { publicKey: "D40000", name: "Same prefix", keyIsPrefix: true },
+      { publicKey: "E5FF00112233", name: "Same full name" },
     ]);
 
     const cached = await openPathsDialog(card, rowFor(card, "cached contacts"));
@@ -2461,6 +2594,10 @@ describe("channel route contact resolution", () => {
     )).toEqual([
       { publicKey: "D40000", name: "Same prefix", keyIsPrefix: true },
     ]);
+    expect(cached.dialogParams.contacts).toEqual(expect.arrayContaining([
+      { publicKey: "E50000112233", name: "Same full name" },
+      { publicKey: "E5FF00112233", name: "Same full name" },
+    ]));
     expect(cached.dialogParams.contactsPromise).toBeUndefined();
 
     await vi.advanceTimersByTimeAsync(60_001);
@@ -2472,6 +2609,76 @@ describe("channel route contact resolution", () => {
     await expect(refreshed.dialogParams.contactsPromise).resolves.toEqual([
       { publicKey: "B20000112233", name: "Refreshed" },
     ]);
+  });
+
+  it("bounds state-derived contacts and refuses cached overflow", async () => {
+    const { card, mock, hass } = await createCard();
+    for (let index = 0; index < 1_000; index += 1) {
+      addContactState(
+        hass,
+        `binary_sensor.meshcore_bounded_contact_${index}`,
+        HUB_DEVICE_ID,
+        {
+          public_key: index.toString(16).padStart(8, "0"),
+          adv_name: `Bounded repeater ${index}`,
+          type: 2,
+        }
+      );
+    }
+    hass.callWS = vi.fn().mockResolvedValue({
+      contacts: [
+        {
+          public_key: "FFFFFFFFFFFFFFFF",
+          adv_name: "Overflow repeater",
+          type: 2,
+        },
+      ],
+    });
+    const row = await renderRoutedMessage(card, mock, "bounded state contacts");
+
+    const first = await openPathsDialog(card, row);
+    expect(first.dialogParams.contacts).toHaveLength(1_000);
+    await expect(first.dialogParams.contactsPromise).resolves.toHaveLength(1);
+
+    const cached = await openPathsDialog(
+      card,
+      rowFor(card, "bounded state contacts")
+    );
+    expect(cached.dialogParams.contacts).toHaveLength(1_000);
+    expect(cached.dialogParams.contacts).not.toContainEqual({
+      publicKey: "FFFFFFFFFFFFFFFF",
+      name: "Overflow repeater",
+    });
+  });
+
+  it("ignores an expired in-flight contact response replaced by a newer request", async () => {
+    const { card, mock, hass } = await createCard();
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    const firstResponse = new Promise<unknown>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResponse = new Promise<unknown>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const callWS = vi.fn()
+      .mockReturnValueOnce(firstResponse)
+      .mockReturnValueOnce(secondResponse);
+    hass.callWS = callWS;
+    const row = await renderRoutedMessage(card, mock, "replaced contact request");
+
+    const first = await openPathsDialog(card, row);
+    await vi.advanceTimersByTimeAsync(60_001);
+    const second = await openPathsDialog(
+      card,
+      rowFor(card, "replaced contact request")
+    );
+    expect(callWS).toHaveBeenCalledTimes(2);
+
+    resolveFirst({ contacts: [] });
+    await expect(first.dialogParams.contactsPromise).resolves.toEqual([]);
+    resolveSecond({ contacts: [] });
+    await expect(second.dialogParams.contactsPromise).resolves.toEqual([]);
   });
 
   it("clears cached contacts when the Home Assistant connection changes", async () => {
