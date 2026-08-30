@@ -37,6 +37,29 @@ interface EntityReading {
 
 type NodeConnectivityState = "online" | "offline" | "unknown";
 
+type NodeRepeaterMetricId =
+  | "sent_direct"
+  | "sent_flood"
+  | "received_direct"
+  | "received_flood"
+  | "direct_duplicates"
+  | "flood_duplicates"
+  | "queue_full_events"
+  | "receive_errors"
+  | "sent_direct_rate"
+  | "sent_flood_rate"
+  | "received_direct_rate"
+  | "received_flood_rate"
+  | "direct_duplicates_rate"
+  | "flood_duplicates_rate"
+  | "receive_errors_rate"
+  | "tx_airtime_total"
+  | "rx_airtime_total"
+  | "request_successes"
+  | "request_failures";
+
+type NodeRepeaterMetrics = Record<NodeRepeaterMetricId, EntityReading>;
+
 interface EntityLookupOptions {
   domain?: string;
   enabledOnly?: boolean;
@@ -75,6 +98,7 @@ interface NodeViewModel {
   queueLength: EntityReading;
   txRate: EntityReading;
   rxRate: EntityReading;
+  repeaterMetrics: NodeRepeaterMetrics;
   spreadingFactor: EntityReading;
   frequency: EntityReading;
   bandwidth: EntityReading;
@@ -262,10 +286,6 @@ export class MeshcoreCard extends HTMLElement {
     return this._hass?.states[id]?.attributes[attr] ?? null;
   }
 
-  private _exists(id: string | null | undefined): boolean {
-    return !!id && !!this._hass?.states[id];
-  }
-
   private _find(prefix: string): string | null {
     if (!this._hass) return null;
     if (this._hass.states[prefix]) return prefix;
@@ -297,6 +317,27 @@ export class MeshcoreCard extends HTMLElement {
         )
       : this._hass.entities;
     return findEntityByDevice(entities, deviceId, metric, ePrefix, eSuffix);
+  }
+
+  /**
+   * Resolve canonical and compatibility metric names for one device.
+   *
+   * Registry entries can exist before Home Assistant has added their state.
+   * In that case only, continue to the next alias. Once an entity has any
+   * state object, keep it authoritative; `_reading` will hide invalid values
+   * instead of exposing potentially stale data from a legacy alias.
+   */
+  private _findStateBackedEntityByDevice(
+    deviceId: string,
+    metrics: readonly string[],
+    ePrefix: string,
+    eSuffix: string
+  ): string | null {
+    for (const metric of metrics) {
+      const entityId = this._findEntityByDevice(deviceId, metric, ePrefix, eSuffix);
+      if (entityId && this._hass?.states[entityId]) return entityId;
+    }
+    return null;
   }
 
   // ── Discovery ─────────────────────────────────────────────────────────────
@@ -784,6 +825,8 @@ export class MeshcoreCard extends HTMLElement {
   private _buildNodeViewModel(node: NodeInfo, t: LocalizeFunc): NodeViewModel {
     const { name, deviceId, ePrefix, eSuffix } = node;
     const p = (m: string) => this._findEntityByDevice(deviceId, m, ePrefix, eSuffix);
+    const pAliases = (...metrics: string[]) =>
+      this._findStateBackedEntityByDevice(deviceId, metrics, ePrefix, eSuffix);
 
     // Common entities
     const authoritativeOnlineId = this._findEntityByDevice(
@@ -804,17 +847,18 @@ export class MeshcoreCard extends HTMLElement {
     const successId = p("request_successes");
     const rssiId    = p("last_rssi");
     const snrId     = p("last_snr");
-    const pathId    = p("path_length");
-    const routeId   = p("routing_path");
+    const pathId    = pAliases("out_path_len", "path_length");
+    const routeId   = pAliases("out_path", "routing_path");
     const advertId  = p("last_advert");
     const battPctId = this._config?.battery_entity ?? p("battery_percentage") ?? p("battery_level") ?? p("battery");
     let battVId = this._config?.voltage_entity ?? null;
     if (!battVId) {
-      battVId = p("battery_voltage");
+      battVId = pAliases("bat", "battery_voltage");
     }
     if (!battVId && this._hass) {
       for (const [entityId, info] of Object.entries(this._hass.entities)) {
         if (info.device_id !== deviceId) continue;
+        if (!this._hass.states[entityId]) continue;
         // Match voltage-like battery entities, but not percentage/level entities.
         if (/_bat$|_battery_voltage$|_bat_/i.test(entityId) &&
             !/percentage|level/i.test(entityId)) {
@@ -837,10 +881,10 @@ export class MeshcoreCard extends HTMLElement {
     const airtimeId   = p("airtime_utilization");
     const rxAirtimeId = p("rx_airtime_utilization");
     const noiseId     = p("noise_floor");
-    const queueId     = p("queue_length");
+    const queueId     = pAliases("tx_queue_len", "queue_length");
     const uptimeId    = p("uptime");
-    const txRateId    = [p("tx_per_minute"), p("tx_rate"), p("messages_per_minute")].find((id) => this._exists(id)) ?? null;
-    const rxRateId    = [p("rx_per_minute"), p("rx_rate")].find((id) => this._exists(id)) ?? null;
+    const txRateId    = pAliases("nb_sent_rate", "tx_per_minute", "tx_rate", "messages_per_minute");
+    const rxRateId    = pAliases("nb_recv_rate", "rx_per_minute", "rx_rate");
 
     // Optional telemetry keeps explicit overrides authoritative, then falls
     // back to the same device-scoped matching used for MeshCore metrics.
@@ -932,6 +976,27 @@ export class MeshcoreCard extends HTMLElement {
     if (batteryVoltage.value !== null && Number(batteryVoltage.value) < 0.001) {
       batteryVoltage.value = null;
     }
+    const repeaterMetrics: NodeRepeaterMetrics = {
+      sent_direct: this._reading(p("sent_direct"), true),
+      sent_flood: this._reading(p("sent_flood"), true),
+      received_direct: this._reading(p("recv_direct"), true),
+      received_flood: this._reading(p("recv_flood"), true),
+      direct_duplicates: this._reading(p("direct_dups"), true),
+      flood_duplicates: this._reading(p("flood_dups"), true),
+      queue_full_events: this._reading(p("full_evts"), true),
+      receive_errors: this._reading(p("recv_errors"), true),
+      sent_direct_rate: this._reading(p("sent_direct_rate"), true),
+      sent_flood_rate: this._reading(p("sent_flood_rate"), true),
+      received_direct_rate: this._reading(p("recv_direct_rate"), true),
+      received_flood_rate: this._reading(p("recv_flood_rate"), true),
+      direct_duplicates_rate: this._reading(p("direct_dups_rate"), true),
+      flood_duplicates_rate: this._reading(p("flood_dups_rate"), true),
+      receive_errors_rate: this._reading(p("recv_errors_rate"), true),
+      tx_airtime_total: this._reading(p("airtime"), true),
+      rx_airtime_total: this._reading(p("rx_airtime"), true),
+      request_successes: this._reading(successId, true),
+      request_failures: this._reading(p("request_failures"), true),
+    };
 
     return {
       node,
@@ -965,6 +1030,7 @@ export class MeshcoreCard extends HTMLElement {
       queueLength: this._reading(queueId, true),
       txRate: this._reading(txRateId, true),
       rxRate: this._reading(rxRateId, true),
+      repeaterMetrics,
       spreadingFactor: this._reading(sfEntity, true),
       frequency: this._reading(freqEntity, true),
       bandwidth: this._reading(bandwidthEntity, true),
@@ -1030,11 +1096,30 @@ export class MeshcoreCard extends HTMLElement {
       relayed: [vm.relayed, t("card.traffic_relayed"), "", "mdi:repeat"],
       canceled: [vm.canceled, t("card.traffic_canceled"), "", "mdi:cancel"],
       duplicate: [vm.duplicate, t("card.traffic_duplicate"), "", "mdi:content-duplicate"],
+      sent_direct: [vm.repeaterMetrics.sent_direct, t("card.traffic_sent_direct"), "", "mdi:message-arrow-right"],
+      sent_flood: [vm.repeaterMetrics.sent_flood, t("card.traffic_sent_flood"), "", "mdi:message-arrow-right-outline"],
+      received_direct: [vm.repeaterMetrics.received_direct, t("card.traffic_received_direct"), "", "mdi:message-arrow-left"],
+      received_flood: [vm.repeaterMetrics.received_flood, t("card.traffic_received_flood"), "", "mdi:message-arrow-left-outline"],
+      direct_duplicates: [vm.repeaterMetrics.direct_duplicates, t("card.traffic_direct_duplicates"), "", "mdi:content-duplicate"],
+      flood_duplicates: [vm.repeaterMetrics.flood_duplicates, t("card.traffic_flood_duplicates"), "", "mdi:content-duplicate"],
+      queue_full_events: [vm.repeaterMetrics.queue_full_events, t("card.traffic_queue_full_events"), "", "mdi:alert-circle"],
+      receive_errors: [vm.repeaterMetrics.receive_errors, t("card.traffic_receive_errors"), "", "mdi:message-alert"],
       tx_airtime: [vm.txAirtime, t("card.tx_airtime_label"), "%", "mdi:upload-network"],
       rx_airtime: [vm.rxAirtime, t("card.rx_airtime_label"), "%", "mdi:download-network"],
+      tx_airtime_total: [vm.repeaterMetrics.tx_airtime_total, t("card.tx_airtime_total_label"), " min", "mdi:radio"],
+      rx_airtime_total: [vm.repeaterMetrics.rx_airtime_total, t("card.rx_airtime_total_label"), " min", "mdi:radio"],
       queue_length: [vm.queueLength, t("card.chip_queue"), "", "mdi:tray-full"],
       tx_rate: [vm.txRate, t("card.chip_tx_rate"), "", "mdi:upload"],
       rx_rate: [vm.rxRate, t("card.chip_rx_rate"), "", "mdi:download"],
+      sent_direct_rate: [vm.repeaterMetrics.sent_direct_rate, t("card.traffic_sent_direct_rate"), " msg/min", "mdi:message-arrow-right"],
+      sent_flood_rate: [vm.repeaterMetrics.sent_flood_rate, t("card.traffic_sent_flood_rate"), " msg/min", "mdi:message-arrow-right-outline"],
+      received_direct_rate: [vm.repeaterMetrics.received_direct_rate, t("card.traffic_received_direct_rate"), " msg/min", "mdi:message-arrow-left"],
+      received_flood_rate: [vm.repeaterMetrics.received_flood_rate, t("card.traffic_received_flood_rate"), " msg/min", "mdi:message-arrow-left-outline"],
+      direct_duplicates_rate: [vm.repeaterMetrics.direct_duplicates_rate, t("card.traffic_direct_duplicates_rate"), " msg/min", "mdi:content-duplicate"],
+      flood_duplicates_rate: [vm.repeaterMetrics.flood_duplicates_rate, t("card.traffic_flood_duplicates_rate"), " msg/min", "mdi:content-duplicate"],
+      receive_errors_rate: [vm.repeaterMetrics.receive_errors_rate, t("card.traffic_receive_errors_rate"), " msg/min", "mdi:message-alert"],
+      request_successes: [vm.repeaterMetrics.request_successes, t("card.request_successes_label"), " requests", "mdi:check-circle"],
+      request_failures: [vm.repeaterMetrics.request_failures, t("card.request_failures_label"), " requests", "mdi:alert-circle"],
       humidity: [vm.humidity, t("card.telemetry_humidity"), "%", "mdi:water-percent"],
       illuminance: [vm.illuminance, t("card.telemetry_lux"), " lx", "mdi:brightness-5"],
       pressure: [vm.pressure, t("card.telemetry_pressure"), " hPa", "mdi:gauge"],

@@ -10,6 +10,44 @@ describe("chip layouts", () => {
     expect(defaultChipLayout(NODE).top).toEqual([
       "sent", "received", "temperature", "uptime", "neighbor_count",
     ]);
+    expect(defaultChipLayout(NODE).details).toEqual([
+      "route",
+      "path_length",
+      "spreading_factor",
+      "frequency",
+      "bandwidth",
+      "tx_power",
+      "relayed",
+      "canceled",
+      "duplicate",
+      "sent_direct",
+      "sent_flood",
+      "received_direct",
+      "received_flood",
+      "direct_duplicates",
+      "flood_duplicates",
+      "queue_full_events",
+      "receive_errors",
+      "tx_airtime",
+      "rx_airtime",
+      "tx_airtime_total",
+      "rx_airtime_total",
+      "queue_length",
+      "tx_rate",
+      "rx_rate",
+      "sent_direct_rate",
+      "sent_flood_rate",
+      "received_direct_rate",
+      "received_flood_rate",
+      "direct_duplicates_rate",
+      "flood_duplicates_rate",
+      "receive_errors_rate",
+      "request_successes",
+      "request_failures",
+      "humidity",
+      "illuminance",
+      "pressure",
+    ]);
     expect(defaultChipLayout(HUB).top).toEqual(["hardware", "firmware"]);
   });
 
@@ -34,6 +72,8 @@ describe("chip layouts", () => {
     expect(layout.details).toEqual(["sent"]);
     expect(layout.hidden).toContain("firmware");
     expect(layout.hidden).toContain("neighbor_count");
+    expect(layout.hidden).toContain("sent_direct");
+    expect(layout.hidden).toContain("request_failures");
   });
 
   it("treats malformed non-array YAML zones as empty", () => {

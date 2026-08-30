@@ -57,7 +57,7 @@ target:
 
 Each main-card instance displays one selected hub or remote node. Add the card through the dashboard editor, select a MeshCore device, and repeat for every device you want to place independently.
 
-Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, available noise-floor data, battery percentage and voltage, sent/received traffic, uptime, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, and neighbour list under a collapsed **Details** control. Hubs share the same body primitives: a battery block, hardware/firmware quick chips, and RF, location, MQTT, and other diagnostics under the same **Details** control. Offline devices collapse to their identity and last-seen status with a badge on the icon, while their card surface fills the row allocated by a Sections dashboard.
+Remote nodes show a Tile-style header, online state, last-seen age, RSSI, SNR, available noise-floor data, battery percentage and voltage, sent/received traffic, uptime, and optional temperature. Repeaters retain their extended diagnostics, location, telemetry, neighbour list, and the complete MeshCore HA 2.9 traffic diagnostics under a collapsed **Details** control. Hubs share the same body primitives: a battery block, hardware/firmware quick chips, and RF, location, MQTT, and other diagnostics under the same **Details** control. Offline devices collapse to their identity and last-seen status with a badge on the icon, while their card surface fills the row allocated by a Sections dashboard.
 
 ### Configuration
 
@@ -114,6 +114,20 @@ grid_options:
 `tap_action`, `hold_action`, and `double_tap_action` accept the standard Home Assistant action config (`more-info`, `navigate`, `url`, `perform-action`, `none`), including the optional `confirmation:` prompt, and apply to the device header. Individual metrics and entity-backed chips open their own entity's more-info dialog, except the neighbour-count chip, which opens the recent-neighbours list. `icon_color` accepts the Mushroom/Tile color names (`red`, `blue`, `deep-purple`, …) or a plain CSS color (`#rrggbb`, `rgb(…)`, `hsl(…)`, named colors), and applies while the device is online.
 
 The editor writes a complete `chip_layout`; chips omitted from all three YAML lists are treated as hidden. Existing configurations without `chip_layout` retain their current quick-chip behavior, including the legacy `hide_quick_stats` and `show_firmware` options. The neighbour count and list include only neighbours provably heard within the integration's rolling 48-hour window. The top neighbour chip shows the icon and count only; selecting it opens the same neighbour list shown under Details. `show_neighbors: false` hides both, while `max_neighbors` limits the visible rows in Details and the popup without changing the reported total.
+
+### MeshCore HA 2.9 repeater metrics
+
+Subscribed repeaters expose the diagnostics defined by the official [MeshCore HA 2.9 sensors](https://github.com/meshcore-dev/meshcore-ha/blob/v2.9.0/custom_components/meshcore/sensor.py) and [sensor documentation](https://meshcore-dev.github.io/meshcore-ha/docs/ha/sensors/). When available, these chips are placed in **Details** by default:
+
+| Metric group | Configurable chip IDs |
+| --- | --- |
+| Direct and flood traffic | `sent_direct`, `sent_flood`, `received_direct`, `received_flood` |
+| Duplicates and errors | `direct_duplicates`, `flood_duplicates`, `queue_full_events`, `receive_errors` |
+| Specialized message rates | `sent_direct_rate`, `sent_flood_rate`, `received_direct_rate`, `received_flood_rate`, `direct_duplicates_rate`, `flood_duplicates_rate`, `receive_errors_rate` |
+| Total radio time | `tx_airtime_total`, `rx_airtime_total` |
+| Poll reliability | `request_successes`, `request_failures` |
+
+The existing `tx_airtime` and `rx_airtime` chips remain utilization percentages; the new `*_airtime_total` chips report accumulated minutes. Aggregate `tx_rate` and `rx_rate`, queue, route, path length, and repeater voltage prefer the current v2.9 entity suffixes (`nb_sent_rate`, `nb_recv_rate`, `tx_queue_len`, `out_path`, `out_path_len`, and `bat`). Existing installations can still use the older card aliases `tx_per_minute`, `tx_rate`, `messages_per_minute`, `rx_per_minute`, `rx_rate`, `queue_length`, `routing_path`, `path_length`, and `battery_voltage`. Metrics that a tracked client or repeater does not expose are simply omitted.
 
 Hub cards use the same public card type:
 

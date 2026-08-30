@@ -19,6 +19,35 @@ export const NODE_PREFIX = "sensor.meshcore_spring_";
 export const NODE_SUFFIX = "_spring_farm";
 export const NODE_ONLINE_ENTITY = "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm";
 
+export const V29_REPEATER_METRICS = {
+  tx_queue_len: 4,
+  nb_sent_rate: 12.5,
+  nb_recv_rate: 9.75,
+  out_path: "flood",
+  out_path_len: 2,
+  bat: 4.21,
+  sent_direct: 101,
+  sent_flood: 102,
+  recv_direct: 103,
+  recv_flood: 104,
+  direct_dups: 5,
+  flood_dups: 6,
+  full_evts: 7,
+  recv_errors: 8,
+  sent_direct_rate: 1.1,
+  sent_flood_rate: 1.2,
+  recv_direct_rate: 1.3,
+  recv_flood_rate: 1.4,
+  direct_dups_rate: 0.1,
+  flood_dups_rate: 0.2,
+  recv_errors_rate: 0.3,
+  airtime: 17.5,
+  rx_airtime: 8.25,
+  request_successes: 33,
+  request_failures: 2,
+  rx_airtime_utilization: 1.75,
+} as const;
+
 export const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
 
 export function state(
@@ -123,6 +152,23 @@ export function createHass(options: CreateHassOptions = {}): HomeAssistant {
     language: "en",
     locale: { language: "en" },
   };
+}
+
+/** A subscribed repeater exposing every canonical MeshCore HA 2.9 metric
+ *  used by the card, including the canonical replacements for retained
+ *  compatibility aliases. */
+export function createV29RepeaterHass(): HomeAssistant {
+  const hass = createHass();
+  for (const [metric, value] of Object.entries(V29_REPEATER_METRICS)) {
+    const entityId = `${NODE_PREFIX}${metric}${NODE_SUFFIX}`;
+    const entityState = state(value);
+    entityState.entity_id = entityId;
+    hass.states[entityId] = entityState;
+    const entry = registryEntry(NODE_DEVICE_ID);
+    entry.entity_id = entityId;
+    hass.entities[entityId] = entry;
+  }
+  return hass;
 }
 
 /** createHass plus one channel messages binary_sensor on the hub device. */

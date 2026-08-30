@@ -323,6 +323,55 @@ describe("MeshcoreCardEditor chip organizer", () => {
     expect(hidden.map((item) => item.dataset["chip"])).toContain("firmware");
   });
 
+  it("shows localized labels for every MeshCore HA 2.9 repeater chip", () => {
+    const { editor } = createEditor({ target: NODE_TARGET });
+    const expected: Record<string, string> = {
+      sent_direct: "Sent direct",
+      sent_flood: "Sent flood",
+      received_direct: "Received direct",
+      received_flood: "Received flood",
+      direct_duplicates: "Direct duplicates",
+      flood_duplicates: "Flood duplicates",
+      queue_full_events: "Queue full events",
+      receive_errors: "Receive errors",
+      sent_direct_rate: "Sent direct rate",
+      sent_flood_rate: "Sent flood rate",
+      received_direct_rate: "Received direct rate",
+      received_flood_rate: "Received flood rate",
+      direct_duplicates_rate: "Direct duplicates rate",
+      flood_duplicates_rate: "Flood duplicates rate",
+      receive_errors_rate: "Receive errors rate",
+      tx_airtime_total: "TX airtime total",
+      rx_airtime_total: "RX airtime total",
+      request_successes: "Request successes",
+      request_failures: "Request failures",
+    };
+    for (const [id, label] of Object.entries(expected)) {
+      const item = editor.querySelector<HTMLElement>(`[data-chip="${id}"]`);
+      expect(item?.querySelector(".chip-name")?.textContent, id).toBe(label);
+    }
+  });
+
+  it("round-trips a v2.9 repeater chip between Details and Top", () => {
+    const { editor, configs } = createEditor({ target: NODE_TARGET });
+    const item = editor.querySelector<HTMLElement>('[data-chip="sent_direct_rate"]')!;
+    const select = item.querySelector<HTMLSelectElement>("select")!;
+
+    select.value = "top";
+    select.dispatchEvent(new Event("change"));
+    expect(configs[configs.length - 1]!.chip_layout?.top)
+      .toContain("sent_direct_rate");
+    expect(configs[configs.length - 1]!.chip_layout?.details)
+      .not.toContain("sent_direct_rate");
+
+    select.value = "details";
+    select.dispatchEvent(new Event("change"));
+    expect(configs[configs.length - 1]!.chip_layout?.top)
+      .not.toContain("sent_direct_rate");
+    expect(configs[configs.length - 1]!.chip_layout?.details)
+      .toContain("sent_direct_rate");
+  });
+
   it("moves a chip between zones and replaces legacy visibility flags", () => {
     const { editor, configs } = createEditor({
       target: NODE_TARGET,
