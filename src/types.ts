@@ -19,6 +19,8 @@ export interface HassDeviceRegistryEntry {
   model: string | null;
   sw_version?: string | null;
   via_device_id?: string | null;
+  config_entries?: string[];
+  primary_config_entry?: string | null;
 }
 
 /** The `hass` object passed to Lovelace custom cards by the HA frontend. */
@@ -43,7 +45,7 @@ export interface HomeAssistant {
       callback: (message: T) => void,
       params: Record<string, unknown>,
       options?: { resubscribe?: boolean }
-    ) => Promise<() => void>;
+    ) => Promise<() => void | Promise<void>>;
     addEventListener?: (type: string, listener: () => void) => void;
     removeEventListener?: (type: string, listener: () => void) => void;
   };
@@ -192,6 +194,7 @@ export interface MeshcoreChannelCardConfig {
   double_tap_action?: ActionConfig;
   hide_timestamps?: boolean;
   hide_date_headers?: boolean;
+  hide_route_details?: boolean;
   hours_to_show?: number;
   max_messages?: number;
   grid_options?: GridOptions;

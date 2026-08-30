@@ -220,13 +220,19 @@ function createHass(online = true) {
   };
 }
 
-function createLogbookConnection({ reject = false } = {}) {
+function createLogbookConnection({ reject = false, rejectEvents = false } = {}) {
   const subscriptions = [];
+  const attempts = [];
   const readyListeners = new Set();
   return {
     subscriptions,
+    attempts,
     subscribeMessage(callback, params, options) {
+      attempts.push({ params, options });
       if (reject) return Promise.reject(new Error("Logbook unavailable"));
+      if (rejectEvents && params.type === "subscribe_events") {
+        return Promise.reject(new Error("Event subscriptions unavailable"));
+      }
       const subscription = {
         callback,
         params,
@@ -250,12 +256,32 @@ function createLogbookConnection({ reject = false } = {}) {
   };
 }
 
+function matchingSubscriptions(connection, expectedParams) {
+  return connection.subscriptions.filter((subscription) =>
+    Object.entries(expectedParams).every(([key, expected]) => {
+      const actual = subscription.params[key];
+      return Array.isArray(expected)
+        ? JSON.stringify(actual) === JSON.stringify(expected)
+        : actual === expected;
+    }),
+  );
+}
+
+function latestSubscription(connection, expectedParams) {
+  const matches = matchingSubscriptions(connection, expectedParams);
+  assert.ok(
+    matches.length > 0,
+    `expected subscription matching ${JSON.stringify(expectedParams)}`,
+  );
+  return matches.at(-1);
+}
+
 const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
 const SECOND_CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_1_messages";
 const MENTIONS_ENTITY = "todo.meshcore_tags";
 const SECOND_MENTIONS_ENTITY = "todo.meshcore_mentions_archive";
 
-function createChannelHass({ unavailable = false, reject = false } = {}) {
+function createChannelHass({ unavailable = false, reject = false, rejectEvents = false } = {}) {
   const hass = createHass();
   hass.devices["hub-device"].name = "🌳 2wenty2wo (HA)";
   hass.states[CHANNEL_ENTITY] = state(unavailable ? "unavailable" : "Active", {
@@ -274,7 +300,7 @@ function createChannelHass({ unavailable = false, reject = false } = {}) {
     time_zone: "server",
   };
   hass.config = { components: ["logbook"], time_zone: "Australia/Sydney" };
-  hass.connection = createLogbookConnection({ reject });
+  hass.connection = createLogbookConnection({ reject, rejectEvents });
   return hass;
 }
 
@@ -665,11 +691,26 @@ const channelCard = new ChannelCard();
 channelCard.setConfig({ entity: CHANNEL_ENTITY });
 channelCard.hass = channelHass;
 channelCard.connectedCallback();
-assert.equal(channelHass.connection.subscriptions.length, 1);
-const initialSubscription = channelHass.connection.subscriptions[0];
+assert.equal(channelHass.connection.subscriptions.length, 4);
+const initialSubscriptions = [...channelHass.connection.subscriptions];
+const initialSubscription = latestSubscription(channelHass.connection, {
+  type: "logbook/event_stream",
+  entity_ids: [CHANNEL_ENTITY],
+});
 assert.equal(initialSubscription.params.type, "logbook/event_stream");
 assert.deepEqual(initialSubscription.params.entity_ids, [CHANNEL_ENTITY]);
 assert.equal(initialSubscription.options.resubscribe, false);
+for (const eventType of [
+  "meshcore_message",
+  "meshcore_delivery_update",
+  "meshcore_message_sent",
+]) {
+  const subscription = latestSubscription(channelHass.connection, {
+    type: "subscribe_events",
+    event_type: eventType,
+  });
+  assert.equal(subscription.options.resubscribe, false);
+}
 assert.ok(
   Date.parse(initialSubscription.params.end_time) > Date.now() + 300 * 86400 * 1000,
   "live Logbook subscription has a future end date",
@@ -735,10 +776,44 @@ const initialEvents = [
 ];
 initialSubscription.callback({ events: [...initialEvents, initialEvents[0]] });
 await wait(300);
+latestSubscription(channelHass.connection, {
+  type: "subscribe_events",
+  event_type: "meshcore_message",
+}).callback({
+  event_type: "meshcore_message",
+  time_fired: new Date(nowSeconds * 1000).toISOString(),
+  context: { id: "context-a" },
+  data: {
+    message_type: "channel",
+    entity_id: CHANNEL_ENTITY,
+    sender_name: "Alice & <Admin>",
+    message: "First: keep\nsecond <line>",
+    timestamp: nowSeconds,
+    hop_count: 7,
+    rx_log_data: [{
+      timestamp: nowSeconds,
+      path_len: 3,
+      path: "21005555e963",
+      path_hash_size: 2,
+      region_scope: true,
+      flood_scope: "#au",
+    }],
+  },
+});
+await wait(300);
 let channelHtml = channelCard.shadowRoot.innerHTML;
 assert.equal((channelHtml.match(/class="message-row"/g) ?? []).length, 3);
 assert.match(channelHtml, /<strong class="message-sender">Alice &amp; &lt;Admin&gt;<\/strong>/);
 assert.match(channelHtml, /First: keep\nsecond &lt;line&gt;/);
+assert.match(channelHtml, /<div class="message-route-details" role="group" aria-label="Route details">/);
+assert.match(channelHtml, /class="message-route-detail hops" title="Hops: 3"[^>]*>[\s\S]*?<bdi dir="ltr">3<\/bdi>/);
+assert.match(channelHtml, /class="message-route-detail path" title="Path: 2100,5555,E963"[^>]*>[\s\S]*?<bdi dir="ltr">2100,5555,E963<\/bdi>/);
+assert.match(channelHtml, /class="message-route-detail scope" title="Scope: #au"[^>]*>[\s\S]*?<bdi dir="ltr">au<\/bdi>/);
+assert.match(
+  channelHtml,
+  /<div class="message-meta"><strong class="message-sender">Alice &amp; &lt;Admin&gt;<\/strong><time class="message-time"[\s\S]*?<\/time><\/div><div class="message-body">First: keep\nsecond &lt;line&gt;<\/div><div class="message-route-details"/,
+  "routing details render below the body without moving the timestamp out of the existing meta row",
+);
 assert.match(
   channelHtml,
   /\.message-body\s*\{[^}]*font-weight: var\(--mushroom-meshcore-secondary-font-weight\)/s,
@@ -808,13 +883,28 @@ assert.match(channelCard.shadowRoot.innerHTML, /Live Sender/);
 
 await Promise.resolve();
 channelHass.connection.emitReady();
-assert.equal(channelHass.connection.subscriptions.length, 2);
-assert.equal(
-  initialSubscription.unsubscribed,
-  false,
-  "the dead socket handle is dropped instead of unsubscribed on the new connection",
+assert.equal(channelHass.connection.subscriptions.length, 8);
+assert.ok(
+  initialSubscriptions.every((subscription) => !subscription.unsubscribed),
+  "dead socket handles are dropped instead of unsubscribed on the new connection",
 );
-const replaySubscription = channelHass.connection.subscriptions[1];
+const replaySubscriptions = channelHass.connection.subscriptions.slice(4);
+assert.deepEqual(
+  replaySubscriptions.map((subscription) => [
+    subscription.params.type,
+    subscription.params.event_type ?? null,
+  ]),
+  [
+    ["logbook/event_stream", null],
+    ["subscribe_events", "meshcore_message"],
+    ["subscribe_events", "meshcore_delivery_update"],
+    ["subscribe_events", "meshcore_message_sent"],
+  ],
+);
+const replaySubscription = latestSubscription(channelHass.connection, {
+  type: "logbook/event_stream",
+  entity_ids: [CHANNEL_ENTITY],
+});
 replaySubscription.callback({ events: initialEvents.slice(0, 3) });
 await wait(300);
 channelHtml = channelCard.shadowRoot.innerHTML;
@@ -847,7 +937,10 @@ assert.equal(channelCard.shadowRoot.querySelector("ha-tile-info").secondary, "Ac
 delete channelHass.states[CHANNEL_ENTITY];
 channelCard.hass = channelHass;
 assert.match(channelCard.shadowRoot.innerHTML, /was not found/);
-assert.equal(replaySubscription.unsubscribed, true);
+assert.ok(
+  replaySubscriptions.every((subscription) => subscription.unsubscribed),
+  "all active channel subscriptions are removed when the target disappears",
+);
 channelCard.disconnectedCallback();
 
 const cappedHass = createChannelHass();
@@ -859,7 +952,11 @@ cappedCard.setConfig({
 });
 cappedCard.hass = cappedHass;
 cappedCard.connectedCallback();
-const cappedSubscription = cappedHass.connection.subscriptions[0];
+assert.equal(cappedHass.connection.subscriptions.length, 4);
+const cappedSubscription = latestSubscription(cappedHass.connection, {
+  type: "logbook/event_stream",
+  entity_ids: [CHANNEL_ENTITY],
+});
 const startAgeHours =
   (Date.now() - Date.parse(cappedSubscription.params.start_time)) / 3_600_000;
 assert.ok(startAgeHours > 23.9 && startAgeHours < 24.1);
@@ -887,6 +984,7 @@ const preservedChannelConfig = {
   icon: "mdi:radio-handheld",
   icon_color: "green",
   hide_timestamps: true,
+  hide_route_details: true,
   hide_date_headers: true,
   hours_to_show: 12,
   max_messages: 50,
@@ -895,7 +993,12 @@ const preservedChannelConfig = {
 hiddenCard.setConfig(preservedChannelConfig);
 hiddenCard.hass = hiddenHass;
 hiddenCard.connectedCallback();
-const oldHiddenSubscription = hiddenHass.connection.subscriptions[0];
+const oldHiddenSubscriptions = [...hiddenHass.connection.subscriptions];
+assert.equal(oldHiddenSubscriptions.length, 4);
+const oldHiddenSubscription = latestSubscription(hiddenHass.connection, {
+  type: "logbook/event_stream",
+  entity_ids: [CHANNEL_ENTITY],
+});
 oldHiddenSubscription.callback({
   events: [{
     when: nowSeconds,
@@ -915,8 +1018,11 @@ hiddenCard.setConfig({
   ...preservedChannelConfig,
   entity: SECOND_CHANNEL_ENTITY,
 });
-assert.equal(oldHiddenSubscription.unsubscribed, true);
-assert.equal(hiddenHass.connection.subscriptions.length, 2);
+assert.ok(
+  oldHiddenSubscriptions.every((subscription) => subscription.unsubscribed),
+  "target changes unsubscribe Logbook and every native event stream",
+);
+assert.equal(hiddenHass.connection.subscriptions.length, 8);
 oldHiddenSubscription.callback({
   events: [{
     when: nowSeconds + 1,
@@ -925,7 +1031,10 @@ oldHiddenSubscription.callback({
     message: "<Public> Stale: ignored",
   }],
 });
-hiddenHass.connection.subscriptions[1].callback({
+latestSubscription(hiddenHass.connection, {
+  type: "logbook/event_stream",
+  entity_ids: [SECOND_CHANNEL_ENTITY],
+}).callback({
   events: [{
     when: nowSeconds + 1,
     name: "Team Messages",
@@ -945,10 +1054,53 @@ const emptyCard = new ChannelCard();
 emptyCard.setConfig({ entity: CHANNEL_ENTITY });
 emptyCard.hass = emptyHass;
 emptyCard.connectedCallback();
-emptyHass.connection.subscriptions[0].callback({ events: [] });
+latestSubscription(emptyHass.connection, {
+  type: "logbook/event_stream",
+  entity_ids: [CHANNEL_ENTITY],
+}).callback({ events: [] });
 await wait(300);
 assert.match(emptyCard.shadowRoot.innerHTML, /No channel messages in the last 24 hours/);
 emptyCard.disconnectedCallback();
+
+const restrictedChannelHass = createChannelHass({ rejectEvents: true });
+const restrictedChannelCard = new ChannelCard();
+restrictedChannelCard.setConfig({ entity: CHANNEL_ENTITY });
+restrictedChannelCard.hass = restrictedChannelHass;
+restrictedChannelCard.connectedCallback();
+await Promise.resolve();
+await Promise.resolve();
+assert.deepEqual(
+  restrictedChannelHass.connection.attempts.map(({ params }) => [
+    params.type,
+    params.event_type ?? null,
+  ]),
+  [
+    ["logbook/event_stream", null],
+    ["subscribe_events", "meshcore_message"],
+    ["subscribe_events", "meshcore_delivery_update"],
+    ["subscribe_events", "meshcore_message_sent"],
+  ],
+);
+assert.equal(restrictedChannelHass.connection.subscriptions.length, 1);
+latestSubscription(restrictedChannelHass.connection, {
+  type: "logbook/event_stream",
+  entity_ids: [CHANNEL_ENTITY],
+}).callback({
+  events: [{
+    when: nowSeconds,
+    name: "Public Messages",
+    entity_id: CHANNEL_ENTITY,
+    context_id: "restricted-context",
+    message: "<Public> Restricted: Logbook still works",
+  }],
+});
+await wait(300);
+assert.match(restrictedChannelCard.shadowRoot.innerHTML, /Logbook still works/);
+assert.doesNotMatch(
+  restrictedChannelCard.shadowRoot.innerHTML,
+  /Channel history is unavailable|<div class="message-route-details"/,
+);
+restrictedChannelCard.disconnectedCallback();
 
 const errorHass = createChannelHass({ reject: true });
 const errorCard = new ChannelCard();
@@ -983,6 +1135,7 @@ assert.equal(switchedChannelConfig.entity, SECOND_CHANNEL_ENTITY);
 assert.equal(switchedChannelConfig.name, "Operations");
 assert.equal(switchedChannelConfig.icon, "mdi:radio-handheld");
 assert.equal(switchedChannelConfig.hide_timestamps, true);
+assert.equal(switchedChannelConfig.hide_route_details, true);
 assert.equal(switchedChannelConfig.hours_to_show, 12);
 assert.equal(switchedChannelConfig.max_messages, 50);
 assert.deepEqual(switchedChannelConfig.grid_options, { columns: "full", rows: 8 });

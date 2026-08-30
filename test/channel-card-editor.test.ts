@@ -62,6 +62,69 @@ describe("MeshcoreChannelCardEditor", () => {
     );
   });
 
+  it("uses locale and English fallbacks when Home Assistant language is absent", () => {
+    const germanHass = createChannelHass();
+    (germanHass as unknown as { language?: string }).language = undefined;
+    germanHass.locale = { language: "de" };
+    const { editor: germanEditor } = createEditor(
+      { entity: CHANNEL_ENTITY },
+      germanHass
+    );
+    const [germanTarget, germanSettings] = forms(germanEditor);
+    const german = makeLocalize("de");
+    expect((germanTarget!.schema[0] as HaFormFieldSchema).label).toBe(
+      german("editor.target_channel")
+    );
+    const germanAppearance = (
+      germanSettings!.schema as HaFormExpandableSchema[]
+    )[0]!.schema;
+    expect(
+      germanAppearance.find((field) => field.name === "hide_route_details")
+        ?.label
+    ).toBe(german("editor.hide_route_details"));
+
+    const defaultHass = createChannelHass();
+    (defaultHass as unknown as { language?: string }).language = undefined;
+    defaultHass.locale = {} as HomeAssistant["locale"];
+    const { editor: defaultEditor } = createEditor(
+      { entity: CHANNEL_ENTITY },
+      defaultHass
+    );
+    const [defaultTarget, defaultSettings] = forms(defaultEditor);
+    expect((defaultTarget!.schema[0] as HaFormFieldSchema).label).toBe(
+      t("editor.target_channel")
+    );
+    const defaultAppearance = (
+      defaultSettings!.schema as HaFormExpandableSchema[]
+    )[0]!.schema;
+    expect(
+      defaultAppearance.find((field) => field.name === "hide_route_details")
+        ?.label
+    ).toBe(t("editor.hide_route_details"));
+  });
+
+  it("localizes the no-channel alert through the same language fallbacks", () => {
+    const germanHass = createChannelHass();
+    delete germanHass.states[CHANNEL_ENTITY];
+    (germanHass as unknown as { language?: string }).language = undefined;
+    germanHass.locale = { language: "de" };
+    const { editor: germanEditor } = createEditor(null, germanHass);
+    germanEditor.setConfig({});
+    expect(germanEditor.querySelector("ha-alert")?.textContent).toBe(
+      makeLocalize("de")("editor.no_channels_detected")
+    );
+
+    const defaultHass = createChannelHass();
+    delete defaultHass.states[CHANNEL_ENTITY];
+    (defaultHass as unknown as { language?: string }).language = undefined;
+    defaultHass.locale = {} as HomeAssistant["locale"];
+    const { editor: defaultEditor } = createEditor(null, defaultHass);
+    defaultEditor.setConfig({});
+    expect(defaultEditor.querySelector("ha-alert")?.textContent).toBe(
+      t("editor.no_channels_detected")
+    );
+  });
+
   it("offers discovered channel entities in the target picker", () => {
     const { editor } = createEditor();
     const [targetForm] = forms(editor);
@@ -81,6 +144,13 @@ describe("MeshcoreChannelCardEditor", () => {
     for (const form of [targetForm!, settingsForm!]) {
       expect(form.computeLabel({ name: "bare", selector: {} })).toBe("bare");
     }
+    expect(
+      settingsForm!.computeLabel({
+        name: "explicit",
+        label: "Explicit label",
+        selector: {},
+      })
+    ).toBe("Explicit label");
   });
 
   it("keeps forms in place across hass refreshes without discovery changes", () => {
@@ -136,6 +206,11 @@ describe("MeshcoreChannelCardEditor", () => {
     expect(settings.data["hours_to_show"]).toBe(24);
     expect(settings.data["max_messages"]).toBe(200);
     expect(settings.data["hide_timestamps"]).toBe(false);
+    expect(settings.data["hide_route_details"]).toBe(false);
+    const appearance = schema[0]!.schema;
+    expect(
+      appearance.find((field) => field.name === "hide_route_details")?.label
+    ).toBe(t("editor.hide_route_details"));
   });
 
   it("normalizes settings edits into a minimal config", () => {
@@ -145,6 +220,7 @@ describe("MeshcoreChannelCardEditor", () => {
       icon: "   ",
       icon_color: "green",
       hide_timestamps: true,
+      hide_route_details: true,
       hide_date_headers: false,
       tap_action: { action: "url", url_path: "https://example.com" },
       hold_action: "invalid",
@@ -157,6 +233,7 @@ describe("MeshcoreChannelCardEditor", () => {
     expect(config.icon).toBeUndefined();
     expect(config.icon_color).toBe("green");
     expect(config.hide_timestamps).toBe(true);
+    expect(config.hide_route_details).toBe(true);
     expect(config.hide_date_headers).toBeUndefined();
     expect(config.tap_action).toEqual({
       action: "url",
