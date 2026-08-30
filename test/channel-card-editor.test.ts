@@ -136,6 +136,11 @@ describe("MeshcoreChannelCardEditor", () => {
     expect(settings.data["hours_to_show"]).toBe(24);
     expect(settings.data["max_messages"]).toBe(200);
     expect(settings.data["hide_timestamps"]).toBe(false);
+    expect(settings.data["hide_route_details"]).toBe(false);
+    const appearance = schema[0]!.schema;
+    expect(
+      appearance.find((field) => field.name === "hide_route_details")?.label
+    ).toBe(t("editor.hide_route_details"));
   });
 
   it("normalizes settings edits into a minimal config", () => {
@@ -145,6 +150,7 @@ describe("MeshcoreChannelCardEditor", () => {
       icon: "   ",
       icon_color: "green",
       hide_timestamps: true,
+      hide_route_details: true,
       hide_date_headers: false,
       tap_action: { action: "url", url_path: "https://example.com" },
       hold_action: "invalid",
@@ -157,6 +163,7 @@ describe("MeshcoreChannelCardEditor", () => {
     expect(config.icon).toBeUndefined();
     expect(config.icon_color).toBe("green");
     expect(config.hide_timestamps).toBe(true);
+    expect(config.hide_route_details).toBe(true);
     expect(config.hide_date_headers).toBeUndefined();
     expect(config.tap_action).toEqual({
       action: "url",

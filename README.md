@@ -158,6 +158,7 @@ hold_action:
 double_tap_action:
   action: none
 hide_timestamps: false
+hide_route_details: false
 hide_date_headers: false
 hours_to_show: 24
 max_messages: 200
@@ -168,7 +169,9 @@ grid_options:
 
 Each channel card requires one `binary_sensor.meshcore_*_ch_<n>_messages` entity. It uses Home Assistant's live Logbook stream to show that channel as a newest-first, scrollable conversation beneath the same Tile-style header used by the main card. The channel prefix is removed from each row, the sender before the first colon is emphasised, and later colons and line breaks remain part of the message.
 
-The history defaults to 24 hours and at most 200 messages. Dates and timestamps are visible by default and can be hidden independently. `name`, `icon`, `icon_color`, all three Tile actions, history settings, and `grid_options` can be configured in YAML or the visual editor.
+With MeshCore HA 2.9 or later, messages received while the card is loaded can be enriched from the integration's native messaging events with subtle hop-count, path-hash, and regional-scope details beneath the message. This is route and reception metadata, not authenticated routing: channel messages are unverified and the path tokens are truncated public-key hashes. Logbook does not retain these native event fields, so older rows loaded after a dashboard reload cannot be backfilled and remain unchanged. Home Assistant may reject arbitrary `subscribe_events` subscriptions for non-administrator users; in that case, the optional route details stay hidden while Logbook messages continue normally.
+
+The history defaults to 24 hours and at most 200 messages. Dates, timestamps, and route details are visible by default and can be hidden independently. `name`, `icon`, `icon_color`, all three Tile actions, history settings, and `grid_options` can be configured in YAML or the visual editor.
 
 ## Mentions card
 

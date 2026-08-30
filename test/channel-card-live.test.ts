@@ -27,6 +27,7 @@ interface MockConnection {
   connection: NonNullable<HomeAssistant["connection"]>;
   subscribeMessage: ReturnType<typeof vi.fn>;
   callbacks: Array<(message: unknown) => void>;
+  subscriptionParams: Record<string, unknown>[];
   readyListeners: Array<() => void>;
   unsubscribe: ReturnType<typeof vi.fn>;
 }
@@ -34,10 +35,12 @@ interface MockConnection {
 function createConnection(): MockConnection {
   const unsubscribe = vi.fn();
   const callbacks: Array<(message: unknown) => void> = [];
+  const subscriptionParams: Record<string, unknown>[] = [];
   const readyListeners: Array<() => void> = [];
   const subscribeMessage = vi.fn(
-    (callback: (message: unknown) => void, _params: Record<string, unknown>) => {
+    (callback: (message: unknown) => void, params: Record<string, unknown>) => {
       callbacks.push(callback);
+      subscriptionParams.push(params);
       return Promise.resolve(unsubscribe);
     }
   );
@@ -48,7 +51,14 @@ function createConnection(): MockConnection {
     },
     removeEventListener: vi.fn(),
   } as unknown as NonNullable<HomeAssistant["connection"]>;
-  return { connection, subscribeMessage, callbacks, readyListeners, unsubscribe };
+  return {
+    connection,
+    subscribeMessage,
+    callbacks,
+    subscriptionParams,
+    readyListeners,
+    unsubscribe,
+  };
 }
 
 function liveHass(mock: MockConnection, channelState?: string): HomeAssistant {
@@ -70,17 +80,25 @@ async function createLiveCard(
   card.setConfig(config);
   card.hass = hass;
   document.body.appendChild(card);
-  // Let the subscription promise resolve so _unsubscribe is registered.
+  // Let all subscription promises resolve so their cleanup callbacks register.
   await vi.advanceTimersByTimeAsync(0);
   return { card, mock, hass };
 }
 
-function feed(
-  mock: MockConnection,
-  events: LogbookEntry[],
-  callbackIndex = 0
-): void {
-  mock.callbacks[callbackIndex]!({ events });
+function logbookCallback(mock: MockConnection): (message: unknown) => void {
+  let callbackIndex = -1;
+  for (let index = mock.subscriptionParams.length - 1; index >= 0; index -= 1) {
+    if (mock.subscriptionParams[index]?.["type"] === "logbook/event_stream") {
+      callbackIndex = index;
+      break;
+    }
+  }
+  expect(callbackIndex).toBeGreaterThanOrEqual(0);
+  return mock.callbacks[callbackIndex]!;
+}
+
+function feed(mock: MockConnection, events: LogbookEntry[]): void {
+  logbookCallback(mock)({ events });
 }
 
 async function settleRender(): Promise<void> {
@@ -105,8 +123,10 @@ afterEach(() => {
 describe("channel card subscription", () => {
   it("subscribes to the logbook event stream for the configured entity", async () => {
     const { mock } = await createLiveCard();
-    expect(mock.subscribeMessage).toHaveBeenCalledTimes(1);
-    const params = mock.subscribeMessage.mock.calls[0]![1] as Record<string, unknown>;
+    expect(mock.subscribeMessage).toHaveBeenCalledTimes(4);
+    const params = mock.subscriptionParams.find(
+      (candidate) => candidate["type"] === "logbook/event_stream"
+    )!;
     expect(params["type"]).toBe("logbook/event_stream");
     expect(params["entity_ids"]).toEqual([CHANNEL_ENTITY]);
     const start = new Date(String(params["start_time"])).getTime();
@@ -122,7 +142,7 @@ describe("channel card subscription", () => {
     const { card, mock, hass } = await createLiveCard();
     delete hass.states[CHANNEL_ENTITY];
     card.hass = { ...hass };
-    expect(mock.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mock.unsubscribe).toHaveBeenCalledTimes(4);
   });
 
   it("unsubscribes when the card leaves the DOM", async () => {
@@ -133,7 +153,7 @@ describe("channel card subscription", () => {
       { when: nowSeconds() - 60, name: "ch", message: "Alice: parting words" },
     ]);
     card.remove();
-    expect(mock.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mock.unsubscribe).toHaveBeenCalledTimes(4);
     await settleRender();
     expect(shadowBody(card)).not.toContain("parting words");
   });
@@ -144,7 +164,7 @@ describe("channel card subscription", () => {
       throw new Error("socket already closed");
     });
     expect(() => card.remove()).not.toThrow();
-    expect(mock.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mock.unsubscribe).toHaveBeenCalledTimes(4);
   });
 
   it("drops a subscription that resolves after the card disconnected", async () => {
@@ -161,16 +181,18 @@ describe("channel card subscription", () => {
     document.body.appendChild(card);
     card.remove();
     await vi.advanceTimersByTimeAsync(0);
-    expect(mock.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mock.unsubscribe).toHaveBeenCalledTimes(4);
   });
 
   it("restarts the stream when history-shaping config changes", async () => {
     const { card, mock } = await createLiveCard();
     card.setConfig({ entity: CHANNEL_ENTITY, hours_to_show: 48 });
     await vi.advanceTimersByTimeAsync(0);
-    expect(mock.unsubscribe).toHaveBeenCalledTimes(1);
-    expect(mock.subscribeMessage).toHaveBeenCalledTimes(2);
-    const params = mock.subscribeMessage.mock.calls[1]![1] as Record<string, unknown>;
+    expect(mock.unsubscribe).toHaveBeenCalledTimes(4);
+    expect(mock.subscribeMessage).toHaveBeenCalledTimes(8);
+    const params = mock.subscriptionParams.filter(
+      (candidate) => candidate["type"] === "logbook/event_stream"
+    )[1]!;
     const start = new Date(String(params["start_time"])).getTime();
     expect(Date.now() - start).toBe(48 * 60 * 60 * 1000);
   });
@@ -179,7 +201,7 @@ describe("channel card subscription", () => {
     const { card, mock } = await createLiveCard();
     card.setConfig({ entity: CHANNEL_ENTITY, hide_timestamps: true });
     expect(mock.unsubscribe).not.toHaveBeenCalled();
-    expect(mock.subscribeMessage).toHaveBeenCalledTimes(1);
+    expect(mock.subscribeMessage).toHaveBeenCalledTimes(4);
   });
 
   it("resubscribes without unsubscribing when the socket reports ready", async () => {
@@ -189,7 +211,7 @@ describe("channel card subscription", () => {
     // The old subscription died with the socket; it must not be torn down
     // on the new connection.
     expect(mock.unsubscribe).not.toHaveBeenCalled();
-    expect(mock.subscribeMessage).toHaveBeenCalledTimes(2);
+    expect(mock.subscribeMessage).toHaveBeenCalledTimes(8);
   });
 
   it("moves the stream to a replaced connection object", async () => {
@@ -197,8 +219,8 @@ describe("channel card subscription", () => {
     const next = createConnection();
     card.hass = { ...hass, connection: next.connection };
     await vi.advanceTimersByTimeAsync(0);
-    expect(mock.unsubscribe).toHaveBeenCalledTimes(1);
-    expect(next.subscribeMessage).toHaveBeenCalledTimes(1);
+    expect(mock.unsubscribe).toHaveBeenCalledTimes(4);
+    expect(next.subscribeMessage).toHaveBeenCalledTimes(4);
   });
 
   it("shows the unavailable state when subscribing throws", async () => {
@@ -245,7 +267,7 @@ describe("channel card subscription", () => {
     card.remove();
     document.body.appendChild(card);
     await vi.advanceTimersByTimeAsync(0);
-    expect(mock.callbacks).toHaveLength(1);
+    expect(mock.callbacks).toHaveLength(4);
     feed(mock, [
       { when: nowSeconds() - 60, name: "ch", message: "Alice: recovered" },
     ]);
@@ -317,7 +339,7 @@ describe("channel card message rendering", () => {
   it("ignores malformed or foreign stream entries", async () => {
     const { card, mock } = await createLiveCard();
     const now = nowSeconds();
-    mock.callbacks[0]!({ events: "not-an-array" });
+    logbookCallback(mock)({ events: "not-an-array" });
     feed(mock, [
       { when: 0, name: "bad", message: "Alice: zero timestamp" },
       {

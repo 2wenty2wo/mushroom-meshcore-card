@@ -19,6 +19,12 @@ const DEFAULT_HOURS_TO_SHOW = 24;
 const DEFAULT_MAX_MESSAGES = 200;
 const LIVE_END_DAYS = 365;
 const STREAM_RENDER_DELAY = 250;
+const ROUTE_EVENT_TIME_WINDOW_MS = 100;
+const ROUTE_MATCH_WINDOW_MS = 10_000;
+const ROUTE_PENDING_TTL_MS = 60_000;
+const MAX_ROUTE_HOPS = 63;
+const MAX_ROUTE_HEX_CHARACTERS = 128;
+const MAX_RX_LOG_ROUTES = 64;
 
 const CHANNEL_STYLES = `
   :host { display: block; height: 100%; }
@@ -111,6 +117,49 @@ const CHANNEL_STYLES = `
 
   .message-meta + .message-body { margin-top: 2px; }
 
+  .message-route-details {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--mushroom-meshcore-chip-spacing) / 2);
+    margin-top: 4px;
+    color: var(--secondary-text-color, #727272);
+    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-weight: var(--mushroom-meshcore-secondary-font-weight);
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
+    line-height: var(--mushroom-meshcore-secondary-line-height);
+  }
+
+  .message-route-detail {
+    box-sizing: border-box;
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+    height: 20px;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border: var(--mushroom-meshcore-chip-border-width) solid var(--mushroom-meshcore-chip-border-color);
+    border-radius: var(--mushroom-meshcore-chip-radius);
+    background: transparent;
+  }
+
+  .message-route-detail.hops { flex: 0 0 auto; }
+
+  .message-route-detail ha-icon {
+    --mdc-icon-size: 14px;
+    flex: 0 0 auto;
+  }
+
+  .message-route-detail bdi {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .history-state {
     display: flex;
     min-height: 120px;
@@ -148,6 +197,57 @@ interface LogbookStreamMessage {
   partial?: boolean;
 }
 
+interface HassEventEnvelope {
+  event_type?: unknown;
+  data?: unknown;
+  context?: unknown;
+  time_fired?: unknown;
+}
+
+interface NormalizedRxRoute {
+  key: string;
+  hopCount?: number;
+  pathSegments?: string[];
+  scope?: string;
+  regionScoped: boolean;
+}
+
+interface RoutingRecord {
+  entityId: string;
+  sender: string | null;
+  message: string;
+  outgoing: boolean;
+  timestampMs: number | null;
+  eventTimeMs: number | null;
+  contextId?: string;
+  sendId?: string;
+  signature?: string;
+  topHopCount?: number;
+  selectedRouteKey?: string;
+  selectedRoute?: NormalizedRxRoute;
+  outgoingScope?: string;
+  messageEventSeen: boolean;
+  matchedEntryKey?: string;
+  matchedDistance?: number;
+  matchAuthoritative?: boolean;
+  updatedAt: number;
+}
+
+interface PendingSentScope {
+  sendId: string;
+  scope: string;
+  message: string | null;
+  timestampMs: number | null;
+  expiresAt: number;
+}
+
+interface MessageRouteDetails {
+  hopCount?: number;
+  pathSegments?: string[];
+  scope?: string;
+  regionScoped?: boolean;
+}
+
 interface ParsedChannel {
   channelName: string;
 }
@@ -161,6 +261,171 @@ interface ScrollAnchor {
   top: number;
   height: number;
   atTop: boolean;
+}
+
+type RoutingEventType =
+  | "meshcore_message"
+  | "meshcore_delivery_update"
+  | "meshcore_message_sent";
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown, maximum = 4096): string | null {
+  if (typeof value !== "string" || value.length > maximum || !value.trim()) {
+    return null;
+  }
+  return value;
+}
+
+function eventIdentifier(value: unknown): string | null {
+  const identifier = nonEmptyString(value, 256);
+  return identifier?.trim() || null;
+}
+
+function nonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
+function routeHopCount(value: unknown): number | undefined {
+  const count = nonNegativeInteger(value);
+  return count !== undefined && count <= MAX_ROUTE_HOPS ? count : undefined;
+}
+
+function eventTimestamp(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value >= 1_000_000_000_000 ? value : value * 1000;
+  }
+  if (typeof value !== "string" || value.length > 128 || !value.trim()) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return numeric >= 1_000_000_000_000 ? numeric : numeric * 1000;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizedScope(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 256) return undefined;
+  const scope = value
+    .replace(
+      /[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return scope && scope !== "#" && scope.length <= 256 ? scope : undefined;
+}
+
+/** Split MeshCore's concatenated route hashes without assuming one-byte hops. */
+export function splitRoutePath(
+  value: unknown,
+  pathLength: number | undefined,
+  pathHashSize: unknown
+): string[] | undefined {
+  if (typeof value !== "string" || value.length > MAX_ROUTE_HEX_CHARACTERS) {
+    return undefined;
+  }
+  const path = value.trim();
+  if (
+    !path ||
+    !/^[0-9a-f]+$/i.test(path)
+  ) {
+    return undefined;
+  }
+  let segmentCharacters: number | undefined;
+  if (pathHashSize !== undefined) {
+    if (
+      typeof pathHashSize !== "number" ||
+      !Number.isInteger(pathHashSize) ||
+      pathHashSize < 1 ||
+      pathHashSize > 3
+    ) {
+      return undefined;
+    }
+    segmentCharacters = pathHashSize * 2;
+  } else if (
+    pathLength !== undefined &&
+    pathLength > 0 &&
+    path.length % pathLength === 0
+  ) {
+    const inferred = path.length / pathLength;
+    if (inferred === 2 || inferred === 4 || inferred === 6) {
+      segmentCharacters = inferred;
+    }
+  }
+  if (
+    segmentCharacters === undefined ||
+    path.length % segmentCharacters !== 0 ||
+    (pathLength !== undefined && path.length !== pathLength * segmentCharacters)
+  ) {
+    return undefined;
+  }
+  const segments: string[] = [];
+  for (let index = 0; index < path.length; index += segmentCharacters) {
+    segments.push(path.slice(index, index + segmentCharacters).toUpperCase());
+  }
+  return segments.length && segments.length <= MAX_ROUTE_HOPS
+    ? segments
+    : undefined;
+}
+
+export function compactRoutePath(segments: string[]): string {
+  if (segments.length <= 4) return segments.join(",");
+  return `${segments.slice(0, 2).join(",")},…,${segments.slice(-2).join(",")}`;
+}
+
+function normalizeRxRoute(value: unknown, index: number): NormalizedRxRoute | null {
+  const route = asRecord(value);
+  if (!route) return null;
+  const hopCount = routeHopCount(route["path_len"]);
+  const invalidPathLength =
+    route["path_len"] !== undefined && hopCount === undefined;
+  const pathSegments = invalidPathLength
+    ? undefined
+    : splitRoutePath(route["path"], hopCount, route["path_hash_size"]);
+  const scope = normalizedScope(route["flood_scope"]);
+  const regionScoped = route["region_scope"] === true;
+  if (hopCount === undefined && !pathSegments && !scope && !regionScoped) return null;
+  const timestamp = eventTimestamp(route["timestamp"]);
+  const rawPath =
+    pathSegments && typeof route["path"] === "string"
+      ? route["path"].trim().toUpperCase()
+      : "";
+  return {
+    key: [String(timestamp ?? ""), String(hopCount ?? ""), rawPath, String(index)].join(
+      "\u0000"
+    ),
+    hopCount,
+    pathSegments,
+    scope,
+    regionScoped,
+  };
+}
+
+function routingSignature(
+  entityId: string,
+  outgoing: boolean,
+  sender: string | null,
+  message: string,
+  timestampMs: number | null
+): string | undefined {
+  if (timestampMs === null) return undefined;
+  return [
+    entityId,
+    outgoing ? "out" : "in",
+    sender ?? "",
+    message,
+    String(timestampMs),
+  ].join("\u0000");
 }
 
 export function normalizedPositiveNumber(value: unknown, fallback: number): number {
@@ -229,12 +494,18 @@ export class MeshcoreChannelCard extends HTMLElement {
   private _connected = false;
   private _subscribed = false;
   private _subscriptionId = 0;
-  private _unsubscribe?: () => void;
+  private _unsubscribes: Array<() => void | Promise<void>> = [];
   private _connection?: HomeAssistant["connection"];
   private _readyListenerAttached = false;
   private _renderTimer: ReturnType<typeof setTimeout> | null = null;
   private _maintenanceTimer: ReturnType<typeof setInterval> | null = null;
   private _stateFingerprint = "";
+  private _routingRecords = new Set<RoutingRecord>();
+  private _routingByContext = new Map<string, RoutingRecord>();
+  private _routingBySendId = new Map<string, RoutingRecord>();
+  private _routingBySignature = new Map<string, RoutingRecord>();
+  private _routingByEntry = new Map<string, RoutingRecord>();
+  private _pendingSentScopes = new Map<string, PendingSentScope>();
   private readonly _headerActions: HeaderActionController;
 
   constructor() {
@@ -301,6 +572,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     if (historyChanged) {
       this._entries.clear();
       this._messages = [];
+      this._clearRoutingMetadata();
       this._loading = true;
       this._historyError = false;
       this._restartSubscription();
@@ -395,7 +667,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     // the new connection; Home Assistant's native Logbook follows this pattern.
     this._subscriptionId++;
     this._subscribed = false;
-    this._unsubscribe = undefined;
+    this._unsubscribes = [];
     this._historyError = false;
     if (!this._messages.length) this._loading = true;
     this._ensureSubscription();
@@ -423,14 +695,20 @@ export class MeshcoreChannelCard extends HTMLElement {
   private _stopSubscription(): void {
     this._subscriptionId++;
     this._subscribed = false;
-    const unsubscribe = this._unsubscribe;
-    this._unsubscribe = undefined;
-    if (unsubscribe) {
-      try {
-        unsubscribe();
-      } catch {
+    const unsubscribes = this._unsubscribes;
+    this._unsubscribes = [];
+    for (const unsubscribe of unsubscribes) {
+      this._invokeUnsubscribe(unsubscribe);
+    }
+  }
+
+  private _invokeUnsubscribe(unsubscribe: () => void | Promise<void>): void {
+    try {
+      void Promise.resolve(unsubscribe()).catch(() => {
         // A disconnected socket can leave a stale unsubscribe function.
-      }
+      });
+    } catch {
+      // A disconnected socket can leave a stale unsubscribe function.
     }
   }
 
@@ -444,9 +722,9 @@ export class MeshcoreChannelCard extends HTMLElement {
     const now = Date.now();
     const start = new Date(now - this._hoursToShow() * 60 * 60 * 1000);
     const end = new Date(now + LIVE_END_DAYS * 24 * 60 * 60 * 1000);
-    let promise: Promise<() => void>;
+    let historyPromise: Promise<() => void | Promise<void>>;
     try {
-      promise = hass.connection.subscribeMessage<LogbookStreamMessage>(
+      historyPromise = hass.connection.subscribeMessage<LogbookStreamMessage>(
         (streamMessage) => {
           if (subscriptionId !== this._subscriptionId) return;
           this._processStreamMessage(streamMessage);
@@ -466,26 +744,475 @@ export class MeshcoreChannelCard extends HTMLElement {
       this._render();
       return;
     }
+    this._registerSubscription(historyPromise, subscriptionId, true);
+    for (const eventType of [
+      "meshcore_message",
+      "meshcore_delivery_update",
+      "meshcore_message_sent",
+    ] as const) {
+      this._subscribeRoutingEvent(hass, subscriptionId, eventType);
+    }
+  }
+
+  private _registerSubscription(
+    promise: Promise<() => void | Promise<void>>,
+    subscriptionId: number,
+    history: boolean
+  ): void {
     void promise
       .then((unsubscribe) => {
         if (subscriptionId !== this._subscriptionId || !this._connected) {
-          try {
-            unsubscribe();
-          } catch {
-            // The connection may have dropped before registration completed.
-          }
+          this._invokeUnsubscribe(unsubscribe);
           return;
         }
-        this._unsubscribe = unsubscribe;
+        this._unsubscribes.push(unsubscribe);
       })
       .catch(() => {
         if (subscriptionId !== this._subscriptionId) return;
-        this._subscribed = false;
-        this._unsubscribe = undefined;
-        this._loading = false;
-        this._historyError = true;
-        this._render();
+        if (history) this._failHistorySubscription(subscriptionId);
       });
+  }
+
+  private _subscribeRoutingEvent(
+    hass: HomeAssistant,
+    subscriptionId: number,
+    eventType: RoutingEventType
+  ): void {
+    if (!hass.connection) return;
+    try {
+      const promise = hass.connection.subscribeMessage<HassEventEnvelope>(
+        (event) => {
+          if (subscriptionId !== this._subscriptionId) return;
+          this._processRoutingEvent(eventType, event);
+        },
+        { type: "subscribe_events", event_type: eventType },
+        { resubscribe: false }
+      );
+      this._registerSubscription(promise, subscriptionId, false);
+    } catch {
+      // Routing details are optional; Logbook history remains usable.
+    }
+  }
+
+  private _failHistorySubscription(subscriptionId: number): void {
+    if (subscriptionId !== this._subscriptionId) return;
+    this._stopSubscription();
+    this._loading = false;
+    this._historyError = true;
+    this._render();
+  }
+
+  private _processRoutingEvent(
+    eventType: RoutingEventType,
+    event: HassEventEnvelope
+  ): void {
+    const outer = asRecord(event);
+    const envelope = (outer && asRecord(outer["event"])) || outer;
+    if (!envelope) return;
+    if (envelope["event_type"] !== eventType) return;
+    const data = asRecord(envelope["data"]);
+    if (!data || data["message_type"] !== "channel") return;
+    this._purgeRoutingMetadata();
+    if (eventType === "meshcore_message_sent") {
+      this._processMessageSent(data);
+      return;
+    }
+    this._processMessageRouting(eventType, envelope, data);
+  }
+
+  private _selectedChannelIndex(): number | null {
+    const entityId = this._config?.entity;
+    const match = entityId?.match(/_ch_(\d+)_messages$/);
+    if (match) return Number.parseInt(match[1]!, 10);
+    const configured = this._selectedState()?.attributes["channel_index"];
+    return nonNegativeInteger(configured) ?? null;
+  }
+
+  private _selectedConfigEntryIds(): Set<string> {
+    const entityId = this._config?.entity;
+    const deviceId = entityId ? this._hass?.entities[entityId]?.device_id : null;
+    const device = deviceId ? this._hass?.devices[deviceId] : undefined;
+    const identifiers = new Set<string>();
+    const primary = eventIdentifier(device?.primary_config_entry);
+    if (primary) identifiers.add(primary);
+    for (const value of device?.config_entries ?? []) {
+      const identifier = eventIdentifier(value);
+      if (identifier) identifiers.add(identifier);
+    }
+    return identifiers;
+  }
+
+  private _processMessageSent(data: Record<string, unknown>): void {
+    const sendId = eventIdentifier(data["send_id"]);
+    const scope = normalizedScope(data["scope"]);
+    const channelIndex = nonNegativeInteger(data["channel_idx"]);
+    const selectedIndex = this._selectedChannelIndex();
+    if (!sendId || !scope || channelIndex === undefined || channelIndex !== selectedIndex) {
+      return;
+    }
+    const selectedConfigEntryIds = this._selectedConfigEntryIds();
+    const eventConfigEntryId =
+      eventIdentifier(data["device"]) ?? eventIdentifier(data["entry_id"]);
+    if (
+      selectedConfigEntryIds.size > 0 &&
+      eventConfigEntryId &&
+      !selectedConfigEntryIds.has(eventConfigEntryId)
+    ) {
+      return;
+    }
+    const message =
+      typeof data["message"] === "string" && data["message"].length <= 4096
+        ? data["message"]
+        : null;
+    const pending: PendingSentScope = {
+      sendId,
+      scope,
+      message,
+      timestampMs:
+        eventTimestamp(data["timestamp"]) ?? eventTimestamp(data["send_timestamp"]),
+      expiresAt: Date.now() + ROUTE_PENDING_TTL_MS,
+    };
+    this._pendingSentScopes.delete(sendId);
+    this._pendingSentScopes.set(sendId, pending);
+    const maximum = Math.max(20, this._maxMessages() * 2);
+    while (this._pendingSentScopes.size > maximum) {
+      const oldest = this._pendingSentScopes.keys().next().value as
+        | string
+        | undefined;
+      if (!oldest) break;
+      this._pendingSentScopes.delete(oldest);
+    }
+    const record = this._routingBySendId.get(sendId);
+    if (record && this._mergePendingSentScope(record, pending)) {
+      this._scheduleRoutingRender(record);
+    }
+  }
+
+  private _processMessageRouting(
+    eventType: Exclude<RoutingEventType, "meshcore_message_sent">,
+    envelope: Record<string, unknown>,
+    data: Record<string, unknown>
+  ): void {
+    const selectedEntityId = this._config?.entity;
+    const entityId = eventIdentifier(data["entity_id"]);
+    const message = nonEmptyString(data["message"]);
+    const sender = nonEmptyString(data["sender_name"], 512)?.trim() ?? null;
+    if (!selectedEntityId || entityId !== selectedEntityId || !message || !sender) {
+      return;
+    }
+    if (data["channel_idx"] !== undefined) {
+      const channelIndex = nonNegativeInteger(data["channel_idx"]);
+      if (channelIndex === undefined || channelIndex !== this._selectedChannelIndex()) {
+        return;
+      }
+    }
+    if (
+      data["outgoing"] !== undefined &&
+      typeof data["outgoing"] !== "boolean"
+    ) {
+      return;
+    }
+    const outgoing = data["outgoing"] === true;
+    const timestampMs =
+      eventTimestamp(data["timestamp"]) ?? eventTimestamp(data["send_timestamp"]);
+    const eventTimeMs =
+      eventType === "meshcore_message"
+        ? eventTimestamp(envelope["time_fired"])
+        : null;
+    const context = asRecord(envelope["context"]);
+    const eventContextId = eventIdentifier(context?.["id"]);
+    const contextId = eventType === "meshcore_message" ? eventContextId : null;
+    const sendId = eventIdentifier(data["send_id"]);
+    if (sendId && !outgoing) return;
+    const signature = routingSignature(
+      entityId,
+      outgoing,
+      sender,
+      message,
+      timestampMs ?? eventTimeMs
+    );
+
+    let record =
+      (sendId ? this._routingBySendId.get(sendId) : undefined) ??
+      (contextId ? this._routingByContext.get(contextId) : undefined) ??
+      (signature ? this._routingBySignature.get(signature) : undefined);
+    if (
+      record &&
+      (record.entityId !== entityId ||
+        record.message !== message ||
+        record.outgoing !== outgoing)
+    ) {
+      return;
+    }
+    if (!record) {
+      if (!sendId && !contextId && !signature) return;
+      record = {
+        entityId,
+        sender,
+        message,
+        outgoing,
+        timestampMs,
+        eventTimeMs,
+        messageEventSeen: false,
+        updatedAt: Date.now(),
+      };
+      this._routingRecords.add(record);
+    }
+
+    const previousDetails = JSON.stringify(this._routeDetails(record));
+    record.sender = record.sender ?? sender;
+    record.timestampMs = record.timestampMs ?? timestampMs;
+    if (eventType === "meshcore_message") {
+      record.messageEventSeen = true;
+      record.eventTimeMs = eventTimeMs ?? record.eventTimeMs;
+    }
+    record.updatedAt = Date.now();
+    if (contextId) {
+      record.contextId = contextId;
+      this._routingByContext.set(contextId, record);
+    }
+    if (sendId) {
+      record.sendId = sendId;
+      this._routingBySendId.set(sendId, record);
+    }
+    if (signature) {
+      record.signature = signature;
+      this._routingBySignature.set(signature, record);
+    }
+
+    const topHopCount = routeHopCount(data["hop_count"]);
+    if (topHopCount !== undefined) record.topHopCount = topHopCount;
+    this._mergeRxLogData(record, data["rx_log_data"]);
+    if (sendId) {
+      const pending = this._pendingSentScopes.get(sendId);
+      if (pending) this._mergePendingSentScope(record, pending);
+    }
+    const newlyMatched = this._matchRoutingRecord(record);
+    const detailsChanged = previousDetails !== JSON.stringify(this._routeDetails(record));
+    if (newlyMatched || detailsChanged) this._scheduleRoutingRender(record);
+  }
+
+  private _mergeRxLogData(record: RoutingRecord, value: unknown): void {
+    if (!Array.isArray(value)) return;
+    const routes: NormalizedRxRoute[] = [];
+    const limit = Math.min(value.length, MAX_RX_LOG_ROUTES);
+    for (let index = 0; index < limit; index += 1) {
+      const route = normalizeRxRoute(value[index], index);
+      if (route) routes.push(route);
+    }
+    if (!routes.length) return;
+    const selected = record.selectedRouteKey
+      ? routes.find((route) => route.key === record.selectedRouteKey)
+      : routes[0];
+    if (!selected) return;
+    record.selectedRouteKey ??= selected.key;
+    record.selectedRoute = selected;
+  }
+
+  private _mergePendingSentScope(
+    record: RoutingRecord,
+    pending: PendingSentScope
+  ): boolean {
+    if (
+      !record.outgoing ||
+      record.entityId !== this._config?.entity ||
+      (pending.message !== null && pending.message !== record.message) ||
+      (pending.timestampMs !== null &&
+        record.timestampMs !== null &&
+        Math.abs(pending.timestampMs - record.timestampMs) > ROUTE_MATCH_WINDOW_MS)
+    ) {
+      return false;
+    }
+    const changed = record.outgoingScope !== pending.scope;
+    record.outgoingScope = pending.scope;
+    this._pendingSentScopes.delete(pending.sendId);
+    return changed;
+  }
+
+  private _routeDetails(record: RoutingRecord): MessageRouteDetails | null {
+    const route = record.selectedRoute;
+    const hopCount = route?.hopCount ?? record.topHopCount;
+    const pathSegments = route?.pathSegments;
+    const scope = record.outgoingScope ?? route?.scope;
+    const regionScoped = !scope && route?.regionScoped === true;
+    if (hopCount === undefined && !pathSegments && !scope && !regionScoped) return null;
+    return { hopCount, pathSegments, scope, regionScoped };
+  }
+
+  private _scheduleRoutingRender(record: RoutingRecord): void {
+    if (record.matchedEntryKey && this._entries.has(record.matchedEntryKey)) {
+      this._scheduleRender();
+    }
+  }
+
+  private _matchRoutingRecord(record: RoutingRecord): boolean {
+    if (record.outgoing && !record.messageEventSeen) return false;
+    if (record.matchedEntryKey && this._entries.has(record.matchedEntryKey)) {
+      return false;
+    }
+    if (record.contextId) {
+      for (const entry of this._entries.values()) {
+        if (
+          entry.context_id === record.contextId &&
+          this._routingIdentityMatches(entry, record)
+        ) {
+          return this._assignRoutingRecord(entry, record, true);
+        }
+      }
+    }
+    const candidate = Array.from(this._entries.values())
+      .map((entry) => ({ entry, distance: this._routingMatchDistance(entry, record) }))
+      .filter(
+        (item): item is { entry: LogbookEntry; distance: number } =>
+          item.distance !== null &&
+          (!this._routingByEntry.has(this._entryKey(item.entry)) ||
+            this._routingByEntry.get(this._entryKey(item.entry)) === record)
+      )
+      .sort((a, b) => a.distance - b.distance)[0];
+    return candidate
+      ? this._assignRoutingRecord(candidate.entry, record, false, candidate.distance)
+      : false;
+  }
+
+  private _matchEntryToRouting(entry: LogbookEntry): boolean {
+    const entryKey = this._entryKey(entry);
+    if (this._routingByEntry.has(entryKey)) return false;
+    if (entry.context_id) {
+      const contextRecord = this._routingByContext.get(entry.context_id);
+      if (
+        contextRecord &&
+        this._routingIdentityMatches(entry, contextRecord)
+      ) {
+        return this._assignRoutingRecord(entry, contextRecord, true);
+      }
+    }
+    const candidate = Array.from(this._routingRecords)
+      .map((record) => ({ record, distance: this._routingMatchDistance(entry, record) }))
+      .filter(
+        (item): item is { record: RoutingRecord; distance: number } =>
+          item.distance !== null &&
+          (!item.record.outgoing || item.record.messageEventSeen) &&
+          (!item.record.matchedEntryKey ||
+            item.record.matchedEntryKey === entryKey ||
+            (item.record.matchAuthoritative !== true &&
+              item.distance < (item.record.matchedDistance ?? Number.POSITIVE_INFINITY)))
+      )
+      .sort((a, b) => a.distance - b.distance)[0];
+    return candidate
+      ? this._assignRoutingRecord(
+          entry,
+          candidate.record,
+          false,
+          candidate.distance
+        )
+      : false;
+  }
+
+  private _routingMatchDistance(
+    entry: LogbookEntry,
+    record: RoutingRecord
+  ): number | null {
+    if (entry.context_id && record.contextId && entry.context_id !== record.contextId) {
+      return null;
+    }
+    if (!this._routingIdentityMatches(entry, record)) return null;
+    const entryTime = entry.when * 1000;
+    if (record.eventTimeMs !== null) {
+      const eventDistance = Math.abs(record.eventTimeMs - entryTime);
+      if (eventDistance <= ROUTE_EVENT_TIME_WINDOW_MS) return eventDistance;
+    }
+    if (record.timestampMs === null) return null;
+    const timestampDistance = Math.abs(record.timestampMs - entryTime);
+    return timestampDistance <= ROUTE_MATCH_WINDOW_MS
+      ? ROUTE_EVENT_TIME_WINDOW_MS + timestampDistance
+      : null;
+  }
+
+  private _routingIdentityMatches(
+    entry: LogbookEntry,
+    record: RoutingRecord
+  ): boolean {
+    const selectedEntityId = this._config?.entity;
+    if ((entry.entity_id ?? selectedEntityId) !== record.entityId) return false;
+    const parsed = parseMessage(entry.message ?? "");
+    return (
+      parsed !== null &&
+      parsed.sender === record.sender &&
+      parsed.body === record.message
+    );
+  }
+
+  private _assignRoutingRecord(
+    entry: LogbookEntry,
+    record: RoutingRecord,
+    authoritative: boolean,
+    distance = 0
+  ): boolean {
+    const entryKey = this._entryKey(entry);
+    const existing = this._routingByEntry.get(entryKey);
+    if (existing && existing !== record) {
+      if (!authoritative) return false;
+      existing.matchedEntryKey = undefined;
+      existing.matchedDistance = undefined;
+      existing.matchAuthoritative = undefined;
+    }
+    if (record.matchedEntryKey && record.matchedEntryKey !== entryKey) {
+      this._routingByEntry.delete(record.matchedEntryKey);
+    }
+    const changed = existing !== record || record.matchedEntryKey !== entryKey;
+    record.matchedEntryKey = entryKey;
+    record.matchedDistance = distance;
+    record.matchAuthoritative = authoritative;
+    this._routingByEntry.set(entryKey, record);
+    return changed;
+  }
+
+  private _clearRoutingMetadata(): void {
+    this._routingRecords.clear();
+    this._routingByContext.clear();
+    this._routingBySendId.clear();
+    this._routingBySignature.clear();
+    this._routingByEntry.clear();
+    this._pendingSentScopes.clear();
+  }
+
+  private _deleteRoutingRecord(record: RoutingRecord): void {
+    this._routingRecords.delete(record);
+    for (const lookup of [
+      this._routingByContext,
+      this._routingBySendId,
+      this._routingBySignature,
+      this._routingByEntry,
+    ]) {
+      for (const [key, candidate] of lookup) {
+        if (candidate === record) lookup.delete(key);
+      }
+    }
+  }
+
+  private _purgeRoutingMetadata(retainedEntryKeys?: Set<string>): void {
+    const now = Date.now();
+    for (const [sendId, pending] of this._pendingSentScopes) {
+      if (pending.expiresAt <= now) this._pendingSentScopes.delete(sendId);
+    }
+    for (const record of Array.from(this._routingRecords)) {
+      if (
+        (record.matchedEntryKey &&
+          retainedEntryKeys &&
+          !retainedEntryKeys.has(record.matchedEntryKey)) ||
+        (!record.matchedEntryKey && record.updatedAt + ROUTE_PENDING_TTL_MS <= now)
+      ) {
+        this._deleteRoutingRecord(record);
+      }
+    }
+    const maximum = Math.max(20, this._maxMessages() * 2);
+    const excess = this._routingRecords.size - maximum;
+    if (excess > 0) {
+      const oldest = Array.from(this._routingRecords)
+        .sort((a, b) => a.updatedAt - b.updatedAt)
+        .slice(0, excess);
+      for (const record of oldest) this._deleteRoutingRecord(record);
+    }
   }
 
   private _processStreamMessage(streamMessage: LogbookStreamMessage): void {
@@ -502,6 +1229,7 @@ export class MeshcoreChannelCard extends HTMLElement {
         continue;
       }
       this._entries.set(this._entryKey(entry), entry);
+      this._matchEntryToRouting(entry);
     }
     this._loading = false;
     this._historyError = false;
@@ -529,6 +1257,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     for (const [key] of this._entries) {
       if (!retainedKeys.has(key)) this._entries.delete(key);
     }
+    this._purgeRoutingMetadata(retainedKeys);
     this._messages = entries;
     return oldKeys !== entries.map((entry) => this._entryKey(entry)).join("\u0001");
   }
@@ -611,7 +1340,53 @@ export class MeshcoreChannelCard extends HTMLElement {
     const body = parsed.body
       ? `<div class="message-body">${escapeHtml(parsed.body)}</div>`
       : "";
-    return `<article class="message-row">${meta}${body}</article>`;
+    const routeDetails = this._renderRouteDetails(entry);
+    return `<article class="message-row">${meta}${body}${routeDetails}</article>`;
+  }
+
+  private _renderRouteDetails(entry: LogbookEntry): string {
+    if (this._config?.hide_route_details) return "";
+    const record = this._routingByEntry.get(this._entryKey(entry));
+    const details = record ? this._routeDetails(record) : null;
+    if (!details) return "";
+    const t = this._localize();
+    const pill = (
+      kind: "hops" | "path" | "scope",
+      icon: string,
+      value: string,
+      accessibleValue = value
+    ): string => {
+      const label = t(`card.channel_${kind}`);
+      const accessibleLabel = `${label}: ${accessibleValue}`;
+      return `<span class="message-route-detail ${kind}" title="${escapeHtml(
+        accessibleLabel
+      )}" aria-label="${escapeHtml(accessibleLabel)}"><ha-icon aria-hidden="true" icon="${icon}"></ha-icon><bdi dir="ltr">${escapeHtml(
+        value
+      )}</bdi></span>`;
+    };
+    const pills: string[] = [];
+    if (details.hopCount !== undefined) {
+      pills.push(
+        pill(
+          "hops",
+          "mdi:transit-connection-variant",
+          String(details.hopCount)
+        )
+      );
+    }
+    if (details.pathSegments?.length) {
+      const fullPath = details.pathSegments.join(",");
+      pills.push(pill("path", "mdi:routes", compactRoutePath(details.pathSegments), fullPath));
+    }
+    if (details.scope || details.regionScoped) {
+      const fullScope = details.scope ?? t("card.channel_regional");
+      const visibleScope = details.scope?.replace(/^#/, "") || fullScope;
+      pills.push(pill("scope", "mdi:web", visibleScope, fullScope));
+    }
+    if (!pills.length) return "";
+    return `<div class="message-route-details" role="group" aria-label="${escapeHtml(
+      t("card.channel_routing_details")
+    )}">${pills.join("")}</div>`;
   }
 
   private _captureScrollAnchor(): ScrollAnchor | null {
@@ -734,7 +1509,11 @@ export class MeshcoreChannelCard extends HTMLElement {
 }
 
 const STRING_SETTING_KEYS = ["name", "icon", "icon_color"] as const;
-const BOOLEAN_SETTING_KEYS = ["hide_timestamps", "hide_date_headers"] as const;
+const BOOLEAN_SETTING_KEYS = [
+  "hide_timestamps",
+  "hide_date_headers",
+  "hide_route_details",
+] as const;
 const ACTION_SETTING_KEYS = [
   "tap_action",
   "hold_action",
@@ -841,6 +1620,11 @@ export class MeshcoreChannelCardEditor extends HTMLElement {
         label: t("editor.hide_date_headers"),
         selector: { boolean: {} },
       },
+      {
+        name: "hide_route_details",
+        label: t("editor.hide_route_details"),
+        selector: { boolean: {} },
+      },
     ];
     const interactions: HaFormFieldSchema[] = [
       {
@@ -905,6 +1689,7 @@ export class MeshcoreChannelCardEditor extends HTMLElement {
       double_tap_action: this._config?.double_tap_action,
       hide_timestamps: this._config?.hide_timestamps === true,
       hide_date_headers: this._config?.hide_date_headers === true,
+      hide_route_details: this._config?.hide_route_details === true,
       hours_to_show: normalizedPositiveNumber(
         this._config?.hours_to_show,
         DEFAULT_HOURS_TO_SHOW
