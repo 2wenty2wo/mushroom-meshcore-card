@@ -183,6 +183,30 @@ describe("MeshCore HA 2.9 repeater metrics", () => {
     );
   });
 
+  it("keeps TX and RX airtime totals distinct when RX is registered first", () => {
+    const hass = createHass();
+    const rxId = putMetric(hass, "rx_airtime", 8.25);
+    const txId = putMetric(hass, "airtime", 17.5);
+    const { card } = renderCard(hass, {
+      target: NODE_TARGET,
+      details_default_open: true,
+      chip_layout: {
+        top: [],
+        details: ["tx_airtime_total", "rx_airtime_total"],
+        hidden: [],
+      },
+    });
+
+    const chips = Array.from(
+      card.shadowRoot!.querySelectorAll<HTMLElement>(".detail-chips [data-entity]")
+    );
+    expect(chips.map((chip) => chip.dataset["entity"])).toEqual([txId, rxId]);
+    expect(chips.map(compactText)).toEqual([
+      "TX airtime total 17.5 min",
+      "RX airtime total 8.25 min",
+    ]);
+  });
+
   it("keeps the exact default Details ordering around legacy traffic, airtime, rates, and reliability", () => {
     const hass = createV29RepeaterHass();
     putMetric(hass, "relayed", 91);
