@@ -1,3 +1,5 @@
+import { NEIGHBOR_STYLES } from "./neighbors.js";
+
 export const STYLES: string = `
   *, *::before, *::after { box-sizing: border-box; }
 
@@ -246,8 +248,7 @@ export const STYLES: string = `
 
   .device-body { padding: 0 var(--mush-spacing, 10px) var(--mush-spacing, 10px); }
 
-  .type-badge,
-  .count-badge {
+  .type-badge {
     display: inline-flex;
     height: var(--mushroom-meshcore-chip-height);
     align-items: center;
@@ -439,8 +440,7 @@ export const STYLES: string = `
   .details-content { padding: 3px var(--mush-spacing, 10px) var(--mush-spacing, 10px); }
 
   .detail-section { margin-top: 12px; }
-  .detail-section h4,
-  .neighbors-header {
+  .detail-section h4 {
     margin: 0 0 8px;
     color: var(--secondary-text-color, #727272);
     font-size: var(--mushroom-meshcore-secondary-font-size);
@@ -461,78 +461,7 @@ export const STYLES: string = `
   }
   .map-link { color: var(--mushroom-meshcore-info-color); }
 
-  /* Neighbours live inside the node disclosure. */
-  .neighbors-section { margin-top: 12px; }
-  .neighbors-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .neighbors-list { display: flex; flex-direction: column; gap: 6px; }
-  .neighbors-empty {
-    padding: 8px;
-    color: var(--secondary-text-color, #727272);
-    font-size: var(--mushroom-meshcore-secondary-font-size);
-    text-align: center;
-  }
-  .neighbor-row {
-    padding: var(--mush-spacing, 10px);
-    border-radius: var(--mushroom-meshcore-control-radius);
-    background: var(--mushroom-meshcore-surface);
-  }
-  .neighbor-main {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .neighbor-name {
-    overflow: hidden;
-    padding: 0;
-    background: transparent;
-    font-size: var(--mushroom-meshcore-primary-font-size);
-    font-weight: var(--mushroom-meshcore-primary-font-weight);
-    letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
-    line-height: var(--mushroom-meshcore-primary-line-height);
-    text-align: left;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .neighbor-snr {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    height: var(--mushroom-meshcore-chip-height);
-    padding: 0 9px;
-    border-radius: var(--mushroom-meshcore-chip-radius);
-    background: var(--mushroom-meshcore-surface);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
-    white-space: nowrap;
-  }
-  .neighbor-snr ha-icon { --mdc-icon-size: 14px; }
-  .neighbor-stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 5px;
-    color: var(--secondary-text-color, #727272);
-    font-size: var(--mushroom-meshcore-secondary-font-size);
-    font-weight: var(--mushroom-meshcore-secondary-font-weight);
-    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing);
-    line-height: var(--mushroom-meshcore-secondary-line-height);
-  }
-  .neighbor-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .neighbor-stat ha-icon {
-    display: flex;
-    line-height: 0;
-    --mdc-icon-size: 14px;
-  }
+  ${NEIGHBOR_STYLES}
   .blue { color: var(--mushroom-meshcore-info-color); }
 
   .empty {

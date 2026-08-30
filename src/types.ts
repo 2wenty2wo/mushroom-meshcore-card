@@ -28,6 +28,7 @@ export interface HomeAssistant {
   devices: Record<string, HassDeviceRegistryEntry>;
   themes: Record<string, unknown>;
   language: string;
+  localize?: (key: string, ...args: unknown[]) => string;
   locale: {
     language: string;
     time_format?: "12" | "24" | "language" | "system";

@@ -19,27 +19,20 @@ import { discoverHubs, discoverNodes, findEntityByDevice } from "./discovery.js"
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
 import { effectiveChipLayout } from "./chip-layout.js";
+import {
+  type NeighborInfo,
+  type NeighborSnapshot,
+  renderNeighborSection,
+} from "./neighbors.js";
+import {
+  NEIGHBORS_DIALOG_TAG,
+  neighborsDialogImport,
+  type NeighborsDialogParams,
+} from "./neighbors-dialog.js";
 
 interface EntityReading {
   id: string | null;
   value: string | null;
-}
-
-interface NeighborInfo {
-  id: string;
-  name: string;
-  contactEntityId: string | null;
-  snr: number;
-  snrId: string;
-  secondsAgo: number | null;
-  seenCount: number | null;
-  seenId: string | null;
-}
-
-interface NeighborSnapshot {
-  supported: boolean;
-  countEntityId: string | null;
-  neighbors: NeighborInfo[];
 }
 
 interface NodeViewModel {
@@ -109,6 +102,10 @@ export class MeshcoreCard extends HTMLElement {
     this.shadowRoot!.addEventListener("click", (e: Event) => {
       if (this._headerActions.handleClick(e)) return;
       const target = e.target as Element;
+      if (target.closest("[data-neighbors-dialog]")) {
+        this._showNeighborsDialog();
+        return;
+      }
       const el = target.closest("[data-entity]") as HTMLElement | null;
       if (el?.dataset["entity"]) {
         handleAction(this, this._hass, { action: "more-info" }, el.dataset["entity"]);
@@ -505,24 +502,6 @@ export class MeshcoreCard extends HTMLElement {
     return { supported, countEntityId, neighbors };
   }
 
-  private _formatNeighborAge(secondsAgo: number): string {
-    const diff = Math.max(0, secondsAgo);
-    if (diff < 60) {
-      const seconds = Math.floor(diff);
-      return `${seconds}s`;
-    }
-    if (diff < 3600) {
-      const minutes = Math.floor(diff / 60);
-      return `${minutes}m`;
-    }
-    if (diff < 86400) {
-      const hours = Math.ceil(diff / 3600);
-      return `${hours}h`;
-    }
-    const days = Math.floor(diff / 86400);
-    return `${days}d`;
-  }
-
   // ── Shared body primitives ─────────────────────────────────────────────────
 
   /** Node-card battery block, shared by hub and node bodies. */
@@ -573,14 +552,38 @@ export class MeshcoreCard extends HTMLElement {
     const count = snapshot.neighbors.length;
     const label = t(count === 1 ? "card.neighbor_48h_one" : "card.neighbors_48h", { n: count });
     if (details) {
-      return snapshot.countEntityId
-        ? this._chip(snapshot.countEntityId, `${t("card.neighbors_label")} `, String(count))
-        : this._staticDetailChip(count, t("card.neighbors_label"));
+      return `<button type="button" class="chip clickable" data-neighbors-dialog aria-haspopup="dialog" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><ha-ripple></ha-ripple><span class="chip-label">${escapeHtml(t("card.neighbors_label"))} </span>${escapeHtml(count)}</button>`;
     }
-    if (!snapshot.countEntityId) {
-      return this._staticChip(label, "mdi:access-point-network", label);
-    }
-    return `<button type="button" class="quick-chip clickable" part="quick-chip" data-entity="${escapeHtml(snapshot.countEntityId)}" aria-label="${escapeHtml(label)}"><ha-ripple></ha-ripple><ha-icon icon="mdi:access-point-network"></ha-icon><span>${escapeHtml(label)}</span></button>`;
+    return `<button type="button" class="quick-chip clickable" part="quick-chip" data-neighbors-dialog aria-haspopup="dialog" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><ha-ripple></ha-ripple><ha-icon icon="mdi:access-point-network"></ha-icon><span>${escapeHtml(count)}</span></button>`;
+  }
+
+  private _showNeighborsDialog(): void {
+    if (!this._hass || this._config?.show_neighbors === false) return;
+    const target = this._config?.target;
+    if (target?.type !== "node") return;
+    const node = this._discoverNodes().find((item) => item.name === target.id);
+    if (!node) return;
+
+    const t = makeLocalize(this._hass.language ?? this._hass.locale?.language ?? "en");
+    const vm = this._buildNodeViewModel(node, t);
+    if (!vm.neighbors.supported) return;
+
+    const dialogParams: NeighborsDialogParams = {
+      title: this._config?.name || vm.displayName,
+      snapshot: vm.neighbors,
+      maxNeighbors: this._config?.max_neighbors,
+      localize: t,
+      closeLabel: this._hass.localize?.("ui.common.close") ?? "Close",
+    };
+    this.dispatchEvent(new CustomEvent("show-dialog", {
+      bubbles: true,
+      composed: true,
+      detail: {
+        dialogTag: NEIGHBORS_DIALOG_TAG,
+        dialogImport: neighborsDialogImport,
+        dialogParams,
+      },
+    }));
   }
 
   /** Collapsed Details disclosure shared by hub and node bodies. */
@@ -1027,58 +1030,7 @@ export class MeshcoreCard extends HTMLElement {
 
   private _renderNeighbors(snapshot: NeighborSnapshot, t: LocalizeFunc): string {
     if (this._config?.show_neighbors === false || !snapshot.supported) return "";
-
-    const neighbors = snapshot.neighbors;
-    if (neighbors.length === 0) {
-      return `
-        <div class="neighbors-section">
-          <div class="neighbors-header">
-            <span>${escapeHtml(t("card.neighbors_label"))}</span>
-            <span class="count-badge">0</span>
-          </div>
-          <div class="neighbors-empty">${escapeHtml(t("card.no_recent_neighbors"))}</div>
-        </div>
-      `;
-    }
-
-    const cap = this._config?.max_neighbors;
-    const shownNeighbors = cap && cap > 0 ? neighbors.slice(0, cap) : neighbors;
-
-    const neighborRows = shownNeighbors.map(n => {
-      const snr = n.snr.toFixed(1);
-      const timeString = n.secondsAgo === null
-        ? t("card.within_48h")
-        : this._formatNeighborAge(n.secondsAgo);
-      const lastSeenLabel = t("card.neighbor_last_seen");
-      const contactsLabel = t("card.neighbor_contacts");
-      const nameEntityId = n.contactEntityId || n.snrId;
-      const name = `<button type="button" class="neighbor-name clickable" data-entity="${escapeHtml(nameEntityId)}">${escapeHtml(n.name)}</button>`;
-
-      return `
-        <div class="neighbor-row">
-          <div class="neighbor-main">
-            ${name}
-            <button type="button" class="neighbor-snr clickable" data-entity="${escapeHtml(n.snrId)}" aria-label="${escapeHtml(t("card.snr_label"))} ${escapeHtml(snr)} dB"><ha-ripple></ha-ripple><ha-icon icon="mdi:signal"></ha-icon>${escapeHtml(snr)} dB</button>
-          </div>
-          <div class="neighbor-stats">
-            <span class="neighbor-stat"><ha-icon icon="mdi:clock-outline"></ha-icon>${escapeHtml(lastSeenLabel)}: ${escapeHtml(timeString)}</span>
-            ${n.seenCount !== null ? `<span class="neighbor-stat"><ha-icon icon="mdi:link-variant"></ha-icon>${escapeHtml(contactsLabel)}: ${escapeHtml(n.seenCount)}x</span>` : ""}
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    return `
-      <div class="neighbors-section">
-        <div class="neighbors-header">
-          <span>${escapeHtml(t("card.neighbors_label"))}</span>
-          <span class="count-badge">${neighbors.length}</span>
-        </div>
-        <div class="neighbors-list">
-          ${neighborRows}
-        </div>
-      </div>
-    `;
+    return renderNeighborSection(snapshot, t, this._config?.max_neighbors);
   }
 
   // ── Main render ────────────────────────────────────────────────────────────

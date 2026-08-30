@@ -70,6 +70,26 @@ function expectRenderedAsText(root: ShadowRoot | null, payload: string): void {
   expect(root!.querySelector("ha-card")!.textContent ?? "").toContain(payload);
 }
 
+function expectNoInjectionWithin(root: ShadowRoot | null): void {
+  expect(root).not.toBeNull();
+  expect(root!.querySelector(INJECTED_SELECTOR)).toBeNull();
+  for (const element of Array.from(root!.querySelectorAll("*"))) {
+    for (const attr of EVENT_ATTRS) {
+      expect(element.hasAttribute(attr)).toBe(false);
+    }
+  }
+}
+
+interface ShowDialogDetail {
+  dialogTag: string;
+  dialogImport: () => Promise<unknown>;
+  dialogParams: Record<string, unknown>;
+}
+
+interface TestDialogElement extends HTMLElement {
+  params: Record<string, unknown>;
+}
+
 function addEntity(
   hass: HomeAssistant,
   entityId: string,
@@ -90,7 +110,26 @@ function renderCard(config: unknown, hass: HomeAssistant): MeshcoreCard {
   return card;
 }
 
+async function openNeighborsDialog(card: MeshcoreCard): Promise<TestDialogElement> {
+  let detail: ShowDialogDetail | undefined;
+  card.addEventListener("show-dialog", (event) => {
+    detail = (event as CustomEvent<ShowDialogDetail>).detail;
+  }, { once: true });
+  card.shadowRoot!.querySelector<HTMLElement>('[data-neighbors-dialog]')!
+    .dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+  expect(detail).toBeDefined();
+  await detail!.dialogImport();
+  const dialog = document.createElement(detail!.dialogTag) as TestDialogElement;
+  dialog.params = detail!.dialogParams;
+  document.body.appendChild(dialog);
+  return dialog;
+}
+
 describe("hostile advert names in the device card", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
   it.each(PAYLOADS)("escapes a crafted node name: %s", (payload) => {
     // The meshcore-ha integration names the device from the advert, so a
     // hostile adv_name lands here verbatim.
@@ -124,6 +163,29 @@ describe("hostile advert names in the device card", () => {
     expectNoInjection(card.shadowRoot);
     expectRenderedAsText(card.shadowRoot, payload);
   });
+
+  it.each(PAYLOADS)(
+    "escapes a crafted display title and neighbor name in the popup: %s",
+    async (payload) => {
+      const hass = createHass();
+      addEntity(
+        hass,
+        "sensor.meshcore_spring_neighbor_aaaa01",
+        state(12.5, { secs_ago: 10, resolved_name: payload })
+      );
+      const card = renderCard(
+        { target: { type: "node", id: NODE_NAME }, name: payload },
+        hass
+      );
+
+      const dialog = await openNeighborsDialog(card);
+      expectNoInjectionWithin(dialog.shadowRoot);
+      expect(dialog.shadowRoot!.textContent ?? "").toContain(payload);
+      expect(
+        dialog.shadowRoot!.querySelector(".neighbor-name")?.textContent
+      ).toBe(payload);
+    }
+  );
 
   it.each(PAYLOADS)("escapes crafted hub hardware metadata: %s", (payload) => {
     // hw_model and firmware_version are self-reported by the radio.

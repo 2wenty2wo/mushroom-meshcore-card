@@ -63,6 +63,39 @@ function dispatch(target: Element, type: string): void {
   target.dispatchEvent(new Event(type, { bubbles: true, composed: true }));
 }
 
+interface ShowDialogDetail {
+  dialogTag: string;
+  dialogImport: () => Promise<unknown>;
+  dialogParams: Record<string, unknown>;
+}
+
+interface TestDialogElement extends HTMLElement {
+  params: Record<string, unknown>;
+  closeDialog(): void;
+}
+
+function clickForDialog(card: MeshcoreCard, trigger: Element): ShowDialogDetail {
+  let detail: ShowDialogDetail | undefined;
+  card.addEventListener("show-dialog", (event) => {
+    detail = (event as CustomEvent<ShowDialogDetail>).detail;
+  }, { once: true });
+  dispatch(trigger, "click");
+  expect(detail).toBeDefined();
+  return detail!;
+}
+
+async function instantiateDialog(
+  detail: ShowDialogDetail
+): Promise<TestDialogElement> {
+  await detail.dialogImport();
+  expect(detail.dialogTag).toBe("mushroom-meshcore-neighbors-dialog");
+  expect(customElements.get(detail.dialogTag)).toBeDefined();
+  const dialog = document.createElement(detail.dialogTag) as TestDialogElement;
+  dialog.params = detail.dialogParams;
+  document.body.appendChild(dialog);
+  return dialog;
+}
+
 describe("device card interactions", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -499,6 +532,7 @@ describe("node neighbors list", () => {
   });
 
   afterEach(() => {
+    document.body.innerHTML = "";
     vi.useRealTimers();
   });
 
@@ -539,6 +573,234 @@ describe("node neighbors list", () => {
     return hass;
   }
 
+  it("renders a number-only, localized dialog trigger in the top chip row", () => {
+    const hass = neighborHass();
+    hass.language = "de";
+    hass.locale.language = "de";
+    const de = makeLocalize("de");
+    const { card } = renderCard(NODE_TARGET, hass);
+    const chip = card.shadowRoot!.querySelector<HTMLButtonElement>(
+      '.quick-chip[data-neighbors-dialog]'
+    );
+
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent?.trim()).toBe("4");
+    expect(chip!.textContent).not.toContain(de("card.neighbors_label"));
+    expect(chip!.textContent).not.toContain("48");
+    const accessibleLabel = de("card.neighbors_48h", { n: 4 });
+    expect(chip!.getAttribute("aria-label")).toBe(accessibleLabel);
+    expect(chip!.getAttribute("title")).toBe(accessibleLabel);
+    expect(chip!.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(chip!.hasAttribute("data-entity")).toBe(false);
+  });
+
+  it.each([
+    { placement: "top", countEntity: true },
+    { placement: "details", countEntity: false },
+  ])(
+    "opens the custom dialog from the $placement placement without Neighbor Count more-info",
+    ({ placement, countEntity }) => {
+      const hass = neighborHass();
+      const countEntityId = "sensor.meshcore_spring_neighbor_count";
+      if (countEntity) addEntity(hass, countEntityId, state(4));
+      const { card } = renderCard({
+        ...NODE_TARGET,
+        details_default_open: placement === "details",
+        chip_layout: {
+          top: placement === "top" ? ["neighbor_count"] : [],
+          details: placement === "details" ? ["neighbor_count"] : [],
+          hidden: [],
+        },
+      }, hass);
+      const moreInfo = vi.fn();
+      card.addEventListener("hass-more-info", moreInfo);
+      const trigger = card.shadowRoot!.querySelector<HTMLButtonElement>(
+        placement === "top"
+          ? '.quick-chip[data-neighbors-dialog]'
+          : '.detail-chips [data-neighbors-dialog]'
+      );
+
+      expect(trigger).not.toBeNull();
+      const detail = clickForDialog(card, trigger!);
+      expect(detail.dialogParams).toMatchObject({
+        title: NODE_NAME,
+        maxNeighbors: undefined,
+        snapshot: {
+          supported: true,
+          countEntityId: countEntity ? countEntityId : null,
+        },
+      });
+      expect(moreInfo).not.toHaveBeenCalled();
+    }
+  );
+
+  it("loads the dialog and renders the same full, ordered neighbor list as Details", async () => {
+    const hass = neighborHass();
+    const { card } = renderCard({
+      ...NODE_TARGET,
+      details_default_open: true,
+    }, hass);
+    const detail = clickForDialog(
+      card,
+      card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+    );
+    const dialog = await instantiateDialog(detail);
+    const root = dialog.shadowRoot!;
+    const popupNames = Array.from(
+      root.querySelectorAll<HTMLElement>(".neighbor-name")
+    ).map((element) => element.textContent?.trim());
+    const detailNames = Array.from(
+      card.shadowRoot!.querySelectorAll<HTMLElement>(
+        "details.node-details .neighbors-list .neighbor-name"
+      )
+    ).map((element) => element.textContent?.trim());
+
+    expect(root.querySelector(".count-badge")?.textContent).toBe("4");
+    expect(popupNames).toEqual(detailNames);
+    expect(popupNames).toEqual([
+      "Ridge Repeater",
+      "Valley Node",
+      "cccc03",
+      "eeee05",
+    ]);
+    expect(root.textContent).toContain("12.5 dB");
+    expect(root.textContent).toContain("Last seen: 30s");
+    expect(root.textContent).toContain("Receptions (48h): 7x");
+  });
+
+  it("applies max_neighbors in the dialog while retaining the full count", async () => {
+    const hass = neighborHass();
+    const { card } = renderCard({ ...NODE_TARGET, max_neighbors: 2 }, hass);
+    const detail = clickForDialog(
+      card,
+      card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+    );
+    const dialog = await instantiateDialog(detail);
+    const root = dialog.shadowRoot!;
+    const names = Array.from(
+      root.querySelectorAll<HTMLElement>(".neighbor-name")
+    ).map((element) => element.textContent?.trim());
+
+    expect(detail.dialogParams).toMatchObject({ maxNeighbors: 2 });
+    expect(root.querySelector(".count-badge")?.textContent).toBe("4");
+    expect(root.querySelectorAll(".neighbor-row")).toHaveLength(2);
+    expect(names).toEqual(["Ridge Repeater", "Valley Node"]);
+  });
+
+  it("opens a zero-count dialog with the shared empty state", async () => {
+    const hass = createHass();
+    addEntity(hass, "sensor.meshcore_spring_neighbor_count", state(0));
+    const { card } = renderCard(NODE_TARGET, hass);
+    const trigger = card.shadowRoot!.querySelector<HTMLButtonElement>(
+      '.quick-chip[data-neighbors-dialog]'
+    )!;
+    const moreInfo = vi.fn();
+    card.addEventListener("hass-more-info", moreInfo);
+
+    expect(trigger.textContent?.trim()).toBe("0");
+    const dialog = await instantiateDialog(clickForDialog(card, trigger));
+    const root = dialog.shadowRoot!;
+    expect(moreInfo).not.toHaveBeenCalled();
+    expect(root.querySelector(".count-badge")?.textContent).toBe("0");
+    expect(root.querySelectorAll(".neighbor-row")).toHaveLength(0);
+    expect(root.querySelector(".neighbors-empty")?.textContent).toBe(
+      t("card.no_recent_neighbors")
+    );
+  });
+
+  it("keeps neighbor name and SNR more-info actions inside the dialog", async () => {
+    const hass = neighborHass();
+    const { card } = renderCard(NODE_TARGET, hass);
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+    ));
+    const seen: string[] = [];
+    dialog.addEventListener("hass-more-info", (event) => {
+      seen.push(
+        (event as Event & { detail: { entityId: string } }).detail.entityId
+      );
+    });
+
+    dispatch(dialog.shadowRoot!.querySelector(".neighbor-name")!, "click");
+    dispatch(dialog.shadowRoot!.querySelector(".neighbor-snr")!, "click");
+    expect(seen).toEqual([
+      "binary_sensor.meshcore_55733c_ridge_contact",
+      "sensor.meshcore_spring_neighbor_aaaa01",
+    ]);
+  });
+
+  it("closes through the custom dialog lifecycle", async () => {
+    const hass = neighborHass();
+    const { card } = renderCard(NODE_TARGET, hass);
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+    ));
+    const closed = vi.fn();
+    dialog.addEventListener("dialog-closed", closed);
+
+    expect(
+      dialog.shadowRoot!.querySelector("ha-adaptive-dialog, dialog")
+    ).not.toBeNull();
+    dialog.closeDialog();
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(dialog.isConnected).toBe(false);
+  });
+
+  it.each(["cancel", "click"])(
+    "closes the native fallback after a %s dismissal",
+    async (eventType) => {
+      const hass = neighborHass();
+      const { card } = renderCard(NODE_TARGET, hass);
+      const dialog = await instantiateDialog(clickForDialog(
+        card,
+        card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+      ));
+      const surface = dialog.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!;
+      const closed = vi.fn();
+      dialog.addEventListener("dialog-closed", closed);
+
+      surface.dispatchEvent(eventType === "cancel"
+        ? new Event("cancel", { bubbles: false, cancelable: true })
+        : new MouseEvent("click", { bubbles: true }));
+
+      expect(closed).toHaveBeenCalledTimes(1);
+      expect(dialog.isConnected).toBe(false);
+    }
+  );
+
+  it("uses Home Assistant's adaptive dialog when it is available", async () => {
+    defineOnce("ha-adaptive-dialog", class extends HTMLElement {
+      open = false;
+      width = "medium";
+      headerTitle = "";
+    });
+    const hass = neighborHass();
+    const { card } = renderCard({ ...NODE_TARGET, name: "Hilltop" }, hass);
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+    ));
+    const surface = dialog.shadowRoot!.querySelector<HTMLElement & {
+      open: boolean;
+      width: string;
+      headerTitle: string;
+    }>("ha-adaptive-dialog")!;
+    const closed = vi.fn();
+    dialog.addEventListener("dialog-closed", closed);
+
+    expect(surface.open).toBe(true);
+    expect(surface.width).toBe("small");
+    expect(surface.headerTitle).toBe("Hilltop");
+    dialog.closeDialog();
+    expect(surface.open).toBe(false);
+    expect(dialog.isConnected).toBe(true);
+    surface.dispatchEvent(new Event("closed"));
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(dialog.isConnected).toBe(false);
+  });
+
   it("returns an unsupported snapshot without neighbor context", () => {
     const card = document.createElement("mushroom-meshcore-card") as MeshcoreCard;
     const internal = card as unknown as {
@@ -557,7 +819,6 @@ describe("node neighbors list", () => {
       neighborHass()
     );
     expect(body).toContain('<span class="count-badge">4</span>');
-    expect(body).toContain("4 neighbors · 48h");
     // resolved_name is preferred; contact entities remain a fallback.
     expect(body).toContain("Ridge Repeater");
     expect(body).toContain("Valley Node");
@@ -595,14 +856,15 @@ describe("node neighbors list", () => {
       state("on", { adv_id: "cafe01" }),
       HUB_DEVICE_ID
     );
-    const { body } = renderCard(
+    const { card } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       hass
     );
-
-    expect(body).toContain(
-      'data-entity="binary_sensor.meshcore_cafe01_contact">cafe01</button>'
+    const name = card.shadowRoot!.querySelector<HTMLElement>(".neighbor-name");
+    expect(name?.dataset["entity"]).toBe(
+      "binary_sensor.meshcore_cafe01_contact"
     );
+    expect(name?.textContent).toBe("cafe01");
   });
 
   it("caps the visible list at max_neighbors but keeps the full count", () => {
@@ -623,7 +885,7 @@ describe("node neighbors list", () => {
       neighborHass()
     );
     expect(body).not.toContain("neighbors-section");
-    expect(body).not.toContain("neighbors · 48h");
+    expect(body).not.toContain("data-neighbors-dialog");
   });
 
   it.each(["", "   "])("rejects an empty secs_ago value %j", (secsAgo) => {
@@ -644,7 +906,6 @@ describe("node neighbors list", () => {
     );
     expect(body).not.toContain("Unaged Neighbor");
     expect(body).toContain("Recent Neighbor");
-    expect(body).toContain("1 neighbor · 48h");
     expect(body).toContain('<span class="count-badge">1</span>');
   });
 
@@ -677,7 +938,7 @@ describe("node neighbors list", () => {
       { ...NODE_TARGET, details_default_open: true },
       hass
     ).body;
-    expect(supported).toContain("0 neighbors · 48h");
+    expect(supported).toContain("data-neighbors-dialog");
     expect(supported).toContain('<span class="count-badge">0</span>');
     expect(supported).toContain("No neighbors heard in the last 48 hours");
   });
@@ -690,10 +951,10 @@ describe("node neighbors list", () => {
       hass
     );
     expect(body).not.toContain("neighbors-section");
-    expect(body).not.toContain("0 neighbors · 48h");
+    expect(body).not.toContain("data-neighbors-dialog");
   });
 
-  it("renders an entity-backed or static neighbor count in Details", () => {
+  it("renders a dialog trigger for an entity-backed or derived count in Details", () => {
     const withCount = createHass();
     addEntity(withCount, "sensor.meshcore_spring_neighbor_count", state(0));
     const entityBacked = renderCard({
@@ -701,7 +962,8 @@ describe("node neighbors list", () => {
       details_default_open: true,
       chip_layout: { top: [], details: ["neighbor_count"], hidden: [] },
     }, withCount).body;
-    expect(entityBacked).toContain('data-entity="sensor.meshcore_spring_neighbor_count"');
+    expect(entityBacked).toContain("data-neighbors-dialog");
+    expect(entityBacked).not.toContain('data-entity="sensor.meshcore_spring_neighbor_count"');
     expect(entityBacked).toContain('<span class="chip-label">Neighbors ');
 
     const withoutCount = createHass();
@@ -715,7 +977,8 @@ describe("node neighbors list", () => {
       details_default_open: true,
       chip_layout: { top: [], details: ["neighbor_count"], hidden: [] },
     }, withoutCount).body;
-    expect(staticCount).toContain('<span class="chip static-chip"');
+    expect(staticCount).toContain('class="chip clickable"');
+    expect(staticCount).toContain("data-neighbors-dialog");
     expect(staticCount).toContain('<span class="chip-label">Neighbors ');
   });
 
@@ -752,7 +1015,7 @@ describe("node neighbors list", () => {
       { ...NODE_TARGET, details_default_open: true },
       hass
     );
-    expect(body).toContain("0 neighbors · 48h");
+    expect(body).toContain("data-neighbors-dialog");
     expect(body).not.toContain("aabb03");
     expect(body).not.toContain("aabb04");
   });
