@@ -128,6 +128,22 @@ describe("findEntityByDevice", () => {
     expect(find("rssi")).toBe(`${NODE_PREFIX}last_rssi${NODE_SUFFIX}`);
   });
 
+  it("prefers an exact metric core regardless of registry order", () => {
+    const airtimeEntities: Record<string, HassEntityRegistryEntry> = {
+      [`${NODE_PREFIX}rx_airtime${NODE_SUFFIX}`]: registryEntry(NODE_DEVICE_ID),
+      [`${NODE_PREFIX}airtime${NODE_SUFFIX}`]: registryEntry(NODE_DEVICE_ID),
+    };
+    expect(
+      findEntityByDevice(
+        airtimeEntities,
+        NODE_DEVICE_ID,
+        "airtime",
+        NODE_PREFIX,
+        NODE_SUFFIX
+      )
+    ).toBe(`${NODE_PREFIX}airtime${NODE_SUFFIX}`);
+  });
+
   it("never matches part of a longer metric name", () => {
     // `battery` must not resolve to `battery_percentage`.
     expect(find("battery")).toBeNull();

@@ -153,12 +153,23 @@ function createHass(online = true) {
     [`${prefix}last_rssi${suffix}`]: state(-26),
     [`${prefix}last_snr${suffix}`]: state(11.25),
     [`${prefix}battery_percentage${suffix}`]: state(90.33),
+    [`${prefix}bat${suffix}`]: state(4.21),
     [`${prefix}battery_voltage${suffix}`]: state(4.08),
     [`${prefix}nb_sent${suffix}`]: state(19175),
     [`${prefix}nb_recv${suffix}`]: state(64487),
     [`${prefix}temperature${suffix}`]: state(25),
     [`${prefix}last_advert${suffix}`]: state(Math.floor(Date.now() / 1000) - 30),
     [`${prefix}airtime_utilization${suffix}`]: state(2.5),
+    [`${prefix}rx_airtime_utilization${suffix}`]: state(1.75),
+    [`${prefix}airtime${suffix}`]: state(17.5),
+    [`${prefix}tx_queue_len${suffix}`]: state(4),
+    [`${prefix}nb_sent_rate${suffix}`]: state(12.5),
+    [`${prefix}nb_recv_rate${suffix}`]: state(9.75),
+    [`${prefix}out_path${suffix}`]: state("flood"),
+    [`${prefix}out_path_len${suffix}`]: state(2),
+    [`${prefix}sent_direct${suffix}`]: state(101),
+    [`${prefix}recv_errors${suffix}`]: state(8),
+    [`${prefix}request_failures${suffix}`]: state(2),
     [`${prefix}noise_floor${suffix}`]: state(-114),
   };
   const states = {
@@ -336,7 +347,7 @@ assert.equal(
 assert.doesNotMatch(onlineNode.body, /Node ID/);
 assert.doesNotMatch(onlineNode.body, /<h4>Technical<\/h4>/);
 assert.match(onlineNode.body, /class="battery-percentage clickable" data-entity="sensor\.meshcore_spring_battery_percentage_spring_farm"/);
-assert.match(onlineNode.body, /class="battery-voltage clickable" data-entity="sensor\.meshcore_spring_battery_voltage_spring_farm"/);
+assert.match(onlineNode.body, /class="battery-voltage clickable" data-entity="sensor\.meshcore_spring_bat_spring_farm"/);
 assert.doesNotMatch(onlineNode.body, /icon="mdi:memory"/);
 assert.ok(
   onlineNode.body.indexOf('class="battery-percentage clickable"')
@@ -354,6 +365,15 @@ assert.ok(
   "quick chips are ordered sent, received, temperature, uptime",
 );
 assert.match(onlineNode.body, /aria-label="Uptime 1d 12h"/);
+assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_tx_queue_len_spring_farm"/);
+assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_nb_sent_rate_spring_farm"/);
+assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_out_path_spring_farm"/);
+assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_sent_direct_spring_farm"/);
+assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_recv_errors_spring_farm"/);
+assert.match(onlineNode.body, /Sent direct\s*<\/span>101/);
+assert.match(onlineNode.body, /TX\/min\s*<\/span>12\.5/);
+assert.match(onlineNode.body, /TX airtime total\s*<\/span>17\.5 min/);
+assert.match(onlineNode.body, /Request failures\s*<\/span>2 requests/);
 assert.doesNotMatch(onlineNode.body, />Repeater</);
 assert.doesNotMatch(onlineNode.body, />REMOTE NODES</);
 assert.deepEqual(onlineNode.card.getGridOptions(), {
@@ -442,6 +462,7 @@ assert.doesNotMatch(missingNoiseNode.body, />Noise Floor</);
 assert.equal((missingNoiseNode.body.match(/class="node-metric clickable"/g) ?? []).length, 2);
 
 const percentageOnlyHass = createHass();
+percentageOnlyHass.states["sensor.meshcore_spring_bat_spring_farm"].state = "unavailable";
 percentageOnlyHass.states["sensor.meshcore_spring_battery_voltage_spring_farm"].state = "unavailable";
 const percentageOnlyNode = render(
   { target: { type: "node", id: "Spring Farm" } },
@@ -459,10 +480,11 @@ const voltageOnlyNode = render(
 );
 assert.doesNotMatch(voltageOnlyNode.body, /class="battery-block"/);
 assert.match(voltageOnlyNode.body, /icon="mdi:flash"/);
-assert.match(voltageOnlyNode.body, />4\.08 V<\/span>/);
+assert.match(voltageOnlyNode.body, />4\.21 V<\/span>/);
 
 const missingBatteryHass = createHass();
 missingBatteryHass.states["sensor.meshcore_spring_battery_percentage_spring_farm"].state = "unavailable";
+missingBatteryHass.states["sensor.meshcore_spring_bat_spring_farm"].state = "unavailable";
 missingBatteryHass.states["sensor.meshcore_spring_battery_voltage_spring_farm"].state = "unavailable";
 const missingBatteryNode = render(
   { target: { type: "node", id: "Spring Farm" } },

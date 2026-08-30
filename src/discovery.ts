@@ -46,14 +46,20 @@ export function findEntityByDevice(
   if (!deviceId) return null;
   const pLen = (ePrefix || "").length;
   const sLen = (eSuffix || "").length;
-  // First pass: strip the discovered prefix/suffix and match the metric
-  // exactly (or as the last underscored segment of the core). This is
-  // the precise path when discovery's eSuffix correctly identifies the
-  // node-name slug.
+  // First pass: strip the discovered prefix/suffix and prefer an exact metric
+  // core across the whole device. Exact matching must finish before the
+  // compatibility suffix pass so `airtime` cannot bind to `rx_airtime`
+  // merely because the registry enumerates the RX entity first.
   for (const [entityId, info] of Object.entries(entities)) {
     if (info.device_id !== deviceId) continue;
     const core = entityId.slice(pLen, sLen ? -sLen : undefined);
-    if (core === metric || core.endsWith(`_${metric}`)) return entityId;
+    if (core === metric) return entityId;
+  }
+  // Compatibility for names such as `last_rssi` when looking up `rssi`.
+  for (const [entityId, info] of Object.entries(entities)) {
+    if (info.device_id !== deviceId) continue;
+    const core = entityId.slice(pLen, sLen ? -sLen : undefined);
+    if (core.endsWith(`_${metric}`)) return entityId;
   }
   // Fallback for older entity-ID formats with no node-name suffix:
   // accept entities whose ID ends exactly in `_<metric>`. We don't
