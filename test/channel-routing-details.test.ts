@@ -9,6 +9,9 @@ import {
   HUB_DEVICE_ID,
   createChannelHass,
   defineOnce,
+  device,
+  registryEntry,
+  state,
 } from "./fixtures.js";
 
 defineOnce("mushroom-meshcore-channel-card", MeshcoreChannelCard);
@@ -29,6 +32,26 @@ interface MockConnection {
   subscribeMessage: ReturnType<typeof vi.fn>;
   subscriptions: Subscription[];
   readyListeners: Array<() => void>;
+}
+
+interface ChannelPathDialogRoute {
+  hopCount: number;
+  pathSegments: readonly string[];
+  hashSizeBytes?: 1 | 2 | 3;
+  direct?: boolean;
+}
+
+interface ShowDialogDetail {
+  dialogTag: string;
+  dialogImport: () => Promise<unknown>;
+  dialogParams: {
+    title: string;
+    routes: readonly ChannelPathDialogRoute[];
+    contacts: readonly { publicKey: string; name: string }[];
+    contactsPromise?: Promise<readonly { publicKey: string; name: string }[]>;
+    returnFocus?: HTMLElement;
+    resolveReturnFocus?: () => HTMLElement | undefined;
+  };
 }
 
 function subscriptionName(params: Record<string, unknown>): string {
@@ -181,6 +204,71 @@ function rowFor(card: MeshcoreChannelCard, body: string): HTMLElement {
 
 function pill(row: HTMLElement, icon: string): HTMLElement | null {
   return row.querySelector<HTMLElement>(`ha-icon[icon="${icon}"]`)?.parentElement ?? null;
+}
+
+async function openPathsDialog(
+  card: MeshcoreChannelCard,
+  row: HTMLElement
+): Promise<ShowDialogDetail> {
+  let detail: ShowDialogDetail | undefined;
+  card.addEventListener(
+    "show-dialog",
+    ((event: CustomEvent<ShowDialogDetail>) => {
+      detail = event.detail;
+    }) as EventListener,
+    { once: true }
+  );
+  const trigger = row.querySelector<HTMLButtonElement>(
+    "button.message-route-detail.path[data-channel-paths]"
+  );
+  expect(trigger).not.toBeNull();
+  trigger!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(detail).toBeDefined();
+  return detail!;
+}
+
+function addContactState(
+  hass: HomeAssistant,
+  entityId: string,
+  deviceId: string,
+  attributes: Record<string, unknown>,
+  includeState = true
+): void {
+  const registry = registryEntry(deviceId);
+  registry.entity_id = entityId;
+  hass.entities[entityId] = registry;
+  if (!includeState) return;
+  const entityState = state("on", attributes);
+  entityState.entity_id = entityId;
+  hass.states[entityId] = entityState;
+}
+
+async function renderRoutedMessage(
+  card: MeshcoreChannelCard,
+  mock: MockConnection,
+  body = "contact route"
+): Promise<HTMLElement> {
+  fireEvent(
+    mock,
+    "meshcore_message",
+    channelMessage({
+      message: body,
+      rx_log_data: [
+        reception({ path_len: 2, path: "A1B2", path_hash_size: 1 }),
+      ],
+    }),
+    `context-${body}`
+  );
+  fireLogbook(mock, [
+    {
+      when: NOW,
+      context_id: `context-${body}`,
+      message: `Alice: ${body}`,
+    },
+  ]);
+  await settle();
+  return rowFor(card, body);
 }
 
 beforeEach(() => {
@@ -666,6 +754,62 @@ describe("channel routing correlation", () => {
     await settle();
 
     expect(pill(rowFor(card, "primary entry"), "mdi:web")?.textContent).toContain("primary");
+  });
+
+  it("isolates sent scopes to the selected entity's config entry on a shared device", async () => {
+    const { card, mock, hass } = await createCard();
+    hass.entities[CHANNEL_ENTITY]!.config_entry_id = "selected-channel-entry";
+    hass.devices[HUB_DEVICE_ID]!.primary_config_entry = "other-entry";
+    hass.devices[HUB_DEVICE_ID]!.config_entries = [
+      "other-entry",
+      "selected-channel-entry",
+    ];
+    fireEvent(mock, "meshcore_message_sent", {
+      device: "other-entry",
+      channel_idx: 0,
+      message: "shared device scope",
+      message_type: "channel",
+      timestamp: NOW,
+      send_id: "shared-device-send",
+      scope: "#wrong",
+    });
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "shared device scope",
+        sender_name: "Me",
+        outgoing: true,
+        send_id: "shared-device-send",
+        hop_count: 0,
+      }),
+      "shared-device-scope"
+    );
+    fireLogbook(mock, [
+      {
+        when: NOW,
+        context_id: "shared-device-scope",
+        message: "Me: shared device scope",
+      },
+    ]);
+    await settle();
+
+    expect(pill(rowFor(card, "shared device scope"), "mdi:web")).toBeNull();
+
+    fireEvent(mock, "meshcore_message_sent", {
+      device: "selected-channel-entry",
+      channel_idx: 0,
+      message: "shared device scope",
+      message_type: "channel",
+      timestamp: NOW,
+      send_id: "shared-device-send",
+      scope: "#right",
+    });
+    await settle();
+
+    expect(
+      pill(rowFor(card, "shared device scope"), "mdi:web")?.textContent
+    ).toContain("right");
   });
 
   it("promotes an unfiltered pending scope only after an exact-target message", async () => {
@@ -1322,6 +1466,22 @@ describe("channel routing correlation", () => {
 });
 
 describe("channel routing normalization and presentation", () => {
+  it("resolves focus to the current Path control after a live rerender", async () => {
+    const { card, mock } = await createCard();
+    const row = await renderRoutedMessage(card, mock, "focus route");
+    const original = row.querySelector<HTMLElement>("[data-channel-paths]")!;
+    const { dialogParams } = await openPathsDialog(card, row);
+
+    expect(dialogParams.returnFocus).toBe(original);
+    (card as unknown as { _render(): void })._render();
+    const replacement = rowFor(card, "focus route")
+      .querySelector<HTMLElement>("[data-channel-paths]")!;
+
+    expect(original.isConnected).toBe(false);
+    expect(replacement).not.toBe(original);
+    expect(dialogParams.resolveReturnFocus?.()).toBe(replacement);
+  });
+
   it("ignores invalid scopes and malformed reception records", async () => {
     const { card, mock } = await createCard();
     const invalidScopes: Array<[string, unknown]> = [
@@ -1400,17 +1560,45 @@ describe("channel routing normalization and presentation", () => {
     expect(pill(bounded, "mdi:routes")).toBeNull();
   });
 
-  it("keeps the first selected reception stable across progressive updates", async () => {
+  it("replaces cumulative route snapshots, dedupes them, and preserves a selected route only while present", async () => {
     const { card, mock } = await createCard();
     fireEvent(
       mock,
       "meshcore_message",
       channelMessage({
         message: "progressive",
-        rx_log_data: [reception({ path_len: 2, path: "A1B2" })],
+        rx_log_data: [
+          reception({ path_len: 2, path: "A1B2" }),
+          reception({ path_len: 2, path: "A1B2" }),
+          reception({ path_len: 2, path: "C3D4" }),
+        ],
       }),
       "progressive"
     );
+    fireLogbook(mock, [
+      { when: NOW, context_id: "progressive", message: "Alice: progressive" },
+    ]);
+    await settle();
+
+    let row = rowFor(card, "progressive");
+    expect(pill(row, "mdi:transit-connection-variant")?.textContent).toContain("2");
+    expect(pill(row, "mdi:routes")?.textContent).toContain("A1,B2");
+    let dialog = await openPathsDialog(card, row);
+    expect(dialog.dialogParams.routes).toEqual([
+      expect.objectContaining({
+        hopCount: 2,
+        pathSegments: ["A1", "B2"],
+        hashSizeBytes: 1,
+        direct: false,
+      }),
+      expect.objectContaining({
+        hopCount: 2,
+        pathSegments: ["C3", "D4"],
+        hashSizeBytes: 1,
+        direct: false,
+      }),
+    ]);
+
     fireEvent(
       mock,
       "meshcore_delivery_update",
@@ -1418,20 +1606,23 @@ describe("channel routing normalization and presentation", () => {
         message: "progressive",
         progressive: true,
         rx_log_data: [
+          reception({ path_len: 2, path: "C3D4" }),
           reception({ path_len: 2, path: "A1B2" }),
-          reception({ path_len: 1, path: "FF" }),
+          reception({ path_len: 1, path: "EF" }),
+          reception({ path_len: 2, path: "C3D4" }),
         ],
       })
     );
-    fireLogbook(mock, [
-      { when: NOW, context_id: "progressive", message: "Alice: progressive" },
-    ]);
     await settle();
 
-    const row = rowFor(card, "progressive");
-    expect(pill(row, "mdi:transit-connection-variant")?.textContent).toContain("2");
+    row = rowFor(card, "progressive");
     expect(pill(row, "mdi:routes")?.textContent).toContain("A1,B2");
-    expect(pill(row, "mdi:routes")?.textContent).not.toContain("FF");
+    dialog = await openPathsDialog(card, row);
+    expect(dialog.dialogParams.routes.map((route) => route.pathSegments)).toEqual([
+      ["C3", "D4"],
+      ["A1", "B2"],
+      ["EF"],
+    ]);
 
     fireEvent(
       mock,
@@ -1439,20 +1630,99 @@ describe("channel routing normalization and presentation", () => {
       channelMessage({
         message: "progressive",
         progressive: true,
-        rx_log_data: [reception({ path_len: 1, path: "FF" })],
+        rx_log_data: [
+          reception({ path_len: 2, path: "C3D4" }),
+          reception({ path_len: 1, path: "EF" }),
+          reception({ path_len: 2, path: "C3D4" }),
+        ],
       })
     );
     await settle();
-    expect(pill(rowFor(card, "progressive"), "mdi:routes")?.textContent).toContain("A1,B2");
+
+    row = rowFor(card, "progressive");
+    expect(pill(row, "mdi:routes")?.textContent).toContain("C3,D4");
+    expect(pill(row, "mdi:routes")?.textContent).not.toContain("A1,B2");
+    dialog = await openPathsDialog(card, row);
+    expect(dialog.dialogParams.routes.map((route) => route.pathSegments)).toEqual([
+      ["C3", "D4"],
+      ["EF"],
+    ]);
+  });
+
+  it("renders a selected direct route as a path button and opens all current routes", async () => {
+    const { card, mock } = await createCard();
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "direct and relayed",
+        rx_log_data: [
+          reception({
+            path_len: 0,
+            path: "",
+            path_hash_size: 2,
+          }),
+          reception({
+            path_len: 2,
+            path: "A1B2C3D4",
+            path_hash_size: 2,
+          }),
+        ],
+      }),
+      "direct-and-relayed"
+    );
+    fireLogbook(mock, [
+      {
+        when: NOW,
+        context_id: "direct-and-relayed",
+        message: "Alice: direct and relayed",
+      },
+    ]);
+    await settle();
+
+    const row = rowFor(card, "direct and relayed");
+    expect(pill(row, "mdi:transit-connection-variant")?.textContent).toContain("0");
+    const path = row.querySelector<HTMLButtonElement>(
+      "button.message-route-detail.path[data-channel-paths]"
+    )!;
+    expect(path.textContent).toContain("Direct");
+    expect(path.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(row.querySelector(".message-route-detail.bytes")).toBeNull();
+
+    const dialog = await openPathsDialog(card, row);
+    expect(dialog.dialogTag).toBe("mushroom-meshcore-channel-paths-dialog");
+    expect(dialog.dialogImport).toEqual(expect.any(Function));
+    expect(dialog.dialogParams.title).toContain("(2)");
+    expect(dialog.dialogParams.routes).toEqual([
+      expect.objectContaining({
+        hopCount: 0,
+        pathSegments: [],
+        direct: true,
+      }),
+      expect.objectContaining({
+        hopCount: 2,
+        pathSegments: ["A1B2", "C3D4"],
+        hashSizeBytes: 2,
+        direct: false,
+      }),
+    ]);
   });
 
   it("normalizes one-, two-, and three-byte path hashes plus safe inference", async () => {
     const { card, mock } = await createCard();
     const cases = [
-      ["one-byte", 1, "A1B2", "A1,B2"],
-      ["two-byte", 2, "A1B2C3D4", "A1B2,C3D4"],
-      ["three-byte", 3, "A1B2C3D4E5F6", "A1B2C3,D4E5F6"],
-      ["inferred", undefined, "A1B2C3D4E5F6", "A1B2C3,D4E5F6"],
+      ["one-byte", 1, "A1B2", "A1,B2", "1 byte"],
+      ["two-byte", 2, "A1B2C3D4", "A1B2,C3D4", "2 bytes"],
+      ["three-byte", 3, "A1B2C3D4E5F6", "A1B2C3,D4E5F6", "3 bytes"],
+      ["inferred-one", undefined, "A1B2", "A1,B2", "1 byte"],
+      ["inferred-two", undefined, "A1B2C3D4", "A1B2,C3D4", "2 bytes"],
+      [
+        "inferred-three",
+        undefined,
+        "A1B2C3D4E5F6",
+        "A1B2C3,D4E5F6",
+        "3 bytes",
+      ],
     ] as const;
     for (const [index, [body, size, path]] of cases.entries()) {
       fireEvent(
@@ -1478,8 +1748,15 @@ describe("channel routing normalization and presentation", () => {
     );
     await settle();
 
-    for (const [body, , , expected] of cases) {
-      expect(pill(rowFor(card, body), "mdi:routes")?.textContent).toContain(expected);
+    for (const [body, , , expected, expectedWidth] of cases) {
+      const row = rowFor(card, body);
+      const path = pill(row, "mdi:routes")!;
+      const width = row.querySelector<HTMLElement>(".message-route-detail.bytes")!;
+      expect(path.textContent).toContain(expected);
+      expect(width.textContent).toContain(expectedWidth);
+      expect(
+        path.compareDocumentPosition(width) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
     }
   });
 
@@ -1533,21 +1810,53 @@ describe("channel routing normalization and presentation", () => {
         `bad-${index}`
       )
     );
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "mixed routes",
+        timestamp: NOW - bad.length,
+        rx_log_data: [
+          bad[0],
+          reception({ path_len: 2, path: "A1B2C3D4", path_hash_size: 2 }),
+          null,
+          bad[2],
+        ],
+      }),
+      "mixed-routes"
+    );
     fireLogbook(
       mock,
-      bad.map((_, index) => ({
-        when: NOW - index,
-        context_id: `bad-${index}`,
-        message: `Alice: bad-${index}`,
-      }))
+      [
+        ...bad.map((_, index) => ({
+          when: NOW - index,
+          context_id: `bad-${index}`,
+          message: `Alice: bad-${index}`,
+        })),
+        {
+          when: NOW - bad.length,
+          context_id: "mixed-routes",
+          message: "Alice: mixed routes",
+        },
+      ]
     );
     await settle();
 
     for (let index = 0; index < bad.length; index += 1) {
       const row = rowFor(card, `bad-${index}`);
       expect(pill(row, "mdi:routes")).toBeNull();
+      expect(row.querySelector("[data-channel-paths]")).toBeNull();
+      expect(row.querySelector(".message-route-detail.bytes")).toBeNull();
       expect(pill(row, "mdi:transit-connection-variant")).not.toBeNull();
     }
+    const mixed = rowFor(card, "mixed routes");
+    expect(pill(mixed, "mdi:routes")?.textContent).toContain("A1B2,C3D4");
+    expect((await openPathsDialog(card, mixed)).dialogParams.routes).toEqual([
+      expect.objectContaining({
+        pathSegments: ["A1B2", "C3D4"],
+        hashSizeBytes: 2,
+      }),
+    ]);
   });
 
   it("rejects route values beyond MeshCore's bounded hop and path sizes", async () => {
@@ -1670,21 +1979,35 @@ describe("channel routing normalization and presentation", () => {
     expect(path.getAttribute("aria-label")).toContain("A1,B2,C3,D4,E5,F6");
   });
 
-  it("renders a named scope, a generic regional scope, and omits unscoped data", async () => {
+  it("uses a unique named scope across all receptions and explains generic or conflicting regions", async () => {
     const { card, mock } = await createCard();
     const cases = [
-      ["named", reception({ flood_scope: "#au", region_scope: true })],
-      ["regional", { flood_scope: null, region_scope: true }],
-      ["unscoped", reception({ flood_scope: null, region_scope: false })],
+      ["named", [reception({ flood_scope: "#au", region_scope: true })]],
+      [
+        "named later",
+        [
+          reception({ path: "A1B2", flood_scope: null, region_scope: true }),
+          reception({ path: "C3D4", flood_scope: "#au", region_scope: true }),
+        ],
+      ],
+      ["regional", [{ flood_scope: null, region_scope: true }]],
+      [
+        "conflicting",
+        [
+          reception({ path: "A1B2", flood_scope: "#au", region_scope: true }),
+          reception({ path: "C3D4", flood_scope: "#nz", region_scope: true }),
+        ],
+      ],
+      ["unscoped", [reception({ flood_scope: null, region_scope: false })]],
     ] as const;
-    cases.forEach(([body, rx], index) =>
+    cases.forEach(([body, routes], index) =>
       fireEvent(
         mock,
         "meshcore_message",
         channelMessage({
           message: body,
           timestamp: NOW - index,
-          rx_log_data: [rx],
+          rx_log_data: routes,
         }),
         `scope-${body}`
       )
@@ -1701,7 +2024,13 @@ describe("channel routing normalization and presentation", () => {
 
     expect(pill(rowFor(card, "named"), "mdi:web")?.textContent).toContain("au");
     expect(pill(rowFor(card, "named"), "mdi:web")?.textContent).not.toContain("#au");
-    expect(pill(rowFor(card, "regional"), "mdi:web")?.textContent).toContain("Regional");
+    expect(pill(rowFor(card, "named later"), "mdi:web")?.textContent).toContain("au");
+    for (const body of ["regional", "conflicting"]) {
+      const scope = pill(rowFor(card, body), "mdi:web")!;
+      expect(scope.textContent).toContain("Regional");
+      expect(scope.getAttribute("title")).toContain("Flood Scope Allowlist");
+      expect(scope.getAttribute("aria-label")).toContain("Flood Scope Allowlist");
+    }
     expect(pill(rowFor(card, "unscoped"), "mdi:web")).toBeNull();
   });
 
@@ -1710,7 +2039,17 @@ describe("channel routing normalization and presentation", () => {
     fireEvent(
       mock,
       "meshcore_message",
-      channelMessage({ hop_count: 0 }),
+      channelMessage({
+        rx_log_data: [
+          reception({
+            path_len: 2,
+            path: "A1B2C3D4",
+            path_hash_size: 2,
+            flood_scope: "#au",
+            region_scope: true,
+          }),
+        ],
+      }),
       "layout"
     );
     fireLogbook(mock, [
@@ -1724,8 +2063,18 @@ describe("channel routing normalization and presentation", () => {
     const details = row.querySelector(".message-route-details")!;
     expect(meta.querySelector(".message-sender")?.textContent).toBe("Alice");
     expect(meta.querySelector(".message-time")).not.toBeNull();
+    expect(Array.from(meta.children).map((child) => child.className)).toEqual([
+      "message-sender",
+      "message-time",
+    ]);
     expect(meta.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(body.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(Array.from(details.children).map((child) => child.classList[1])).toEqual([
+      "hops",
+      "path",
+      "bytes",
+      "scope",
+    ]);
   });
 
   it("hides route details independently from timestamps", async () => {
@@ -1736,7 +2085,12 @@ describe("channel routing normalization and presentation", () => {
     fireEvent(
       hidden.mock,
       "meshcore_message",
-      channelMessage({ message: "hidden route", hop_count: 0 }),
+      channelMessage({
+        message: "hidden route",
+        rx_log_data: [
+          reception({ path_len: 2, path: "A1B2C3D4", path_hash_size: 2 }),
+        ],
+      }),
       "hidden"
     );
     fireLogbook(hidden.mock, [
@@ -1750,7 +2104,12 @@ describe("channel routing normalization and presentation", () => {
     fireEvent(
       noTime.mock,
       "meshcore_message",
-      channelMessage({ message: "visible route", hop_count: 0 }),
+      channelMessage({
+        message: "visible route",
+        rx_log_data: [
+          reception({ path_len: 2, path: "A1B2C3D4", path_hash_size: 2 }),
+        ],
+      }),
       "no-time"
     );
     fireLogbook(noTime.mock, [
@@ -1760,8 +2119,10 @@ describe("channel routing normalization and presentation", () => {
 
     expect(rowFor(hidden.card, "hidden route").querySelector(".message-time")).not.toBeNull();
     expect(rowFor(hidden.card, "hidden route").querySelector(".message-route-details")).toBeNull();
+    expect(rowFor(hidden.card, "hidden route").querySelector("[data-channel-paths]")).toBeNull();
     expect(rowFor(noTime.card, "visible route").querySelector(".message-time")).toBeNull();
     expect(rowFor(noTime.card, "visible route").querySelector(".message-route-details")).not.toBeNull();
+    expect(rowFor(noTime.card, "visible route").querySelector("[data-channel-paths]")).not.toBeNull();
   });
 
   it("escapes hostile and bidirectional scope values and rejects a hostile path", async () => {
@@ -1797,5 +2158,428 @@ describe("channel routing normalization and presentation", () => {
       expect(pill(row, "mdi:web")?.getAttribute("title")).not.toContain(control);
     }
     expect(pill(row, "mdi:routes")).toBeNull();
+  });
+});
+
+describe("channel route contact resolution", () => {
+  it("ignores a stale or unknown path-dialog trigger", async () => {
+    const { card } = await createCard();
+    const shown = vi.fn();
+    card.addEventListener("show-dialog", shown);
+    const staleTrigger = document.createElement("button");
+    staleTrigger.dataset["channelPaths"] = "missing";
+    card.shadowRoot!.appendChild(staleTrigger);
+
+    staleTrigger.click();
+
+    expect(shown).not.toHaveBeenCalled();
+  });
+
+  it("uses only state-backed repeater contacts attached to the selected hub", async () => {
+    const { card, mock, hass } = await createCard();
+    hass.devices["foreign-hub"] = device("foreign-hub", { name: "Foreign" });
+    addContactState(hass, "binary_sensor.meshcore_contact_a1", HUB_DEVICE_ID, {
+      public_key: "a10000112233",
+      adv_name: "Hill Repeater",
+      type: 2,
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_a1_duplicate", HUB_DEVICE_ID, {
+      public_key: "A10000112233",
+      adv_name: "Duplicate should be ignored",
+      type: "Repeater",
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_b2_legacy", HUB_DEVICE_ID, {
+      adv_id: "b2",
+      adv_name: "Legacy Ridge",
+      contact_type: "repeater",
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_d4_one", HUB_DEVICE_ID, {
+      adv_id: "d4",
+      adv_name: "Prefix collision one",
+      contact_type: "repeater",
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_d4_two", HUB_DEVICE_ID, {
+      adv_id: "d4",
+      adv_name: "Prefix collision two",
+      contact_type: "repeater",
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_client", HUB_DEVICE_ID, {
+      public_key: "C30000112233",
+      adv_name: "Client",
+      type: 1,
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_foreign", "foreign-hub", {
+      public_key: "A1FFFFFFFFFF",
+      adv_name: "Foreign Repeater",
+      type: 2,
+    });
+    addContactState(
+      hass,
+      "binary_sensor.meshcore_contact_without_state",
+      HUB_DEVICE_ID,
+      { public_key: "D40000112233", adv_name: "Unavailable", type: 2 },
+      false
+    );
+    const wrongPlatform = registryEntry(HUB_DEVICE_ID, "other");
+    wrongPlatform.entity_id = "binary_sensor.other_contact";
+    hass.entities[wrongPlatform.entity_id] = wrongPlatform;
+    const wrongPlatformState = state("on", {
+      public_key: "E50000112233",
+      adv_name: "Other integration",
+      type: 2,
+    });
+    wrongPlatformState.entity_id = wrongPlatform.entity_id;
+    hass.states[wrongPlatform.entity_id] = wrongPlatformState;
+
+    const row = await renderRoutedMessage(card, mock);
+    const { dialogParams } = await openPathsDialog(card, row);
+
+    expect(dialogParams.contacts).toEqual([
+      { publicKey: "A10000112233", name: "Hill Repeater" },
+      { publicKey: "B2", name: "Legacy Ridge", keyIsPrefix: true },
+      { publicKey: "D4", name: "Prefix collision one", keyIsPrefix: true },
+      { publicKey: "D4", name: "Prefix collision two", keyIsPrefix: true },
+    ]);
+    expect(dialogParams.contactsPromise).toBeUndefined();
+  });
+
+  it("sanitizes hostile state names and accepts documented legacy key attributes", async () => {
+    const { card, mock, hass } = await createCard();
+    addContactState(hass, "binary_sensor.meshcore_contact_hostile", HUB_DEVICE_ID, {
+      pubkey_prefix: "a1b2c3",
+      adv_name: ` Ridge\u202E  <img src=x onerror=alert(1)> `,
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_invalid", HUB_DEVICE_ID, {
+      public_key: "not-hex",
+      adv_name: "Invalid",
+    });
+
+    const row = await renderRoutedMessage(card, mock, "hostile contact");
+    const { dialogParams } = await openPathsDialog(card, row);
+
+    expect(dialogParams.contacts).toEqual([
+      {
+        publicKey: "A1B2C3",
+        name: `Ridge <img src=x onerror=alert(1)>`,
+        keyIsPrefix: true,
+      },
+    ]);
+  });
+
+  it("enriches data-only contacts through the exact primary configuration entry", async () => {
+    const { card, mock, hass } = await createCard();
+    hass.devices[HUB_DEVICE_ID]!.config_entries = ["other-entry", CONFIG_ENTRY_ID];
+    const callWS = vi.fn().mockResolvedValue({
+      response: {
+        contacts: [
+          {
+            public_key: "A10000112233",
+            pubkey_prefix: "A10000112233",
+            adv_name: "Service Repeater",
+            type: 2,
+          },
+          {
+            public_key: "B20000112233",
+            adv_name: "String Repeater",
+            type: "repeater",
+          },
+          {
+            public_key: "C30000112233",
+            adv_name: "Not a repeater",
+            type: 1,
+          },
+          {
+            public_key: "A10000112233",
+            adv_name: "Duplicate key",
+            type: 2,
+          },
+        ],
+      },
+    });
+    hass.callWS = callWS;
+
+    const row = await renderRoutedMessage(card, mock, "service contacts");
+    const { dialogParams } = await openPathsDialog(card, row);
+
+    expect(callWS).toHaveBeenCalledWith({
+      type: "call_service",
+      domain: "meshcore",
+      service: "get_contacts",
+      service_data: { entry_id: CONFIG_ENTRY_ID },
+      return_response: true,
+    });
+    expect(dialogParams.contacts).toEqual([]);
+    await expect(dialogParams.contactsPromise).resolves.toEqual([
+      { publicKey: "A10000112233", name: "Service Repeater" },
+      { publicKey: "B20000112233", name: "String Repeater" },
+    ]);
+  });
+
+  it("targets contacts through the selected entity's config entry on a shared device", async () => {
+    const { card, mock, hass } = await createCard();
+    hass.entities[CHANNEL_ENTITY]!.config_entry_id = "selected-channel-entry";
+    hass.devices[HUB_DEVICE_ID]!.primary_config_entry = "other-entry";
+    hass.devices[HUB_DEVICE_ID]!.config_entries = [
+      "other-entry",
+      "selected-channel-entry",
+    ];
+    const callWS = vi.fn().mockResolvedValue({ contacts: [] });
+    hass.callWS = callWS;
+
+    const row = await renderRoutedMessage(card, mock, "shared device contacts");
+    const { dialogParams } = await openPathsDialog(card, row);
+    await dialogParams.contactsPromise;
+
+    expect(callWS).toHaveBeenCalledWith(
+      expect.objectContaining({
+        service_data: { entry_id: "selected-channel-entry" },
+      })
+    );
+  });
+
+  it("uses a sole configuration entry and skips ambiguous targeting", async () => {
+    const sole = await createCard();
+    sole.hass.devices[HUB_DEVICE_ID]!.primary_config_entry = null;
+    sole.hass.devices[HUB_DEVICE_ID]!.config_entries = ["sole-entry", "sole-entry"];
+    const soleCall = vi.fn().mockResolvedValue({ contacts: [] });
+    sole.hass.callWS = soleCall;
+    const soleRow = await renderRoutedMessage(
+      sole.card,
+      sole.mock,
+      "sole entry"
+    );
+    const soleDialog = await openPathsDialog(sole.card, soleRow);
+    await soleDialog.dialogParams.contactsPromise;
+    expect(soleCall).toHaveBeenCalledWith(
+      expect.objectContaining({ service_data: { entry_id: "sole-entry" } })
+    );
+
+    const ambiguous = await createCard();
+    ambiguous.hass.devices[HUB_DEVICE_ID]!.primary_config_entry = null;
+    ambiguous.hass.devices[HUB_DEVICE_ID]!.config_entries = ["one", "two"];
+    const ambiguousCall = vi.fn().mockResolvedValue({ contacts: [] });
+    ambiguous.hass.callWS = ambiguousCall;
+    const ambiguousRow = await renderRoutedMessage(
+      ambiguous.card,
+      ambiguous.mock,
+      "ambiguous entry"
+    );
+    const ambiguousDialog = await openPathsDialog(
+      ambiguous.card,
+      ambiguousRow
+    );
+    expect(ambiguousCall).not.toHaveBeenCalled();
+    expect(ambiguousDialog.dialogParams.contactsPromise).toBeUndefined();
+  });
+
+  it("shares an in-flight request and caches one validated response for sixty seconds", async () => {
+    const { card, mock, hass } = await createCard();
+    addContactState(hass, "binary_sensor.meshcore_cached_contact", HUB_DEVICE_ID, {
+      pubkey_prefix: "A10000",
+      adv_name: "Cached",
+      type: 2,
+    });
+    addContactState(hass, "binary_sensor.meshcore_exact_contact", HUB_DEVICE_ID, {
+      public_key: "C30000112233",
+      adv_name: "Stale exact name",
+      type: 2,
+    });
+    addContactState(hass, "binary_sensor.meshcore_prefix_contact", HUB_DEVICE_ID, {
+      pubkey_prefix: "D40000",
+      adv_name: "Same prefix",
+      type: 2,
+    });
+    let resolveResponse!: (value: unknown) => void;
+    const response = new Promise<unknown>((resolve) => {
+      resolveResponse = resolve;
+    });
+    const callWS = vi.fn().mockReturnValueOnce(response).mockResolvedValue({
+      contacts: [
+        { public_key: "B20000112233", adv_name: "Refreshed", type: 2 },
+      ],
+    });
+    hass.callWS = callWS;
+    const row = await renderRoutedMessage(card, mock, "cached contacts");
+
+    const first = await openPathsDialog(card, row);
+    const second = await openPathsDialog(card, row);
+    expect(callWS).toHaveBeenCalledTimes(1);
+    expect(second.dialogParams.contactsPromise).toBe(
+      first.dialogParams.contactsPromise
+    );
+    resolveResponse({
+      contacts: [
+        { public_key: "A10000112233", adv_name: "Cached", type: 2 },
+        { public_key: "C30000112233", adv_name: "Fresh exact name", type: 2 },
+        { public_key: "B20000112233", adv_name: "New cached contact", type: 2 },
+        { pubkey_prefix: "D40000", adv_name: "Same prefix", type: 2 },
+      ],
+    });
+    await expect(first.dialogParams.contactsPromise).resolves.toEqual([
+      { publicKey: "A10000112233", name: "Cached" },
+      { publicKey: "C30000112233", name: "Fresh exact name" },
+      { publicKey: "B20000112233", name: "New cached contact" },
+      { publicKey: "D40000", name: "Same prefix", keyIsPrefix: true },
+    ]);
+
+    const cached = await openPathsDialog(card, rowFor(card, "cached contacts"));
+    expect(callWS).toHaveBeenCalledTimes(1);
+    expect(cached.dialogParams.contacts).toContainEqual({
+      publicKey: "A10000112233",
+      name: "Cached",
+    });
+    expect(cached.dialogParams.contacts).not.toContainEqual({
+      publicKey: "A10000",
+      name: "Cached",
+    });
+    expect(cached.dialogParams.contacts).toContainEqual({
+      publicKey: "C30000112233",
+      name: "Fresh exact name",
+    });
+    expect(cached.dialogParams.contacts).toContainEqual({
+      publicKey: "B20000112233",
+      name: "New cached contact",
+    });
+    expect(cached.dialogParams.contacts.filter(
+      (contact) => contact.publicKey === "D40000"
+    )).toEqual([
+      { publicKey: "D40000", name: "Same prefix", keyIsPrefix: true },
+    ]);
+    expect(cached.dialogParams.contactsPromise).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(60_001);
+    const refreshed = await openPathsDialog(
+      card,
+      rowFor(card, "cached contacts")
+    );
+    expect(callWS).toHaveBeenCalledTimes(2);
+    await expect(refreshed.dialogParams.contactsPromise).resolves.toEqual([
+      { publicKey: "B20000112233", name: "Refreshed" },
+    ]);
+  });
+
+  it("clears cached contacts when the Home Assistant connection changes", async () => {
+    const { card, mock, hass } = await createCard();
+    const callWS = vi.fn().mockResolvedValue({ contacts: [] });
+    hass.callWS = callWS;
+    const row = await renderRoutedMessage(card, mock, "connection cache");
+    const initial = await openPathsDialog(card, row);
+    await initial.dialogParams.contactsPromise;
+    expect(callWS).toHaveBeenCalledTimes(1);
+
+    const replacement = createConnection();
+    hass.connection = replacement.connection;
+    card.hass = hass;
+    await vi.advanceTimersByTimeAsync(0);
+    const reopened = await openPathsDialog(
+      card,
+      rowFor(card, "connection cache")
+    );
+    await reopened.dialogParams.contactsPromise;
+    expect(callWS).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears cached contacts when the selected channel target changes", async () => {
+    const { card, mock, hass } = await createCard();
+    const callWS = vi.fn().mockResolvedValue({ contacts: [] });
+    hass.callWS = callWS;
+    const initialRow = await renderRoutedMessage(card, mock, "target cache");
+    const initial = await openPathsDialog(card, initialRow);
+    await initial.dialogParams.contactsPromise;
+    expect(callWS).toHaveBeenCalledTimes(1);
+
+    card.setConfig({});
+    card.setConfig({ entity: CHANNEL_ENTITY });
+    await vi.advanceTimersByTimeAsync(0);
+    const reopenedRow = await renderRoutedMessage(
+      card,
+      mock,
+      "target cache reopened"
+    );
+    const reopened = await openPathsDialog(card, reopenedRow);
+    await reopened.dialogParams.contactsPromise;
+    expect(callWS).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["service error", { response: { contacts: [], error: "no_coordinator" } }],
+    ["malformed response", { response: { contacts: "not-an-array" } }],
+    ["missing response", { unexpected: true }],
+  ])("degrades gracefully and retries after a %s", async (body, response) => {
+    const { card, mock, hass } = await createCard();
+    const callWS = vi.fn().mockResolvedValue(response);
+    hass.callWS = callWS;
+    const row = await renderRoutedMessage(card, mock, body);
+
+    const first = await openPathsDialog(card, row);
+    await expect(first.dialogParams.contactsPromise).resolves.toEqual([]);
+    const second = await openPathsDialog(card, rowFor(card, body));
+    await expect(second.dialogParams.contactsPromise).resolves.toEqual([]);
+    expect(callWS).toHaveBeenCalledTimes(2);
+  });
+
+  it("handles rejected and synchronously unavailable response services", async () => {
+    const rejected = await createCard();
+    const rejectCall = vi.fn().mockRejectedValue(new Error("unauthorized"));
+    rejected.hass.callWS = rejectCall;
+    const rejectedRow = await renderRoutedMessage(
+      rejected.card,
+      rejected.mock,
+      "rejected service"
+    );
+    const rejectedDialog = await openPathsDialog(rejected.card, rejectedRow);
+    await expect(rejectedDialog.dialogParams.contactsPromise).resolves.toEqual([]);
+
+    const throwing = await createCard();
+    const throwCall = vi.fn(() => {
+      throw new Error("unavailable");
+    });
+    throwing.hass.callWS = throwCall as unknown as HomeAssistant["callWS"];
+    const throwingRow = await renderRoutedMessage(
+      throwing.card,
+      throwing.mock,
+      "throwing service"
+    );
+    const throwingDialog = await openPathsDialog(throwing.card, throwingRow);
+    expect(throwingDialog.dialogParams.contactsPromise).toBeUndefined();
+    expect(throwCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a stale service result after disconnect and bounds responses", async () => {
+    const { card, mock, hass } = await createCard();
+    let resolveResponse!: (value: unknown) => void;
+    const callWS = vi.fn().mockImplementation(
+      () => new Promise<unknown>((resolve) => {
+        resolveResponse = resolve;
+      })
+    );
+    hass.callWS = callWS;
+    const row = await renderRoutedMessage(card, mock, "stale service");
+    const staleDialog = await openPathsDialog(card, row);
+    card.remove();
+    resolveResponse({
+      contacts: [
+        { public_key: "A10000112233", adv_name: "Stale", type: 2 },
+      ],
+    });
+    await expect(staleDialog.dialogParams.contactsPromise).resolves.toEqual([]);
+
+    const bounded = await createCard();
+    bounded.hass.callWS = vi.fn().mockResolvedValue({
+      contacts: Array.from({ length: 1_005 }, (_, index) => ({
+        public_key: index.toString(16).padStart(4, "0"),
+        adv_name: `Repeater ${index}`,
+        type: 2,
+      })),
+    });
+    const boundedRow = await renderRoutedMessage(
+      bounded.card,
+      bounded.mock,
+      "bounded service"
+    );
+    const boundedDialog = await openPathsDialog(bounded.card, boundedRow);
+    await expect(boundedDialog.dialogParams.contactsPromise).resolves.toHaveLength(
+      1_000
+    );
   });
 });

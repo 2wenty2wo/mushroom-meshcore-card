@@ -5,6 +5,7 @@ import type { HassEntities } from "home-assistant-js-websocket";
 export interface HassEntityRegistryEntry {
   entity_id: string;
   device_id: string | null;
+  config_entry_id?: string | null;
   platform: string;
   name: string | null;
   icon: string | null;
@@ -55,6 +56,8 @@ export interface HomeAssistant {
     data?: Record<string, unknown>,
     target?: ActionTarget
   ) => Promise<unknown> | void;
+  /** Home Assistant's typed WebSocket helper, used for response-returning services. */
+  callWS?: <T>(message: Record<string, unknown>) => Promise<T>;
 }
 
 // ── Action config types (Mushroom/Tile-compatible subset) ─────────────────────

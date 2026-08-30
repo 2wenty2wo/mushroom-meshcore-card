@@ -13,6 +13,13 @@ import { escapeHtml } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
+import {
+  CHANNEL_PATHS_DIALOG_TAG,
+  channelPathsDialogImport,
+  type ChannelMessagePathRoute,
+  type ChannelPathContact,
+  type ChannelPathsDialogParams,
+} from "./channel-paths-dialog.js";
 
 const CHANNEL_ENTITY_RE = /^binary_sensor\.meshcore_.*_ch_\d+_messages$/;
 const DEFAULT_HOURS_TO_SHOW = 24;
@@ -25,6 +32,10 @@ const ROUTE_PENDING_TTL_MS = 60_000;
 const MAX_ROUTE_HOPS = 63;
 const MAX_ROUTE_HEX_CHARACTERS = 128;
 const MAX_RX_LOG_ROUTES = 64;
+const CONTACT_CACHE_TTL_MS = 60_000;
+const MAX_CONTACT_RESPONSE_ITEMS = 1_000;
+const MAX_CONTACT_KEY_CHARACTERS = 128;
+const MAX_CONTACT_NAME_CHARACTERS = 512;
 
 const CHANNEL_STYLES = `
   :host { display: block; height: 100%; }
@@ -148,6 +159,36 @@ const CHANNEL_STYLES = `
 
   .message-route-detail.hops { flex: 0 0 auto; }
 
+  .message-route-detail.bytes { flex: 0 0 auto; }
+
+  button.message-route-detail.path {
+    position: relative;
+    margin: 0;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    line-height: inherit;
+    text-align: start;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  button.message-route-detail.path::before {
+    position: absolute;
+    inset: -2px;
+    content: "";
+  }
+
+  button.message-route-detail.path:focus-visible {
+    outline: 2px solid var(--primary-color, var(--mushroom-meshcore-info-color));
+    outline-offset: 2px;
+  }
+
+  button.message-route-detail.path ha-ripple {
+    overflow: hidden;
+    border-radius: inherit;
+  }
+
   .message-route-detail ha-icon {
     --mdc-icon-size: 14px;
     flex: 0 0 auto;
@@ -204,15 +245,20 @@ interface HassEventEnvelope {
   time_fired?: unknown;
 }
 
+type PathHashSizeBytes = 1 | 2 | 3;
+
 interface NormalizedRxRoute {
-  key: string;
+  key?: string;
   hopCount?: number;
   pathSegments?: string[];
+  hashSizeBytes?: PathHashSizeBytes;
+  direct: boolean;
   scope?: string;
   regionScoped: boolean;
 }
 
 interface RoutingRecord {
+  dialogId: string;
   entityId: string;
   sender: string;
   message: string;
@@ -225,6 +271,7 @@ interface RoutingRecord {
   topHopCount?: number;
   selectedRouteKey?: string;
   selectedRoute?: NormalizedRxRoute;
+  routes?: NormalizedRxRoute[];
   outgoingScope?: string;
   messageEventSeen: boolean;
   matchedEntryKey?: string;
@@ -244,8 +291,17 @@ interface PendingSentScope {
 interface MessageRouteDetails {
   hopCount?: number;
   pathSegments?: string[];
+  hashSizeBytes?: PathHashSizeBytes;
+  direct?: boolean;
   scope?: string;
   regionScoped?: boolean;
+  routes: NormalizedRxRoute[];
+}
+
+interface RouteContactCacheEntry {
+  expiresAt: number;
+  contacts?: ChannelPathContact[];
+  pending?: Promise<ChannelPathContact[]>;
 }
 
 interface ParsedChannel {
@@ -325,6 +381,124 @@ function normalizedScope(value: unknown): string | undefined {
   return scope && scope !== "#" && scope.length <= 256 ? scope : undefined;
 }
 
+function normalizedContactName(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > MAX_CONTACT_NAME_CHARACTERS) {
+    return undefined;
+  }
+  const name = value
+    .replace(
+      /[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+  return name || undefined;
+}
+
+function normalizedContactKey(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > MAX_CONTACT_KEY_CHARACTERS) {
+    return undefined;
+  }
+  const key = value.trim().toUpperCase();
+  return key.length >= 2 && key.length % 2 === 0 && /^[0-9A-F]+$/.test(key)
+    ? key
+    : undefined;
+}
+
+function isRepeaterContact(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  if (value === 2) return true;
+  return typeof value === "string" &&
+    (value.trim() === "2" || value.trim().toLowerCase() === "repeater");
+}
+
+function normalizeRouteContact(value: unknown): ChannelPathContact | null {
+  const contact = asRecord(value);
+  if (!contact) return null;
+  if (
+    !isRepeaterContact(
+      contact["type"] ?? contact["contact_type"] ?? contact["node_type"]
+    )
+  ) {
+    return null;
+  }
+  const completePublicKey = normalizedContactKey(contact["public_key"]);
+  const publicKey = completePublicKey ?? normalizedContactKey(
+    contact["pubkey_prefix"] ?? contact["adv_id"]
+  );
+  const name = normalizedContactName(
+    contact["adv_name"] ?? contact["name"] ?? contact["display_name"]
+  );
+  return publicKey && name
+    ? {
+      publicKey,
+      name,
+      ...(!completePublicKey ? { keyIsPrefix: true } : {}),
+    }
+    : null;
+}
+
+function routeContactIdentity(contact: ChannelPathContact): string {
+  return contact.keyIsPrefix
+    ? `${contact.publicKey}\u0000${contact.name}`
+    : contact.publicKey;
+}
+
+function normalizeContactResponse(value: unknown): ChannelPathContact[] | null {
+  const root = asRecord(value);
+  const response = asRecord(root?.["response"]) ?? root;
+  if (!response || response["error"] !== undefined) return null;
+  const rawContacts = response["contacts"];
+  if (!Array.isArray(rawContacts)) return null;
+  const contacts: ChannelPathContact[] = [];
+  const seen = new Set<string>();
+  const limit = Math.min(rawContacts.length, MAX_CONTACT_RESPONSE_ITEMS);
+  for (let index = 0; index < limit; index += 1) {
+    const contact = normalizeRouteContact(rawContacts[index]);
+    if (!contact) continue;
+    const identity = routeContactIdentity(contact);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    contacts.push(contact);
+  }
+  return contacts;
+}
+
+function mergeRouteContacts(
+  first: readonly ChannelPathContact[],
+  second: readonly ChannelPathContact[]
+): ChannelPathContact[] {
+  const merged = first.slice(0, MAX_CONTACT_RESPONSE_ITEMS);
+  for (const contact of second) {
+    const exactIndex = merged.findIndex(
+      (candidate) =>
+        candidate.publicKey === contact.publicKey &&
+        (!candidate.keyIsPrefix || !contact.keyIsPrefix ||
+          candidate.name === contact.name)
+    );
+    if (exactIndex >= 0) {
+      merged[exactIndex] = contact;
+      continue;
+    }
+    const prefixIndex = merged.findIndex(
+      (candidate) =>
+        candidate.name === contact.name &&
+        (candidate.keyIsPrefix || contact.keyIsPrefix) &&
+        (candidate.publicKey.startsWith(contact.publicKey) ||
+          contact.publicKey.startsWith(candidate.publicKey))
+    );
+    if (prefixIndex >= 0) {
+      if (contact.publicKey.length > merged[prefixIndex]!.publicKey.length) {
+        merged[prefixIndex] = contact;
+      }
+      continue;
+    }
+    if (merged.length >= MAX_CONTACT_RESPONSE_ITEMS) break;
+    merged.push(contact);
+  }
+  return merged;
+}
+
 /** Split MeshCore's concatenated route hashes without assuming one-byte hops. */
 export function splitRoutePath(
   value: unknown,
@@ -383,7 +557,16 @@ export function compactRoutePath(segments: string[]): string {
   return `${segments.slice(0, 2).join(",")},…,${segments.slice(-2).join(",")}`;
 }
 
-function normalizeRxRoute(value: unknown, index: number): NormalizedRxRoute | null {
+function explicitPathHashSize(value: unknown): PathHashSizeBytes | undefined {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 3
+    ? (value as PathHashSizeBytes)
+    : undefined;
+}
+
+function normalizeRxRoute(value: unknown): NormalizedRxRoute | null {
   const route = asRecord(value);
   if (!route) return null;
   const hopCount = routeHopCount(route["path_len"]);
@@ -394,21 +577,45 @@ function normalizeRxRoute(value: unknown, index: number): NormalizedRxRoute | nu
     : splitRoutePath(route["path"], hopCount, route["path_hash_size"]);
   const scope = normalizedScope(route["flood_scope"]);
   const regionScoped = route["region_scope"] === true;
-  if (hopCount === undefined && !pathSegments && !scope && !regionScoped) return null;
-  const timestamp = eventTimestamp(route["timestamp"]);
-  const rawPath =
-    pathSegments && typeof route["path"] === "string"
-      ? route["path"].trim().toUpperCase()
-      : "";
+  const rawPath = typeof route["path"] === "string" ? route["path"].trim() : "";
+  const direct = hopCount === 0 && !rawPath;
+  const hashSizeBytes = pathSegments
+    ? explicitPathHashSize(route["path_hash_size"]) ??
+      ((pathSegments[0]!.length / 2) as PathHashSizeBytes)
+    : undefined;
+  if (
+    hopCount === undefined &&
+    !pathSegments &&
+    !scope &&
+    !regionScoped
+  ) {
+    return null;
+  }
+  const key = direct
+    ? "direct"
+    : pathSegments && hashSizeBytes
+      ? `${hashSizeBytes}:${pathSegments.join(",")}`
+      : undefined;
   return {
-    key: [String(timestamp ?? ""), String(hopCount ?? ""), rawPath, String(index)].join(
-      "\u0000"
-    ),
+    key,
     hopCount,
     pathSegments,
+    hashSizeBytes,
+    direct,
     scope,
     regionScoped,
   };
+}
+
+function uniqueDialogRoutes(routes: NormalizedRxRoute[]): NormalizedRxRoute[] {
+  const seen = new Set<string>();
+  const unique: NormalizedRxRoute[] = [];
+  for (const route of routes) {
+    if (!route.key || seen.has(route.key)) continue;
+    seen.add(route.key);
+    unique.push(route);
+  }
+  return unique;
 }
 
 function routingSignature(
@@ -505,7 +712,11 @@ export class MeshcoreChannelCard extends HTMLElement {
   private _routingBySendId = new Map<string, RoutingRecord>();
   private _routingBySignature = new Map<string, RoutingRecord>();
   private _routingByEntry = new Map<string, RoutingRecord>();
+  private _routingByDialogId = new Map<string, RoutingRecord>();
   private _pendingSentScopes = new Map<string, PendingSentScope>();
+  private _routeContactCache = new Map<string, RouteContactCacheEntry>();
+  private _routeContactGeneration = 0;
+  private _nextRouteDialogId = 0;
   private readonly _headerActions: HeaderActionController;
 
   constructor() {
@@ -518,6 +729,16 @@ export class MeshcoreChannelCard extends HTMLElement {
       () => this._localize()("card.confirm_action")
     );
     this.shadowRoot!.addEventListener("click", (event) => {
+      const target = event.target as { closest?: (selector: string) => Element | null } | null;
+      const pathButton = target?.closest?.("[data-channel-paths]") as HTMLElement | null;
+      if (pathButton?.dataset["channelPaths"]) {
+        event.preventDefault();
+        this._showChannelPathsDialog(
+          pathButton.dataset["channelPaths"],
+          pathButton
+        );
+        return;
+      }
       this._headerActions.handleClick(event);
     });
     this.shadowRoot!.addEventListener("pointerdown", (event) => {
@@ -549,6 +770,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     this._connected = false;
     this._detachReadyListener();
     this._stopSubscription();
+    this._clearRouteContactCache();
     this._headerActions.disconnect();
     if (this._renderTimer !== null) {
       clearTimeout(this._renderTimer);
@@ -577,6 +799,7 @@ export class MeshcoreChannelCard extends HTMLElement {
       this._historyError = false;
       this._restartSubscription();
     }
+    if (previousEntity !== this._config.entity) this._clearRouteContactCache();
     this._stateFingerprint = "";
     this._render();
   }
@@ -586,6 +809,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     this._hass = hass;
     this._connection = hass.connection;
     if (oldConnection !== this._connection) {
+      this._clearRouteContactCache();
       if (oldConnection) this._detachReadyListener(oldConnection);
       this._readyListenerAttached = false;
       this._attachReadyListener();
@@ -666,6 +890,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     // The old subscription died with the socket and must not be unsubscribed on
     // the new connection; Home Assistant's native Logbook follows this pattern.
     this._subscriptionId++;
+    this._clearRouteContactCache();
     this._subscribed = false;
     this._unsubscribes = [];
     this._historyError = false;
@@ -826,18 +1051,114 @@ export class MeshcoreChannelCard extends HTMLElement {
     return Number.parseInt(match[1]!, 10);
   }
 
-  private _selectedConfigEntryIds(): Set<string> {
-    const entityId = this._config!.entity!;
-    const deviceId = this._hass?.entities[entityId]?.device_id;
+  private _selectedConfigEntryId(): string | null {
+    const entityId = this._config?.entity;
+    const entity = entityId ? this._hass?.entities[entityId] : undefined;
+    const entityConfigEntry = eventIdentifier(entity?.config_entry_id);
+    if (entityConfigEntry) return entityConfigEntry;
+    const deviceId = entity?.device_id;
     const device = deviceId ? this._hass?.devices[deviceId] : undefined;
-    const identifiers = new Set<string>();
     const primary = eventIdentifier(device?.primary_config_entry);
-    if (primary) identifiers.add(primary);
-    for (const value of device?.config_entries ?? []) {
-      const identifier = eventIdentifier(value);
-      if (identifier) identifiers.add(identifier);
+    if (primary) return primary;
+    const configEntries = Array.from(
+      new Set(
+        (device?.config_entries ?? [])
+          .map((value) => eventIdentifier(value))
+          .filter((value): value is string => !!value)
+      )
+    );
+    return configEntries.length === 1 ? configEntries[0]! : null;
+  }
+
+  private _stateRouteContacts(): ChannelPathContact[] {
+    const hass = this._hass;
+    const entityId = this._config?.entity;
+    const hubDeviceId = entityId ? hass?.entities[entityId]?.device_id : null;
+    if (!hass || !hubDeviceId) return [];
+    const contacts: ChannelPathContact[] = [];
+    const seen = new Set<string>();
+    for (const [candidateId, registryEntry] of Object.entries(hass.entities)) {
+      if (
+        registryEntry.device_id !== hubDeviceId ||
+        registryEntry.platform !== "meshcore" ||
+        !candidateId.startsWith("binary_sensor.")
+      ) {
+        continue;
+      }
+      const state = hass.states[candidateId];
+      if (!state) continue;
+      const contact = normalizeRouteContact(state.attributes);
+      if (!contact) continue;
+      const identity = routeContactIdentity(contact);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      contacts.push(contact);
+      if (contacts.length >= MAX_CONTACT_RESPONSE_ITEMS) break;
     }
-    return identifiers;
+    return contacts;
+  }
+
+  private _serviceRouteContacts(
+    configEntryId: string
+  ): { contacts?: ChannelPathContact[]; pending?: Promise<ChannelPathContact[]> } {
+    const now = Date.now();
+    const cached = this._routeContactCache.get(configEntryId);
+    if (cached && cached.expiresAt > now) {
+      return { contacts: cached.contacts, pending: cached.pending };
+    }
+    if (cached) this._routeContactCache.delete(configEntryId);
+    const hass = this._hass;
+    if (!hass?.callWS) return {};
+
+    const generation = this._routeContactGeneration;
+    let request: Promise<unknown>;
+    try {
+      request = hass.callWS({
+        type: "call_service",
+        domain: "meshcore",
+        service: "get_contacts",
+        service_data: { entry_id: configEntryId },
+        return_response: true,
+      });
+    } catch {
+      return {};
+    }
+
+    let pending: Promise<ChannelPathContact[]>;
+    pending = request.then(
+      (response) => {
+        if (generation !== this._routeContactGeneration) return [];
+        const current = this._routeContactCache.get(configEntryId);
+        if (current?.pending !== pending) return [];
+        const contacts = normalizeContactResponse(response);
+        if (contacts === null) {
+          this._routeContactCache.delete(configEntryId);
+          return [];
+        }
+        this._routeContactCache.set(configEntryId, {
+          contacts,
+          expiresAt: Date.now() + CONTACT_CACHE_TTL_MS,
+        });
+        return contacts;
+      },
+      () => {
+        const current = this._routeContactCache.get(configEntryId);
+        if (current?.pending === pending) {
+          this._routeContactCache.delete(configEntryId);
+        }
+        return [];
+      }
+    );
+    this._routeContactCache.set(configEntryId, {
+      expiresAt: now + CONTACT_CACHE_TTL_MS,
+      pending,
+    });
+    return { pending };
+  }
+
+  private _clearRouteContactCache(): void {
+    this._routeContactGeneration += 1;
+    this._routeContactCache.clear();
   }
 
   private _processMessageSent(data: Record<string, unknown>): void {
@@ -848,13 +1169,13 @@ export class MeshcoreChannelCard extends HTMLElement {
     if (!sendId || !scope || channelIndex === undefined || channelIndex !== selectedIndex) {
       return;
     }
-    const selectedConfigEntryIds = this._selectedConfigEntryIds();
+    const selectedConfigEntryId = this._selectedConfigEntryId();
     const eventConfigEntryId =
       eventIdentifier(data["device"]) ?? eventIdentifier(data["entry_id"]);
     if (
-      selectedConfigEntryIds.size > 0 &&
+      selectedConfigEntryId &&
       eventConfigEntryId &&
-      !selectedConfigEntryIds.has(eventConfigEntryId)
+      eventConfigEntryId !== selectedConfigEntryId
     ) {
       return;
     }
@@ -941,7 +1262,9 @@ export class MeshcoreChannelCard extends HTMLElement {
     }
     if (!record) {
       if (!sendId && !contextId && !signature) return;
+      const dialogId = String(++this._nextRouteDialogId);
       record = {
+        dialogId,
         entityId,
         sender,
         message,
@@ -952,6 +1275,7 @@ export class MeshcoreChannelCard extends HTMLElement {
         updatedAt: Date.now(),
       };
       this._routingRecords.add(record);
+      this._routingByDialogId.set(dialogId, record);
     }
 
     const previousDetails = JSON.stringify(this._routeDetails(record));
@@ -991,16 +1315,19 @@ export class MeshcoreChannelCard extends HTMLElement {
     const routes: NormalizedRxRoute[] = [];
     const limit = Math.min(value.length, MAX_RX_LOG_ROUTES);
     for (let index = 0; index < limit; index += 1) {
-      const route = normalizeRxRoute(value[index], index);
+      const route = normalizeRxRoute(value[index]);
       if (route) routes.push(route);
     }
-    if (!routes.length) return;
+    record.routes = routes;
+    const selectableRoutes = routes.filter(
+      (route): route is NormalizedRxRoute & { key: string } => !!route.key
+    );
     const selected = record.selectedRouteKey
       ? routes.find((route) => route.key === record.selectedRouteKey)
-      : routes[0];
-    if (!selected) return;
-    record.selectedRouteKey ??= selected.key;
-    record.selectedRoute = selected;
+      : selectableRoutes[0];
+    const nextSelected = selected ?? selectableRoutes[0];
+    record.selectedRouteKey = nextSelected?.key;
+    record.selectedRoute = nextSelected;
   }
 
   private _mergePendingSentScope(
@@ -1024,13 +1351,34 @@ export class MeshcoreChannelCard extends HTMLElement {
   }
 
   private _routeDetails(record: RoutingRecord): MessageRouteDetails | null {
-    const route = record.selectedRoute;
+    const routes = record.routes ?? [];
+    const route = record.selectedRoute ?? routes[0];
     const hopCount = route?.hopCount ?? record.topHopCount;
     const pathSegments = route?.pathSegments;
-    const scope = record.outgoingScope ?? route?.scope;
-    const regionScoped = !scope && route?.regionScoped === true;
+    const hashSizeBytes = route?.hashSizeBytes;
+    const direct = route?.direct === true;
+    const namedScopes = new Map<string, string>();
+    for (const candidate of routes) {
+      if (!candidate.scope) continue;
+      const compact = candidate.scope.replace(/^#/, "");
+      if (compact) namedScopes.set(compact, candidate.scope);
+    }
+    const scope =
+      record.outgoingScope ??
+      (namedScopes.size === 1 ? namedScopes.values().next().value : undefined);
+    const regionScoped =
+      !scope &&
+      routes.some((candidate) => candidate.regionScoped || !!candidate.scope);
     if (hopCount === undefined && !pathSegments && !scope && !regionScoped) return null;
-    return { hopCount, pathSegments, scope, regionScoped };
+    return {
+      hopCount,
+      pathSegments,
+      hashSizeBytes,
+      direct,
+      scope,
+      regionScoped,
+      routes: uniqueDialogRoutes(routes),
+    };
   }
 
   private _scheduleRoutingRender(record: RoutingRecord): void {
@@ -1165,11 +1513,13 @@ export class MeshcoreChannelCard extends HTMLElement {
     this._routingBySendId.clear();
     this._routingBySignature.clear();
     this._routingByEntry.clear();
+    this._routingByDialogId.clear();
     this._pendingSentScopes.clear();
   }
 
   private _deleteRoutingRecord(record: RoutingRecord): void {
     this._routingRecords.delete(record);
+    this._routingByDialogId.delete(record.dialogId);
     for (const lookup of [
       this._routingByContext,
       this._routingBySendId,
@@ -1343,15 +1693,16 @@ export class MeshcoreChannelCard extends HTMLElement {
     if (!details) return "";
     const t = this._localize();
     const pill = (
-      kind: "hops" | "path" | "scope",
+      kind: "hops" | "scope",
       icon: string,
       value: string,
-      accessibleValue = value
+      accessibleValue = value,
+      tooltip?: string
     ): string => {
       const label = t(`card.channel_${kind}`);
       const accessibleLabel = `${label}: ${accessibleValue}`;
       return `<span class="message-route-detail ${kind}" title="${escapeHtml(
-        accessibleLabel
+        tooltip ?? accessibleLabel
       )}" aria-label="${escapeHtml(accessibleLabel)}"><ha-icon aria-hidden="true" icon="${icon}"></ha-icon><bdi dir="ltr">${escapeHtml(
         value
       )}</bdi></span>`;
@@ -1366,18 +1717,122 @@ export class MeshcoreChannelCard extends HTMLElement {
         )
       );
     }
-    if (details.pathSegments?.length) {
-      const fullPath = details.pathSegments.join(",");
-      pills.push(pill("path", "mdi:routes", compactRoutePath(details.pathSegments), fullPath));
+    if (details.direct || details.pathSegments?.length) {
+      const fullPath = details.direct
+        ? t("card.channel_direct")
+        : details.pathSegments!.join(",");
+      const visiblePath = details.direct
+        ? fullPath
+        : compactRoutePath(details.pathSegments!);
+      const openLabel = t("card.channel_open_paths", { path: fullPath });
+      pills.push(`<button type="button" class="message-route-detail path" data-channel-paths="${escapeHtml(
+        record!.dialogId
+      )}" aria-haspopup="dialog" aria-label="${escapeHtml(openLabel)}" title="${escapeHtml(
+        fullPath
+      )}"><ha-ripple></ha-ripple><ha-icon aria-hidden="true" icon="mdi:routes"></ha-icon><bdi dir="ltr">${escapeHtml(
+        visiblePath
+      )}</bdi></button>`);
+    }
+    if (details.pathSegments?.length && details.hashSizeBytes) {
+      const bytes = t(
+        details.hashSizeBytes === 1
+          ? "card.channel_byte_one"
+          : "card.channel_bytes_count",
+        { n: details.hashSizeBytes }
+      );
+      pills.push(`<span class="message-route-detail bytes" title="${escapeHtml(
+        bytes
+      )}" aria-label="${escapeHtml(bytes)}"><ha-icon aria-hidden="true" icon="mdi:code-braces"></ha-icon><bdi dir="ltr">${escapeHtml(
+        bytes
+      )}</bdi></span>`);
     }
     if (details.scope || details.regionScoped) {
       const fullScope = details.scope ?? t("card.channel_regional");
       const visibleScope = details.scope?.replace(/^#/, "") || fullScope;
-      pills.push(pill("scope", "mdi:web", visibleScope, fullScope));
+      const scopeHelp = details.scope
+        ? undefined
+        : t("card.channel_scope_name_unavailable");
+      pills.push(
+        pill(
+          "scope",
+          "mdi:web",
+          visibleScope,
+          scopeHelp ? `${fullScope}. ${scopeHelp}` : fullScope,
+          scopeHelp
+        )
+      );
     }
+    if (!pills.length) return "";
     return `<div class="message-route-details" role="group" aria-label="${escapeHtml(
       t("card.channel_routing_details")
     )}">${pills.join("")}</div>`;
+  }
+
+  private _showChannelPathsDialog(
+    dialogId: string,
+    returnFocus: HTMLElement
+  ): void {
+    const config = this._config;
+    if (!this._hass || !config || config.hide_route_details) return;
+    const record = this._routingByDialogId.get(dialogId);
+    if (
+      !record ||
+      record.entityId !== config.entity ||
+      !record.matchedEntryKey ||
+      !this._entries.has(record.matchedEntryKey)
+    ) {
+      return;
+    }
+    const details = this._routeDetails(record);
+    if (!details) return;
+    const routes: ChannelMessagePathRoute[] = details.routes.map((route) => ({
+      hopCount: route.direct
+        ? 0
+        : route.hopCount ?? route.pathSegments?.length ?? 0,
+      pathSegments: route.pathSegments ?? [],
+      hashSizeBytes: route.hashSizeBytes,
+      direct: route.direct,
+    }));
+    if (!routes.length) return;
+
+    let contacts = this._stateRouteContacts();
+    let contactsPromise: Promise<readonly ChannelPathContact[]> | undefined;
+    const configEntryId = this._selectedConfigEntryId();
+    if (configEntryId) {
+      const serviceContacts = this._serviceRouteContacts(configEntryId);
+      if (serviceContacts.contacts) {
+        contacts = mergeRouteContacts(contacts, serviceContacts.contacts);
+      }
+      contactsPromise = serviceContacts.pending;
+    }
+
+    const t = this._localize();
+    const dialogParams: ChannelPathsDialogParams = {
+      title: t("card.channel_paths_title", { n: routes.length }),
+      routes,
+      contacts,
+      contactsPromise,
+      localize: t,
+      closeLabel: this._hass.localize?.("ui.common.close") ?? "Close",
+      returnFocus,
+      resolveReturnFocus: () => this._currentPathDialogTrigger(dialogId),
+    };
+    this.dispatchEvent(new CustomEvent("show-dialog", {
+      bubbles: true,
+      composed: true,
+      detail: {
+        dialogTag: CHANNEL_PATHS_DIALOG_TAG,
+        dialogImport: channelPathsDialogImport,
+        dialogParams,
+        dialogAnchor: returnFocus,
+      },
+    }));
+  }
+
+  private _currentPathDialogTrigger(dialogId: string): HTMLElement | undefined {
+    return Array.from(
+      this.shadowRoot?.querySelectorAll<HTMLElement>("[data-channel-paths]") ?? []
+    ).find((candidate) => candidate.dataset["channelPaths"] === dialogId);
   }
 
   private _captureScrollAnchor(): ScrollAnchor | null {
