@@ -2175,20 +2175,31 @@ describe("channel route contact resolution", () => {
     expect(shown).not.toHaveBeenCalled();
   });
 
-  it("uses only state-backed repeater contacts attached to the selected hub", async () => {
+  it("uses state-backed repeater contacts on the selected hub and its child devices", async () => {
     const { card, mock, hass } = await createCard();
+    hass.devices["contact-device"] = device("contact-device", {
+      name: "Selected hub contact",
+      via_device_id: HUB_DEVICE_ID,
+    });
     hass.devices["foreign-hub"] = device("foreign-hub", { name: "Foreign" });
-    addContactState(hass, "binary_sensor.meshcore_contact_a1", HUB_DEVICE_ID, {
+    hass.devices["foreign-contact-device"] = device("foreign-contact-device", {
+      name: "Foreign hub contact",
+      via_device_id: "foreign-hub",
+    });
+    hass.devices["unrelated-contact-device"] = device("unrelated-contact-device", {
+      name: "Unrelated root contact",
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_a1", "contact-device", {
       public_key: "a10000112233",
       adv_name: "Hill Repeater",
       type: 2,
     });
-    addContactState(hass, "binary_sensor.meshcore_contact_a1_duplicate", HUB_DEVICE_ID, {
+    addContactState(hass, "binary_sensor.meshcore_contact_a1_duplicate", "contact-device", {
       public_key: "A10000112233",
       adv_name: "Duplicate should be ignored",
       type: "Repeater",
     });
-    addContactState(hass, "binary_sensor.meshcore_contact_b2_legacy", HUB_DEVICE_ID, {
+    addContactState(hass, "binary_sensor.meshcore_contact_b2_legacy", "contact-device", {
       adv_id: "b2",
       adv_name: "Legacy Ridge",
       contact_type: "repeater",
@@ -2203,24 +2214,29 @@ describe("channel route contact resolution", () => {
       adv_name: "Prefix collision two",
       contact_type: "repeater",
     });
-    addContactState(hass, "binary_sensor.meshcore_contact_client", HUB_DEVICE_ID, {
+    addContactState(hass, "binary_sensor.meshcore_contact_client", "contact-device", {
       public_key: "C30000112233",
       adv_name: "Client",
       type: 1,
     });
-    addContactState(hass, "binary_sensor.meshcore_contact_foreign", "foreign-hub", {
+    addContactState(hass, "binary_sensor.meshcore_contact_foreign", "foreign-contact-device", {
       public_key: "A1FFFFFFFFFF",
       adv_name: "Foreign Repeater",
+      type: 2,
+    });
+    addContactState(hass, "binary_sensor.meshcore_contact_unrelated", "unrelated-contact-device", {
+      public_key: "F60000112233",
+      adv_name: "Unrelated Repeater",
       type: 2,
     });
     addContactState(
       hass,
       "binary_sensor.meshcore_contact_without_state",
-      HUB_DEVICE_ID,
+      "contact-device",
       { public_key: "D40000112233", adv_name: "Unavailable", type: 2 },
       false
     );
-    const wrongPlatform = registryEntry(HUB_DEVICE_ID, "other");
+    const wrongPlatform = registryEntry("contact-device", "other");
     wrongPlatform.entity_id = "binary_sensor.other_contact";
     hass.entities[wrongPlatform.entity_id] = wrongPlatform;
     const wrongPlatformState = state("on", {
@@ -2520,6 +2536,20 @@ describe("channel route contact resolution", () => {
 
   it("handles rejected and synchronously unavailable response services", async () => {
     const rejected = await createCard();
+    rejected.hass.devices["rejected-service-contact"] = device(
+      "rejected-service-contact",
+      { via_device_id: HUB_DEVICE_ID }
+    );
+    addContactState(
+      rejected.hass,
+      "binary_sensor.meshcore_rejected_service_contact",
+      "rejected-service-contact",
+      {
+        public_key: "A10000112233",
+        adv_name: "State fallback",
+        type: 2,
+      }
+    );
     const rejectCall = vi.fn().mockRejectedValue(new Error("unauthorized"));
     rejected.hass.callWS = rejectCall;
     const rejectedRow = await renderRoutedMessage(
@@ -2528,6 +2558,9 @@ describe("channel route contact resolution", () => {
       "rejected service"
     );
     const rejectedDialog = await openPathsDialog(rejected.card, rejectedRow);
+    expect(rejectedDialog.dialogParams.contacts).toEqual([
+      { publicKey: "A10000112233", name: "State fallback" },
+    ]);
     await expect(rejectedDialog.dialogParams.contactsPromise).resolves.toEqual([]);
 
     const throwing = await createCard();

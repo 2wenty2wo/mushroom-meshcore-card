@@ -9,6 +9,7 @@ import type {
 } from "./types.js";
 import { HeaderActionController } from "./actions.js";
 import { dateKey, dateLabel, timeLabel } from "./date-time.js";
+import { isDeviceOnHub } from "./discovery.js";
 import { escapeHtml } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
@@ -1079,7 +1080,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     const seen = new Set<string>();
     for (const [candidateId, registryEntry] of Object.entries(hass.entities)) {
       if (
-        registryEntry.device_id !== hubDeviceId ||
+        !isDeviceOnHub(hass, registryEntry.device_id, hubDeviceId) ||
         registryEntry.platform !== "meshcore" ||
         !candidateId.startsWith("binary_sensor.")
       ) {

@@ -6,6 +6,17 @@ import type {
 } from "./types.js";
 import { longestCommonPrefix, longestCommonSuffix } from "./helpers.js";
 
+/** Whether a registry device is the selected hub or one of its direct children. */
+export function isDeviceOnHub(
+  hass: Pick<HomeAssistant, "devices">,
+  deviceId: string | null | undefined,
+  hubDeviceId: string
+): boolean {
+  if (!deviceId) return false;
+  return deviceId === hubDeviceId ||
+    hass.devices[deviceId]?.via_device_id === hubDeviceId;
+}
+
 // Longest suffix shared by at least half of the strings.
 //
 // Why: a node device's entities mostly end with `_<adv_name_slug>`
