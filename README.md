@@ -111,9 +111,9 @@ grid_options:
   rows: 4
 ```
 
-`tap_action`, `hold_action`, and `double_tap_action` accept the standard Home Assistant action config (`more-info`, `navigate`, `url`, `perform-action`, `none`), including the optional `confirmation:` prompt, and apply to the device header; individual metrics and chips always open their own entity's more-info dialog. `icon_color` accepts the Mushroom/Tile color names (`red`, `blue`, `deep-purple`, …) or a plain CSS color (`#rrggbb`, `rgb(…)`, `hsl(…)`, named colors), and applies while the device is online.
+`tap_action`, `hold_action`, and `double_tap_action` accept the standard Home Assistant action config (`more-info`, `navigate`, `url`, `perform-action`, `none`), including the optional `confirmation:` prompt, and apply to the device header. Individual metrics and entity-backed chips open their own entity's more-info dialog, except the neighbour-count chip, which opens the recent-neighbours list. `icon_color` accepts the Mushroom/Tile color names (`red`, `blue`, `deep-purple`, …) or a plain CSS color (`#rrggbb`, `rgb(…)`, `hsl(…)`, named colors), and applies while the device is online.
 
-The editor writes a complete `chip_layout`; chips omitted from all three YAML lists are treated as hidden. Existing configurations without `chip_layout` retain their current quick-chip behavior, including the legacy `hide_quick_stats` and `show_firmware` options. The neighbour count and list include only neighbours provably heard within the integration's rolling 48-hour window. `show_neighbors: false` hides both, while `max_neighbors` limits only the visible rows and not the reported total.
+The editor writes a complete `chip_layout`; chips omitted from all three YAML lists are treated as hidden. Existing configurations without `chip_layout` retain their current quick-chip behavior, including the legacy `hide_quick_stats` and `show_firmware` options. The neighbour count and list include only neighbours provably heard within the integration's rolling 48-hour window. The top neighbour chip shows the icon and count only; selecting it opens the same neighbour list shown under Details. `show_neighbors: false` hides both, while `max_neighbors` limits the visible rows in Details and the popup without changing the reported total.
 
 Hub cards use the same public card type:
 
