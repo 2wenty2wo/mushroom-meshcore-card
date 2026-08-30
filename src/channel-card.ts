@@ -214,7 +214,7 @@ interface NormalizedRxRoute {
 
 interface RoutingRecord {
   entityId: string;
-  sender: string | null;
+  sender: string;
   message: string;
   outgoing: boolean;
   timestampMs: number | null;
@@ -414,7 +414,7 @@ function normalizeRxRoute(value: unknown, index: number): NormalizedRxRoute | nu
 function routingSignature(
   entityId: string,
   outgoing: boolean,
-  sender: string | null,
+  sender: string,
   message: string,
   timestampMs: number | null
 ): string | undefined {
@@ -422,7 +422,7 @@ function routingSignature(
   return [
     entityId,
     outgoing ? "out" : "in",
-    sender ?? "",
+    sender,
     message,
     String(timestampMs),
   ].join("\u0000");
@@ -820,17 +820,15 @@ export class MeshcoreChannelCard extends HTMLElement {
     this._processMessageRouting(eventType, envelope, data);
   }
 
-  private _selectedChannelIndex(): number | null {
-    const entityId = this._config?.entity;
-    const match = entityId?.match(/_ch_(\d+)_messages$/);
-    if (match) return Number.parseInt(match[1]!, 10);
-    const configured = this._selectedState()?.attributes["channel_index"];
-    return nonNegativeInteger(configured) ?? null;
+  private _selectedChannelIndex(): number {
+    // Subscriptions only exist after _hasValidTarget validates this suffix.
+    const match = this._config!.entity!.match(/_ch_(\d+)_messages$/)!;
+    return Number.parseInt(match[1]!, 10);
   }
 
   private _selectedConfigEntryIds(): Set<string> {
-    const entityId = this._config?.entity;
-    const deviceId = entityId ? this._hass?.entities[entityId]?.device_id : null;
+    const entityId = this._config!.entity!;
+    const deviceId = this._hass?.entities[entityId]?.device_id;
     const device = deviceId ? this._hass?.devices[deviceId] : undefined;
     const identifiers = new Set<string>();
     const primary = eventIdentifier(device?.primary_config_entry);
@@ -876,10 +874,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     this._pendingSentScopes.set(sendId, pending);
     const maximum = Math.max(20, this._maxMessages() * 2);
     while (this._pendingSentScopes.size > maximum) {
-      const oldest = this._pendingSentScopes.keys().next().value as
-        | string
-        | undefined;
-      if (!oldest) break;
+      const oldest = this._pendingSentScopes.keys().next().value as string;
       this._pendingSentScopes.delete(oldest);
     }
     const record = this._routingBySendId.get(sendId);
@@ -896,7 +891,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     const selectedEntityId = this._config?.entity;
     const entityId = eventIdentifier(data["entity_id"]);
     const message = nonEmptyString(data["message"]);
-    const sender = nonEmptyString(data["sender_name"], 512)?.trim() ?? null;
+    const sender = nonEmptyString(data["sender_name"], 512)?.trim();
     if (!selectedEntityId || entityId !== selectedEntityId || !message || !sender) {
       return;
     }
@@ -960,7 +955,6 @@ export class MeshcoreChannelCard extends HTMLElement {
     }
 
     const previousDetails = JSON.stringify(this._routeDetails(record));
-    record.sender = record.sender ?? sender;
     record.timestampMs = record.timestampMs ?? timestampMs;
     if (eventType === "meshcore_message") {
       record.messageEventSeen = true;
@@ -1094,8 +1088,9 @@ export class MeshcoreChannelCard extends HTMLElement {
           (!item.record.outgoing || item.record.messageEventSeen) &&
           (!item.record.matchedEntryKey ||
             item.record.matchedEntryKey === entryKey ||
+            // These fields are assigned and cleared as one match tuple.
             (item.record.matchAuthoritative !== true &&
-              item.distance < (item.record.matchedDistance ?? Number.POSITIVE_INFINITY)))
+              item.distance < item.record.matchedDistance!))
       )
       .sort((a, b) => a.distance - b.distance)[0];
     return candidate
@@ -1132,11 +1127,9 @@ export class MeshcoreChannelCard extends HTMLElement {
     entry: LogbookEntry,
     record: RoutingRecord
   ): boolean {
-    const selectedEntityId = this._config?.entity;
-    if ((entry.entity_id ?? selectedEntityId) !== record.entityId) return false;
-    const parsed = parseMessage(entry.message ?? "");
+    // _entries contains only selected-entity rows accepted by parseMessage.
+    const parsed = parseMessage(entry.message!)!;
     return (
-      parsed !== null &&
       parsed.sender === record.sender &&
       parsed.body === record.message
     );
@@ -1151,7 +1144,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     const entryKey = this._entryKey(entry);
     const existing = this._routingByEntry.get(entryKey);
     if (existing && existing !== record) {
-      if (!authoritative) return false;
+      // Non-authoritative candidates filter occupied entries before this call.
       existing.matchedEntryKey = undefined;
       existing.matchedDistance = undefined;
       existing.matchAuthoritative = undefined;
@@ -1159,12 +1152,11 @@ export class MeshcoreChannelCard extends HTMLElement {
     if (record.matchedEntryKey && record.matchedEntryKey !== entryKey) {
       this._routingByEntry.delete(record.matchedEntryKey);
     }
-    const changed = existing !== record || record.matchedEntryKey !== entryKey;
     record.matchedEntryKey = entryKey;
     record.matchedDistance = distance;
     record.matchAuthoritative = authoritative;
     this._routingByEntry.set(entryKey, record);
-    return changed;
+    return true;
   }
 
   private _clearRoutingMetadata(): void {
@@ -1383,7 +1375,6 @@ export class MeshcoreChannelCard extends HTMLElement {
       const visibleScope = details.scope?.replace(/^#/, "") || fullScope;
       pills.push(pill("scope", "mdi:web", visibleScope, fullScope));
     }
-    if (!pills.length) return "";
     return `<div class="message-route-details" role="group" aria-label="${escapeHtml(
       t("card.channel_routing_details")
     )}">${pills.join("")}</div>`;

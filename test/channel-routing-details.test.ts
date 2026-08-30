@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MeshcoreChannelCard } from "../src/channel-card.js";
+import {
+  MeshcoreChannelCard,
+  splitRoutePath,
+} from "../src/channel-card.js";
 import type { HomeAssistant, MeshcoreChannelCardConfig } from "../src/types.js";
 import {
   CHANNEL_ENTITY,
@@ -69,21 +72,31 @@ function targetHass(mock: MockConnection): HomeAssistant {
 async function createCard(
   config: MeshcoreChannelCardConfig = { entity: CHANNEL_ENTITY },
   mock = createConnection()
-): Promise<{ card: MeshcoreChannelCard; mock: MockConnection }> {
+): Promise<{
+  card: MeshcoreChannelCard;
+  mock: MockConnection;
+  hass: HomeAssistant;
+}> {
   const card = document.createElement(
     "mushroom-meshcore-channel-card"
   ) as MeshcoreChannelCard;
   card.setConfig(config);
-  card.hass = targetHass(mock);
+  const hass = targetHass(mock);
+  card.hass = hass;
   document.body.appendChild(card);
   await vi.advanceTimersByTimeAsync(0);
-  return { card, mock };
+  return { card, mock, hass };
 }
 
 function subscription(mock: MockConnection, name: string): Subscription {
-  const result = mock.subscriptions.find(
-    ({ params }) => subscriptionName(params) === name
-  );
+  let result: Subscription | undefined;
+  for (let index = mock.subscriptions.length - 1; index >= 0; index -= 1) {
+    const candidate = mock.subscriptions[index]!;
+    if (subscriptionName(candidate.params) === name) {
+      result = candidate;
+      break;
+    }
+  }
   expect(result, `missing ${name} subscription`).toBeDefined();
   return result!;
 }
@@ -180,6 +193,28 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("route path normalization", () => {
+  it.each([
+    [undefined, 1, 1],
+    ["", 1, 1],
+    ["AABB", 1, "1"],
+    ["AABB", 1, 1.5],
+    ["AABB", 1, 0],
+    ["AABB", 0, undefined],
+    ["AABB", 3, undefined],
+    ["AABB", undefined, undefined],
+  ] as const)(
+    "rejects value=%s, pathLength=%s, hashSize=%s",
+    (value, pathLength, hashSize) => {
+      expect(splitRoutePath(value, pathLength, hashSize)).toBeUndefined();
+    }
+  );
+
+  it("infers a one-hop two-byte path without an explicit hash size", () => {
+    expect(splitRoutePath("aabb", 1, undefined)).toEqual(["AABB"]);
+  });
+});
+
 describe("channel routing subscriptions", () => {
   it("subscribes to Logbook plus the three native MeshCore event streams", async () => {
     const { mock } = await createCard();
@@ -261,6 +296,48 @@ describe("channel routing subscriptions", () => {
     for (const current of mock.subscriptions.slice(4)) {
       expect(current.unsubscribe).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it("ignores malformed native envelopes without affecting Logbook", async () => {
+    const { card, mock } = await createCard();
+    const native = subscription(mock, "meshcore_message").callback;
+    native(null);
+    native([]);
+    native({ event_type: "meshcore_message", data: null });
+    native({ event_type: "meshcore_message", data: [] });
+    native({
+      event_type: "meshcore_message",
+      data: { message_type: "direct" },
+    });
+    fireLogbook(mock, [{ when: NOW, message: "Alice: unaffected" }]);
+    await settle();
+
+    expect(card.shadowRoot!.textContent).toContain("unaffected");
+    expect(card.shadowRoot!.querySelector(".message-route-details")).toBeNull();
+  });
+
+  it("ignores a native callback from a superseded subscription generation", async () => {
+    const { card, mock } = await createCard();
+    const stale = subscription(mock, "meshcore_message").callback;
+    card.setConfig({ entity: CHANNEL_ENTITY, hours_to_show: 48 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    stale({
+      event_type: "meshcore_message",
+      data: channelMessage({ message: "stale callback", hop_count: 6 }),
+      time_fired: new Date(NOW * 1000).toISOString(),
+      context: { id: "stale-callback" },
+    });
+    fireLogbook(mock, [
+      {
+        when: NOW,
+        context_id: "stale-callback",
+        message: "Alice: stale callback",
+      },
+    ]);
+    await settle();
+
+    expect(rowFor(card, "stale callback").querySelector(".message-route-details")).toBeNull();
   });
 });
 
@@ -402,6 +479,117 @@ describe("channel routing correlation", () => {
     expect(rowFor(card, "invalid direction").querySelector(".message-route-details")).toBeNull();
   });
 
+  it("rejects invalid correlation inputs without borrowing nearby metadata", async () => {
+    const { card, mock } = await createCard();
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "incoming send id",
+        send_id: "not-valid-for-incoming",
+        hop_count: 2,
+      }),
+      "incoming-send-id"
+    );
+    fireEvent(
+      mock,
+      "meshcore_delivery_update",
+      channelMessage({
+        message: "no correlation key",
+        timestamp: undefined,
+        hop_count: 3,
+      })
+    );
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({ message: "different native body", hop_count: 4 })
+    );
+    subscription(mock, "meshcore_message").callback({
+      event_type: "meshcore_message",
+      data: channelMessage({
+        message: "timeless",
+        timestamp: undefined,
+        hop_count: 5,
+      }),
+      time_fired: "invalid",
+      context: { id: "timeless-native" },
+    });
+    fireLogbook(mock, [
+      {
+        when: NOW,
+        context_id: "incoming-send-id",
+        message: "Alice: incoming send id",
+      },
+      { when: NOW - 1, message: "Alice: no correlation key" },
+      { when: NOW - 2, message: "Alice: different logbook body" },
+      { when: NOW - 3, message: "Alice: timeless" },
+    ]);
+    await settle();
+
+    for (const body of [
+      "incoming send id",
+      "no correlation key",
+      "different logbook body",
+      "timeless",
+    ]) {
+      expect(rowFor(card, body).querySelector(".message-route-details")).toBeNull();
+    }
+  });
+
+  it("matches a Logbook row without entity_id and ignores its replay", async () => {
+    const { card, mock } = await createCard();
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({ message: "implicit entity", hop_count: 2 }),
+      "implicit-entity"
+    );
+    const entry = {
+      when: NOW,
+      context_id: "implicit-entity",
+      entity_id: undefined,
+      message: "Alice: implicit entity",
+    };
+    fireLogbook(mock, [entry]);
+    fireLogbook(mock, [entry]);
+    await settle();
+
+    expect(
+      pill(rowFor(card, "implicit entity"), "mdi:transit-connection-variant")
+        ?.textContent
+    ).toContain("2");
+    expect(card.shadowRoot!.querySelectorAll(".message-row")).toHaveLength(1);
+  });
+
+  it("retains an existing message event time when a duplicate lacks one", async () => {
+    const { card, mock } = await createCard();
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({ message: "missing event time", hop_count: 1 }),
+      "missing-event-time"
+    );
+    subscription(mock, "meshcore_message").callback({
+      event_type: "meshcore_message",
+      data: channelMessage({ message: "missing event time", hop_count: 1 }),
+      time_fired: "invalid",
+      context: { id: "missing-event-time" },
+    });
+    fireLogbook(mock, [
+      {
+        when: NOW,
+        context_id: "missing-event-time",
+        message: "Alice: missing event time",
+      },
+    ]);
+    await settle();
+
+    expect(
+      pill(rowFor(card, "missing event time"), "mdi:transit-connection-variant")
+    ).not.toBeNull();
+  });
+
   it("uses send_id to carry an outgoing scope onto the exact Logbook row", async () => {
     const { card, mock } = await createCard();
     fireEvent(mock, "meshcore_message_sent", {
@@ -423,6 +611,9 @@ describe("channel routing correlation", () => {
         outgoing: true,
         send_id: "send-1",
         hop_count: 0,
+        rx_log_data: [
+          reception({ flood_scope: "#rx-fallback", region_scope: true }),
+        ],
       }),
       "outbound-context"
     );
@@ -438,7 +629,75 @@ describe("channel routing correlation", () => {
     const row = rowFor(card, "outbound");
     expect(pill(row, "mdi:web")?.textContent).toContain("au-nsw-syd");
     expect(pill(row, "mdi:web")?.textContent).not.toContain("#au-nsw-syd");
-    expect(pill(row, "mdi:transit-connection-variant")?.textContent).toContain("0");
+    expect(pill(row, "mdi:web")?.textContent).not.toContain("rx-fallback");
+    // A selected reception's path_len is authoritative over top-level hop_count.
+    expect(pill(row, "mdi:transit-connection-variant")?.textContent).toContain("2");
+  });
+
+  it("accepts entry_id and send_timestamp with only a primary config entry", async () => {
+    const { card, mock, hass } = await createCard();
+    const deviceId = hass.entities[CHANNEL_ENTITY]!.device_id!;
+    hass.devices[deviceId]!.config_entries = undefined;
+    hass.devices[deviceId]!.primary_config_entry = CONFIG_ENTRY_ID;
+    fireEvent(mock, "meshcore_message_sent", {
+      entry_id: CONFIG_ENTRY_ID,
+      channel_idx: 0,
+      message: "primary entry",
+      message_type: "channel",
+      send_timestamp: NOW,
+      send_id: "primary-entry",
+      scope: "#primary",
+    });
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "primary entry",
+        sender_name: "Me",
+        outgoing: true,
+        send_id: "primary-entry",
+        hop_count: 0,
+      }),
+      "primary-entry"
+    );
+    fireLogbook(mock, [
+      { when: NOW, context_id: "primary-entry", message: "Me: primary entry" },
+    ]);
+    await settle();
+
+    expect(pill(rowFor(card, "primary entry"), "mdi:web")?.textContent).toContain("primary");
+  });
+
+  it("promotes an unfiltered pending scope only after an exact-target message", async () => {
+    const { card, mock, hass } = await createCard();
+    hass.entities[CHANNEL_ENTITY]!.device_id = null;
+    fireEvent(mock, "meshcore_message_sent", {
+      device: "unresolvable-entry",
+      channel_idx: 0,
+      message: "confirmed later",
+      message_type: "channel",
+      timestamp: NOW,
+      send_id: "confirmed-later",
+      scope: "#confirmed",
+    });
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "confirmed later",
+        sender_name: "Me",
+        outgoing: true,
+        send_id: "confirmed-later",
+        hop_count: 0,
+      }),
+      "confirmed-later"
+    );
+    fireLogbook(mock, [
+      { when: NOW, context_id: "confirmed-later", message: "Me: confirmed later" },
+    ]);
+    await settle();
+
+    expect(pill(rowFor(card, "confirmed later"), "mdi:web")?.textContent).toContain("confirmed");
   });
 
   it("adds an outgoing scope when message_sent arrives after the matched message", async () => {
@@ -677,6 +936,39 @@ describe("channel routing correlation", () => {
     ).toContain("4");
   });
 
+  it("normalizes millisecond, numeric-string, ISO, and invalid timestamps safely", async () => {
+    const { card, mock } = await createCard();
+    const cases: Array<[string, unknown]> = [
+      ["millisecond number", NOW * 1000],
+      ["millisecond string", String(NOW * 1000)],
+      ["ISO timestamp", new Date(NOW * 1000).toISOString()],
+      ["invalid timestamp", "definitely-not-a-date"],
+    ];
+    cases.forEach(([body, timestamp], index) => {
+      fireEvent(
+        mock,
+        "meshcore_message",
+        channelMessage({ message: body, timestamp, hop_count: index }),
+        `timestamp-${index}`
+      );
+    });
+    fireLogbook(
+      mock,
+      cases.map(([body], index) => ({
+        when: NOW,
+        context_id: `timestamp-${index}`,
+        message: `Alice: ${body}`,
+      }))
+    );
+    await settle();
+
+    for (const [body] of cases) {
+      expect(
+        pill(rowFor(card, body), "mdi:transit-connection-variant")
+      ).not.toBeNull();
+    }
+  });
+
   it("does not associate metadata outside both event and integration time windows", async () => {
     const { card, mock } = await createCard();
     fireEvent(
@@ -778,9 +1070,6 @@ describe("channel routing correlation", () => {
 
   it("does not attach a delivery_update-only record until meshcore_message arrives", async () => {
     const { card, mock } = await createCard();
-    fireLogbook(mock, [
-      { when: NOW, message: "Alice: progressive gate" },
-    ]);
     const data = channelMessage({
       message: "progressive gate",
       outgoing: true,
@@ -788,6 +1077,9 @@ describe("channel routing correlation", () => {
       rx_log_data: [reception({ path_len: 2, path: "AABB" })],
     });
     fireEvent(mock, "meshcore_delivery_update", data);
+    fireLogbook(mock, [
+      { when: NOW, message: "Alice: progressive gate" },
+    ]);
     await settle();
     expect(rowFor(card, "progressive gate").querySelector(".message-route-details")).toBeNull();
 
@@ -802,6 +1094,7 @@ describe("channel routing correlation", () => {
     const { card, mock } = await createCard();
     fireLogbook(mock, [
       { when: NOW - 5, message: "Alice: incoming update" },
+      { when: NOW + 20, message: "Alice: incoming update" },
     ]);
     fireEvent(
       mock,
@@ -816,9 +1109,12 @@ describe("channel routing correlation", () => {
     );
     await settle();
 
-    expect(
-      pill(rowFor(card, "incoming update"), "mdi:routes")?.textContent
-    ).toContain("AA,BB,CC");
+    const rows = Array.from(
+      card.shadowRoot!.querySelectorAll<HTMLElement>(".message-row")
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.querySelector(".message-route-details")).toBeNull();
+    expect(pill(rows[1]!, "mdi:routes")?.textContent).toContain("AA,BB,CC");
   });
 
   it("rerenders a matched message when a later delivery update adds its route", async () => {
@@ -1026,6 +1322,84 @@ describe("channel routing correlation", () => {
 });
 
 describe("channel routing normalization and presentation", () => {
+  it("ignores invalid scopes and malformed reception records", async () => {
+    const { card, mock } = await createCard();
+    const invalidScopes: Array<[string, unknown]> = [
+      ["hash scope", "#"],
+      ["blank scope", "   "],
+      ["long scope", "x".repeat(257)],
+      ["numeric scope", 42],
+    ];
+    invalidScopes.forEach(([body, floodScope], index) => {
+      fireEvent(
+        mock,
+        "meshcore_message",
+        channelMessage({
+          message: body,
+          timestamp: NOW - index,
+          hop_count: 0,
+          rx_log_data: [
+            reception({ flood_scope: floodScope, region_scope: false }),
+          ],
+        }),
+        `invalid-scope-${index}`
+      );
+    });
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "malformed receptions",
+        timestamp: NOW - 5,
+        hop_count: 5,
+        rx_log_data: [null, [], {}, "not-an-object"],
+      }),
+      "malformed-receptions"
+    );
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "bounded receptions",
+        timestamp: NOW - 6,
+        hop_count: 1,
+        rx_log_data: [
+          ...Array.from({ length: 64 }, () => ({})),
+          reception({ path_len: 1, path: "FF" }),
+        ],
+      }),
+      "bounded-receptions"
+    );
+    fireLogbook(mock, [
+      ...invalidScopes.map(([body], index) => ({
+        when: NOW - index,
+        context_id: `invalid-scope-${index}`,
+        message: `Alice: ${body}`,
+      })),
+      {
+        when: NOW - 5,
+        context_id: "malformed-receptions",
+        message: "Alice: malformed receptions",
+      },
+      {
+        when: NOW - 6,
+        context_id: "bounded-receptions",
+        message: "Alice: bounded receptions",
+      },
+    ]);
+    await settle();
+
+    for (const [body] of invalidScopes) {
+      expect(pill(rowFor(card, body), "mdi:web")).toBeNull();
+    }
+    const malformed = rowFor(card, "malformed receptions");
+    expect(pill(malformed, "mdi:transit-connection-variant")?.textContent).toContain("5");
+    expect(pill(malformed, "mdi:routes")).toBeNull();
+    const bounded = rowFor(card, "bounded receptions");
+    expect(pill(bounded, "mdi:transit-connection-variant")?.textContent).toContain("1");
+    expect(pill(bounded, "mdi:routes")).toBeNull();
+  });
+
   it("keeps the first selected reception stable across progressive updates", async () => {
     const { card, mock } = await createCard();
     fireEvent(
@@ -1058,6 +1432,18 @@ describe("channel routing normalization and presentation", () => {
     expect(pill(row, "mdi:transit-connection-variant")?.textContent).toContain("2");
     expect(pill(row, "mdi:routes")?.textContent).toContain("A1,B2");
     expect(pill(row, "mdi:routes")?.textContent).not.toContain("FF");
+
+    fireEvent(
+      mock,
+      "meshcore_delivery_update",
+      channelMessage({
+        message: "progressive",
+        progressive: true,
+        rx_log_data: [reception({ path_len: 1, path: "FF" })],
+      })
+    );
+    await settle();
+    expect(pill(rowFor(card, "progressive"), "mdi:routes")?.textContent).toContain("A1,B2");
   });
 
   it("normalizes one-, two-, and three-byte path hashes plus safe inference", async () => {
@@ -1095,6 +1481,37 @@ describe("channel routing normalization and presentation", () => {
     for (const [body, , , expected] of cases) {
       expect(pill(rowFor(card, body), "mdi:routes")?.textContent).toContain(expected);
     }
+  });
+
+  it("renders an explicit hash path even when path_len is absent", async () => {
+    const { card, mock } = await createCard();
+    fireEvent(
+      mock,
+      "meshcore_message",
+      channelMessage({
+        message: "path without hops",
+        rx_log_data: [
+          {
+            path: "AABB",
+            path_hash_size: 1,
+            region_scope: false,
+          },
+        ],
+      }),
+      "path-without-hops"
+    );
+    fireLogbook(mock, [
+      {
+        when: NOW,
+        context_id: "path-without-hops",
+        message: "Alice: path without hops",
+      },
+    ]);
+    await settle();
+
+    const row = rowFor(card, "path without hops");
+    expect(pill(row, "mdi:routes")?.textContent).toContain("AA,BB");
+    expect(pill(row, "mdi:transit-connection-variant")).toBeNull();
   });
 
   it("omits malformed and ambiguous path values without losing a valid hop count", async () => {
