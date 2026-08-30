@@ -1,6 +1,6 @@
 {
   "name": "mushroom-meshcore-card",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Mushroom-styled Home Assistant Lovelace cards for MeshCore",
   "homepage": "https://github.com/2wenty2wo/mushroom-meshcore-card",
   "repository": {
