@@ -615,6 +615,21 @@ describe("node rendering details", () => {
     ).toContain('<span slot="primary">Ridge</span>');
   });
 
+  it("renders and fingerprints a node by device id without firmware metadata", () => {
+    const hass = createHass();
+    hass.devices[NODE_DEVICE_ID]!.name_by_user = null;
+    hass.devices[NODE_DEVICE_ID]!.name = null;
+    hass.devices[NODE_DEVICE_ID]!.sw_version = null;
+
+    const { card, body } = renderCard(
+      { target: { type: "node", id: NODE_DEVICE_ID } },
+      hass
+    );
+    expect(body).toContain(`<span slot="primary">${NODE_DEVICE_ID}</span>`);
+    expect(body).toContain(">Online");
+    expect(card.getCardSize()).toBe(5);
+  });
+
   it("omits the last-seen suffix without a last_advert reading", () => {
     const hass = createHass();
     removeEntity(hass, nodeEntity("last_advert"));
