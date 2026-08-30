@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { discoverHubs, discoverNodes, findEntityByDevice } from "../src/discovery.js";
+import {
+  discoverHubs,
+  discoverNodes,
+  findEntityByDevice,
+  isDeviceOnHub,
+} from "../src/discovery.js";
 import type { HassEntityRegistryEntry, HomeAssistant } from "../src/types.js";
 import {
   HUB_COUNT_ENTITY,
@@ -106,6 +111,27 @@ describe("discoverNodes", () => {
   it("returns an empty list without registry data", () => {
     const bare = { states: {} } as unknown as HomeAssistant;
     expect(discoverNodes(bare)).toEqual([]);
+  });
+});
+
+describe("isDeviceOnHub", () => {
+  it("accepts the hub and its direct children without crossing hub boundaries", () => {
+    const hass = createHass();
+    hass.devices["foreign-hub"] = {
+      ...hass.devices[HUB_DEVICE_ID]!,
+      id: "foreign-hub",
+    };
+    hass.devices["foreign-child"] = {
+      ...hass.devices[NODE_DEVICE_ID]!,
+      id: "foreign-child",
+      via_device_id: "foreign-hub",
+    };
+
+    expect(isDeviceOnHub(hass, HUB_DEVICE_ID, HUB_DEVICE_ID)).toBe(true);
+    expect(isDeviceOnHub(hass, NODE_DEVICE_ID, HUB_DEVICE_ID)).toBe(true);
+    expect(isDeviceOnHub(hass, "foreign-child", HUB_DEVICE_ID)).toBe(false);
+    expect(isDeviceOnHub(hass, "missing-device", HUB_DEVICE_ID)).toBe(false);
+    expect(isDeviceOnHub(hass, null, HUB_DEVICE_ID)).toBe(false);
   });
 });
 

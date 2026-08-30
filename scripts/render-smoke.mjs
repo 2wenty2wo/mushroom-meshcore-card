@@ -790,14 +790,24 @@ latestSubscription(channelHass.connection, {
     message: "First: keep\nsecond <line>",
     timestamp: nowSeconds,
     hop_count: 7,
-    rx_log_data: [{
-      timestamp: nowSeconds,
-      path_len: 3,
-      path: "21005555e963",
-      path_hash_size: 2,
-      region_scope: true,
-      flood_scope: "#au",
-    }],
+    rx_log_data: [
+      {
+        timestamp: nowSeconds,
+        path_len: 3,
+        path: "21005555e963",
+        path_hash_size: 2,
+        region_scope: true,
+        flood_scope: null,
+      },
+      {
+        timestamp: nowSeconds,
+        path_len: 4,
+        path: "210064be0c10e963",
+        path_hash_size: 2,
+        region_scope: true,
+        flood_scope: "#au",
+      },
+    ],
   },
 });
 await wait(300);
@@ -807,8 +817,23 @@ assert.match(channelHtml, /<strong class="message-sender">Alice &amp; &lt;Admin&
 assert.match(channelHtml, /First: keep\nsecond &lt;line&gt;/);
 assert.match(channelHtml, /<div class="message-route-details" role="group" aria-label="Route details">/);
 assert.match(channelHtml, /class="message-route-detail hops" title="Hops: 3"[^>]*>[\s\S]*?<bdi dir="ltr">3<\/bdi>/);
-assert.match(channelHtml, /class="message-route-detail path" title="Path: 2100,5555,E963"[^>]*>[\s\S]*?<bdi dir="ltr">2100,5555,E963<\/bdi>/);
+assert.match(channelHtml, /<button type="button" class="message-route-detail path" data-channel-paths="[^"]+" aria-haspopup="dialog" aria-label="Open message paths: 2100,5555,E963" title="2100,5555,E963">[\s\S]*?<bdi dir="ltr">2100,5555,E963<\/bdi><\/button>/);
+assert.match(channelHtml, /class="message-route-detail bytes" title="2 bytes" aria-label="2 bytes">[\s\S]*?icon="mdi:code-braces"[\s\S]*?<bdi dir="ltr">2 bytes<\/bdi>/);
 assert.match(channelHtml, /class="message-route-detail scope" title="Scope: #au"[^>]*>[\s\S]*?<bdi dir="ltr">au<\/bdi>/);
+const routeDialogId = channelHtml.match(/data-channel-paths="([^"]+)"/)?.[1];
+assert.ok(routeDialogId, "rendered route path has an opaque dialog id");
+const routeTrigger = { dataset: { channelPaths: routeDialogId } };
+routeTrigger.closest = (selector) => selector === "[data-channel-paths]" ? routeTrigger : null;
+channelCard.shadowRoot.listeners.get("click")({
+  target: routeTrigger,
+  preventDefault() {},
+});
+assert.equal(
+  channelCard.lastEvent?.detail?.dialogTag,
+  "mushroom-meshcore-channel-paths-dialog",
+);
+assert.equal(channelCard.lastEvent?.detail?.dialogParams?.routes?.length, 2);
+assert.equal(channelCard.lastEvent?.detail?.dialogParams?.title, "Message paths (2)");
 assert.match(
   channelHtml,
   /<div class="message-meta"><strong class="message-sender">Alice &amp; &lt;Admin&gt;<\/strong><time class="message-time"[\s\S]*?<\/time><\/div><div class="message-body">First: keep\nsecond &lt;line&gt;<\/div><div class="message-route-details"/,
