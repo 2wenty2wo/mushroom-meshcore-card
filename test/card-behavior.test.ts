@@ -11,6 +11,7 @@ import {
   HUB_PUBKEY,
   NODE_DEVICE_ID,
   NODE_NAME,
+  NODE_ONLINE_ENTITY,
   NODE_PREFIX,
   NODE_SUFFIX,
   createHass,
@@ -36,10 +37,21 @@ function addEntity(
   hass: HomeAssistant,
   entityId: string,
   entityState: HassEntity,
-  deviceId: string | null = NODE_DEVICE_ID
+  deviceId: string | null = NODE_DEVICE_ID,
+  platform = "meshcore"
 ): void {
   entityState.entity_id = entityId;
   hass.states[entityId] = entityState;
+  const entry = registryEntry(deviceId, platform);
+  entry.entity_id = entityId;
+  hass.entities[entityId] = entry;
+}
+
+function addRegistryEntity(
+  hass: HomeAssistant,
+  entityId: string,
+  deviceId: string | null = NODE_DEVICE_ID
+): void {
   const entry = registryEntry(deviceId);
   entry.entity_id = entityId;
   hass.entities[entityId] = entry;
@@ -133,6 +145,25 @@ describe("device card interactions", () => {
     });
     dispatch(card.shadowRoot!.querySelector("[data-action-scope]")!, "click");
     expect(seen).toEqual([nodeEntity("uptime")]);
+  });
+
+  it("prefers the enabled online entity for header more-info", () => {
+    const hass = createHass();
+    addEntity(
+      hass,
+      "binary_sensor.meshcore_spring_contact",
+      state("fresh", { adv_name: NODE_NAME })
+    );
+    addEntity(hass, NODE_ONLINE_ENTITY, state("on"));
+    const { card } = renderCard(NODE_TARGET, hass);
+    const seen: string[] = [];
+    card.addEventListener("hass-more-info", (event) => {
+      seen.push(
+        (event as Event & { detail: { entityId: string } }).detail.entityId
+      );
+    });
+    dispatch(card.shadowRoot!.querySelector("[data-action-scope]")!, "click");
+    expect(seen).toEqual([NODE_ONLINE_ENTITY]);
   });
 
   it("fires a configured hold action and suppresses the trailing click", () => {
@@ -235,15 +266,34 @@ describe("device card refresh timers", () => {
     expect(shadowBody(card)).toContain(">Online");
   });
 
-  it("throttles state-driven renders to one per ten seconds", () => {
-    const { card } = renderCard(NODE_TARGET);
+  it("throttles authoritative state changes and renders the latest state", () => {
+    const onlineHass = createHass();
+    addEntity(onlineHass, NODE_ONLINE_ENTITY, state("on"));
+    const { card } = renderCard(NODE_TARGET, onlineHass);
     expect(shadowBody(card)).toContain(">Online");
-    card.hass = createHass({ online: false });
-    // Two quick updates share one deferred render slot.
-    card.hass = createHass({ online: false });
+    const offlineHass = createHass();
+    addEntity(offlineHass, NODE_ONLINE_ENTITY, state("off"));
+    card.hass = offlineHass;
+    const unknownHass = createHass();
+    addEntity(unknownHass, NODE_ONLINE_ENTITY, state("unknown"));
+    // Two quick updates share one deferred render slot; the latest wins.
+    card.hass = unknownHass;
     expect(shadowBody(card)).toContain(">Online");
     vi.advanceTimersByTime(10_000);
-    expect(shadowBody(card)).toContain("Offline");
+    expect(shadowBody(card)).toContain(">Unknown");
+    expect(shadowBody(card)).toContain('icon="mdi:help"');
+  });
+
+  it("re-renders when only the online registry enabled state changes", () => {
+    const hass = createHass();
+    addRegistryEntity(hass, NODE_ONLINE_ENTITY);
+    const { card } = renderCard(NODE_TARGET, hass);
+    expect(shadowBody(card)).toContain(">Unknown");
+    hass.entities[NODE_ONLINE_ENTITY]!.disabled_by = "user";
+    card.hass = hass;
+    expect(shadowBody(card)).toContain(">Unknown");
+    vi.advanceTimersByTime(10_000);
+    expect(shadowBody(card)).toContain(">Online");
   });
 });
 
@@ -368,6 +418,98 @@ describe("hub rendering details", () => {
 });
 
 describe("node rendering details", () => {
+  it("uses online as authoritative over unhealthy legacy signals", () => {
+    const hass = createHass({ online: false });
+    addEntity(hass, nodeEntity("request_successes"), state(0));
+    addEntity(hass, nodeEntity("status"), state("offline"));
+    addEntity(hass, NODE_ONLINE_ENTITY, state("on"));
+    const { card, body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Online");
+    expect(body).toContain('class="metrics-grid');
+    expect(card.getCardSize()).toBe(5);
+  });
+
+  it("uses offline as authoritative over healthy legacy signals", () => {
+    const hass = createHass();
+    addEntity(hass, nodeEntity("request_successes"), state(5));
+    addEntity(hass, nodeEntity("status"), state("online"));
+    addEntity(hass, NODE_ONLINE_ENTITY, state("off"));
+    const { card, body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Offline");
+    expect(body).toContain('icon="mdi:signal-off"');
+    expect(body).not.toContain('class="metrics-grid');
+    expect(body).not.toContain("battery-block");
+    expect(card.getCardSize()).toBe(1);
+  });
+
+  it.each(["unknown", "unavailable", "", "unexpected"])(
+    "preserves the dedicated %s state as unknown",
+    (onlineState) => {
+      const hass = createHass();
+      addEntity(hass, nodeEntity("request_successes"), state(5));
+      addEntity(hass, nodeEntity("status"), state("online"));
+      addEntity(hass, NODE_ONLINE_ENTITY, state(onlineState));
+      const { card, body } = renderCard(
+        { ...NODE_TARGET, icon_color: "red" },
+        hass
+      );
+      expect(body).toContain(">Unknown");
+      expect(body).toContain('class="device-header-row unknown"');
+      expect(body).toContain('icon="mdi:help"');
+      expect(body).not.toContain('icon="mdi:signal-off"');
+      expect(body).not.toContain("--mushroom-meshcore-icon-override-color");
+      expect(body).not.toContain('class="metrics-grid');
+      expect(body).not.toContain("battery-block");
+      expect(card.getCardSize()).toBe(1);
+    }
+  );
+
+  it("renders unknown when the enabled online entity has no state", () => {
+    const hass = createHass();
+    addRegistryEntity(hass, NODE_ONLINE_ENTITY);
+    const { card, body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Unknown");
+    expect(body).toContain('icon="mdi:help"');
+    expect(card.getCardSize()).toBe(1);
+  });
+
+  it("uses legacy inference when the online entity is disabled", () => {
+    const hass = createHass();
+    addEntity(hass, NODE_ONLINE_ENTITY, state("off"));
+    hass.entities[NODE_ONLINE_ENTITY]!.disabled_by = "user";
+    const { body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Online");
+    expect(body).toContain(`data-entity="${nodeEntity("uptime")}"`);
+    expect(body).not.toContain(`data-entity="${NODE_ONLINE_ENTITY}"`);
+  });
+
+  it("ignores an online entity attached to another device", () => {
+    const hass = createHass();
+    addEntity(hass, NODE_ONLINE_ENTITY, state("off"), "other-device");
+    const { body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Online");
+  });
+
+  it("does not treat a non-binary online sensor as authoritative", () => {
+    const hass = createHass();
+    addEntity(hass, nodeEntity("online"), state("off"));
+    const { body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Online");
+  });
+
+  it("does not treat a non-MeshCore online binary sensor as authoritative", () => {
+    const hass = createHass();
+    addEntity(
+      hass,
+      NODE_ONLINE_ENTITY,
+      state("off"),
+      NODE_DEVICE_ID,
+      "template"
+    );
+    const { body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Online");
+  });
+
   it("falls back to scanning the device for a voltage-like entity", () => {
     const hass = createHass();
     removeEntity(hass, nodeEntity("battery_voltage"));

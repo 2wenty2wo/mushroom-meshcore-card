@@ -53,6 +53,7 @@
     "within_48h": "binnen 48 uur",
     "online": "Online",
     "offline": "Offline",
+    "unknown": "Onbekend",
     "technical_section": "Technisch",
     "location_section": "Locatie",
     "mqtt_section": "MQTT",

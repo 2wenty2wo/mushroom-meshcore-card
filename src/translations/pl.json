@@ -53,6 +53,7 @@
     "within_48h": "w ciągu 48 godz.",
     "online": "Online",
     "offline": "Offline",
+    "unknown": "Nieznany",
     "technical_section": "Techniczne",
     "location_section": "Lokalizacja",
     "mqtt_section": "MQTT",

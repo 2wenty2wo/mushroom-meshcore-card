@@ -18,6 +18,7 @@ export interface TileHeaderOptions {
   active: boolean;
   primaryEntityId: string | null;
   trailing?: string;
+  inactiveState?: "offline" | "unknown";
   inactiveBadgeIcon?: string;
 }
 
@@ -28,7 +29,9 @@ export function renderTileHeader(
 ): string {
   const name = config?.name || options.displayName;
   const iconName = config?.icon || options.icon;
-  const stateClass = options.active ? "online" : "offline";
+  const stateClass = options.active
+    ? "online"
+    : options.inactiveState ?? "offline";
   const label = options.secondary ? `${name}, ${options.secondary}` : name;
   const interactive =
     !!options.primaryEntityId ||

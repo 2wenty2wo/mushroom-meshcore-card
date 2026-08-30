@@ -409,6 +409,21 @@ assert.doesNotMatch(offlineNode.body, /class="node-details/);
 assert.doesNotMatch(offlineNode.body, /Noise Floor/);
 assert.equal(offlineNode.card.getCardSize(), 1);
 
+const unknownOnlineEntity = "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm";
+const unknownNodeHass = createHass();
+unknownNodeHass.states[unknownOnlineEntity] = state("unknown");
+unknownNodeHass.entities[unknownOnlineEntity] = registryEntry("node-device");
+const unknownNode = render(
+  { target: { type: "node", id: "Spring Farm" } },
+  unknownNodeHass
+);
+assert.match(unknownNode.body, /Unknown/);
+assert.match(unknownNode.body, /class="device-header-row unknown"/);
+assert.match(unknownNode.body, /icon="mdi:help"/);
+assert.doesNotMatch(unknownNode.body, /icon="mdi:signal-off"/);
+assert.doesNotMatch(unknownNode.body, /class="metrics-grid/);
+assert.equal(unknownNode.card.getCardSize(), 1);
+
 const missingMetricHass = createHass();
 missingMetricHass.states["sensor.meshcore_spring_last_rssi_spring_farm"].state = "unavailable";
 const missingMetricNode = render(
