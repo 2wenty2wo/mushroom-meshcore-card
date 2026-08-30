@@ -27,9 +27,9 @@ function formatNeighborAge(secondsAgo: number): string {
 }
 
 /**
- * Render the complete neighbours section used by both the card disclosure and
- * its dialog. Every external or translated value is escaped before entering
- * the returned HTML string.
+ * Render the complete neighbours section used by the neighbours dialog.
+ * Every external or translated value is escaped before entering the returned
+ * HTML string.
  */
 export function renderNeighborSection(
   snapshot: NeighborSnapshot,
@@ -89,7 +89,7 @@ export function renderNeighborSection(
   </section>`;
 }
 
-/** Shared presentation for neighbour lists in the main card and dialog. */
+/** Presentation for the neighbour list in the dialog. */
 export const NEIGHBOR_STYLES = `
   .neighbors-section { margin-top: 12px; }
   .neighbors-header {

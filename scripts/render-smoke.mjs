@@ -167,10 +167,19 @@ function createHass(online = true) {
     [`${prefix}nb_recv_rate${suffix}`]: state(9.75),
     [`${prefix}out_path${suffix}`]: state("flood"),
     [`${prefix}out_path_len${suffix}`]: state(2),
+    [`${prefix}spreading_factor${suffix}`]: state(11),
+    [`${prefix}frequency${suffix}`]: state(869.525),
+    [`${prefix}bandwidth${suffix}`]: state(250),
+    [`${prefix}tx_power${suffix}`]: state(22),
     [`${prefix}sent_direct${suffix}`]: state(101),
     [`${prefix}recv_errors${suffix}`]: state(8),
     [`${prefix}request_failures${suffix}`]: state(2),
     [`${prefix}noise_floor${suffix}`]: state(-114),
+    [`${prefix}neighbor_count`]: state(1),
+    [`${prefix}neighbor_a1b2c3`]: state(8.5, {
+      secs_ago: 60,
+      resolved_name: "Ridge Repeater",
+    }),
   };
   const states = {
     [hubCount]: state(2),
@@ -358,13 +367,68 @@ const sentChipIndex = onlineNode.body.indexOf('icon="mdi:arrow-up"');
 const receivedChipIndex = onlineNode.body.indexOf('icon="mdi:arrow-down"');
 const temperatureChipIndex = onlineNode.body.indexOf('icon="mdi:thermometer"');
 const uptimeChipIndex = onlineNode.body.indexOf('icon="mdi:timer-outline"');
+const neighborChipIndex = onlineNode.body.indexOf("data-neighbors-dialog");
 assert.ok(
   sentChipIndex < receivedChipIndex
     && receivedChipIndex < temperatureChipIndex
-    && temperatureChipIndex < uptimeChipIndex,
-  "quick chips are ordered sent, received, temperature, uptime",
+    && temperatureChipIndex < uptimeChipIndex
+    && uptimeChipIndex < neighborChipIndex,
+  "quick chips are ordered sent, received, temperature, uptime, neighbors",
 );
 assert.match(onlineNode.body, /aria-label="Uptime 1d 12h"/);
+assert.match(
+  onlineNode.body,
+  /data-neighbors-dialog[^>]*aria-label="1 neighbor · 48h"[^>]*title="1 neighbor · 48h"/,
+);
+assert.doesNotMatch(onlineNode.body, /class="neighbors-section"/);
+assert.doesNotMatch(onlineNode.body, /class="neighbors-list"/);
+assert.doesNotMatch(onlineNode.body, /class="neighbor-row"/);
+assert.doesNotMatch(onlineNode.body, /Ridge Repeater/);
+
+const openingQuickChipTagForEntity = (html, entityId) => html.match(
+  new RegExp(`<button[^>]*class="quick-chip clickable"[^>]*data-entity="${entityId.replaceAll(".", "\\.")}"[^>]*>`),
+)?.[0] ?? "";
+const tagAttribute = (tag, attribute) => tag.match(
+  new RegExp(`${attribute}="([^"]*)"`),
+)?.[1];
+const temperatureQuickChipTag = openingQuickChipTagForEntity(
+  onlineNode.body,
+  "sensor.meshcore_spring_temperature_spring_farm",
+);
+const uptimeQuickChipTag = openingQuickChipTagForEntity(
+  onlineNode.body,
+  "sensor.meshcore_spring_uptime_spring_farm",
+);
+assert.equal(tagAttribute(temperatureQuickChipTag, "aria-label"), "Temp 25 °C");
+assert.equal(
+  tagAttribute(temperatureQuickChipTag, "title"),
+  tagAttribute(temperatureQuickChipTag, "aria-label"),
+);
+assert.equal(tagAttribute(uptimeQuickChipTag, "aria-label"), "Uptime 1d 12h");
+assert.equal(
+  tagAttribute(uptimeQuickChipTag, "title"),
+  tagAttribute(uptimeQuickChipTag, "aria-label"),
+);
+
+const detailHeadingOrder = [
+  "Network",
+  "Radio",
+  "Network Traffic",
+  "Airtime",
+  "Message Rates",
+  "Reliability",
+];
+let previousDetailHeadingIndex = -1;
+for (const heading of detailHeadingOrder) {
+  const headingIndex = onlineNode.body.indexOf(`<h4>${heading}</h4>`);
+  assert.ok(
+    headingIndex > previousDetailHeadingIndex,
+    `${heading} detail category follows the preceding category`,
+  );
+  previousDetailHeadingIndex = headingIndex;
+}
+assert.doesNotMatch(onlineNode.body, /<h4>Metrics<\/h4>/);
+assert.doesNotMatch(onlineNode.body, /<h4>Telemetry<\/h4>/);
 assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_tx_queue_len_spring_farm"/);
 assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_nb_sent_rate_spring_farm"/);
 assert.match(onlineNode.body, /data-entity="sensor\.meshcore_spring_out_path_spring_farm"/);

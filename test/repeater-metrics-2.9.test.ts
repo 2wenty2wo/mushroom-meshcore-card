@@ -126,7 +126,7 @@ describe("MeshCore HA 2.9 repeater metrics", () => {
   it("renders every canonical metric with its public label, value, unit, and entity binding", () => {
     const { card, body } = renderCard(createV29RepeaterHass());
     const quickRow = card.shadowRoot!.querySelector(".quick-chip-row");
-    const details = card.shadowRoot!.querySelector(".detail-chips");
+    const details = card.shadowRoot!.querySelector("details.node-details");
 
     for (const spec of NEW_REPEATER_METRICS) {
       const entityId = nodeEntity(spec.suffix);
@@ -221,21 +221,14 @@ describe("MeshCore HA 2.9 repeater metrics", () => {
       nodeEntity("out_path"),
       nodeEntity("out_path_len"),
       nodeEntity("relayed"),
-      nodeEntity("canceled"),
-      nodeEntity("duplicate"),
       nodeEntity("sent_direct"),
       nodeEntity("sent_flood"),
       nodeEntity("recv_direct"),
       nodeEntity("recv_flood"),
-      nodeEntity("direct_dups"),
-      nodeEntity("flood_dups"),
-      nodeEntity("full_evts"),
-      nodeEntity("recv_errors"),
       nodeEntity("airtime_utilization"),
       nodeEntity("rx_airtime_utilization"),
       nodeEntity("airtime"),
       nodeEntity("rx_airtime"),
-      nodeEntity("tx_queue_len"),
       nodeEntity("nb_sent_rate"),
       nodeEntity("nb_recv_rate"),
       nodeEntity("sent_direct_rate"),
@@ -245,6 +238,13 @@ describe("MeshCore HA 2.9 repeater metrics", () => {
       nodeEntity("direct_dups_rate"),
       nodeEntity("flood_dups_rate"),
       nodeEntity("recv_errors_rate"),
+      nodeEntity("canceled"),
+      nodeEntity("duplicate"),
+      nodeEntity("direct_dups"),
+      nodeEntity("flood_dups"),
+      nodeEntity("tx_queue_len"),
+      nodeEntity("full_evts"),
+      nodeEntity("recv_errors"),
       nodeEntity("request_successes"),
       nodeEntity("request_failures"),
     ]);

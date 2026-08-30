@@ -22,7 +22,6 @@ import { effectiveChipLayout } from "./chip-layout.js";
 import {
   type NeighborInfo,
   type NeighborSnapshot,
-  renderNeighborSection,
 } from "./neighbors.js";
 import {
   NEIGHBORS_DIALOG_TAG,
@@ -59,6 +58,77 @@ type NodeRepeaterMetricId =
   | "request_failures";
 
 type NodeRepeaterMetrics = Record<NodeRepeaterMetricId, EntityReading>;
+
+type NodeOnlyChipId = Exclude<
+  MeshcoreChipId,
+  "hardware" | "ch1_voltage" | "rate_limiter"
+>;
+
+type NodeDetailCategoryId =
+  | "device"
+  | "network"
+  | "radio"
+  | "traffic"
+  | "airtime"
+  | "message_rates"
+  | "reliability"
+  | "telemetry";
+
+const NODE_DETAIL_CATEGORY_LABELS: Record<NodeDetailCategoryId, string> = {
+  device: "card.device_section",
+  network: "card.network_section",
+  radio: "card.radio_section",
+  traffic: "card.traffic_section",
+  airtime: "card.airtime_section",
+  message_rates: "card.message_rates_section",
+  reliability: "card.reliability_section",
+  telemetry: "card.telemetry_section",
+};
+
+const NODE_DETAIL_CATEGORY_BY_CHIP = {
+  firmware: "device",
+  uptime: "device",
+  neighbor_count: "network",
+  route: "network",
+  path_length: "network",
+  spreading_factor: "radio",
+  frequency: "radio",
+  bandwidth: "radio",
+  tx_power: "radio",
+  sent: "traffic",
+  received: "traffic",
+  relayed: "traffic",
+  sent_direct: "traffic",
+  sent_flood: "traffic",
+  received_direct: "traffic",
+  received_flood: "traffic",
+  tx_airtime: "airtime",
+  rx_airtime: "airtime",
+  tx_airtime_total: "airtime",
+  rx_airtime_total: "airtime",
+  tx_rate: "message_rates",
+  rx_rate: "message_rates",
+  sent_direct_rate: "message_rates",
+  sent_flood_rate: "message_rates",
+  received_direct_rate: "message_rates",
+  received_flood_rate: "message_rates",
+  direct_duplicates_rate: "message_rates",
+  flood_duplicates_rate: "message_rates",
+  receive_errors_rate: "message_rates",
+  canceled: "reliability",
+  duplicate: "reliability",
+  direct_duplicates: "reliability",
+  flood_duplicates: "reliability",
+  queue_length: "reliability",
+  queue_full_events: "reliability",
+  receive_errors: "reliability",
+  request_successes: "reliability",
+  request_failures: "reliability",
+  temperature: "telemetry",
+  humidity: "telemetry",
+  illuminance: "telemetry",
+  pressure: "telemetry",
+} as const satisfies Record<NodeOnlyChipId, NodeDetailCategoryId>;
 
 interface EntityLookupOptions {
   domain?: string;
@@ -430,14 +500,17 @@ export class MeshcoreCard extends HTMLElement {
     id: string | null,
     label: string,
     value: string | null,
-    cls = ""
+    cls = "",
+    accessibleLabel?: string
   ): string {
     if (!id || value === null) return "";
     const blank = value === "unknown" || value === "unavailable";
-    const ariaLabel = `${label}${label ? " " : ""}${blank ? "—" : value}`;
-    return `<button type="button" class="chip ${cls} clickable" data-entity="${escapeHtml(id)}" aria-label="${escapeHtml(ariaLabel)}"><ha-ripple></ha-ripple>${
+    const displayValue = blank ? "—" : value;
+    const ariaLabel = accessibleLabel?.trim()
+      || [label.trim(), displayValue].filter(Boolean).join(" ");
+    return `<button type="button" class="chip ${cls} clickable" data-entity="${escapeHtml(id)}" aria-label="${escapeHtml(ariaLabel)}" title="${escapeHtml(ariaLabel)}"><ha-ripple></ha-ripple>${
       label ? `<span class="chip-label">${escapeHtml(label)}</span>` : ""
-    }${blank ? "—" : escapeHtml(value)}</button>`;
+    }${escapeHtml(displayValue)}</button>`;
   }
 
   private _metric(reading: EntityReading, label: string, unit: string): string {
@@ -457,8 +530,9 @@ export class MeshcoreCard extends HTMLElement {
     icon: string
   ): string {
     if (!reading.id || reading.value === null) return "";
-    const ariaLabel = `${label} ${reading.value}${unit ? ` ${unit}` : ""}`;
-    return `<button type="button" class="quick-chip clickable" part="quick-chip" data-entity="${escapeHtml(reading.id)}" aria-label="${escapeHtml(ariaLabel)}">
+    const displayValue = `${reading.value}${unit ? ` ${unit.trim()}` : ""}`;
+    const ariaLabel = [label.trim(), displayValue].filter(Boolean).join(" ");
+    return `<button type="button" class="quick-chip clickable" part="quick-chip" data-entity="${escapeHtml(reading.id)}" aria-label="${escapeHtml(ariaLabel)}" title="${escapeHtml(ariaLabel)}">
       <ha-ripple></ha-ripple>
       <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
       <span>${escapeHtml(reading.value)}${unit ? ` ${escapeHtml(unit)}` : ""}</span>
@@ -607,12 +681,10 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   /** Quick-chip-styled static fact (no backing entity, not clickable). */
-  private _staticChip(value: unknown, icon: string, ariaLabel?: string): string {
+  private _staticChip(value: unknown, icon: string, accessibleLabel: string): string {
     if (!value) return "";
-    const accessible = ariaLabel
-      ? ` role="note" aria-label="${escapeHtml(ariaLabel)}" title="${escapeHtml(ariaLabel)}"`
-      : "";
-    return `<span class="quick-chip static-chip" part="quick-chip"${accessible}>
+    const normalizedLabel = accessibleLabel.trim();
+    return `<span class="quick-chip static-chip" part="quick-chip" role="note" aria-label="${escapeHtml(normalizedLabel)}" title="${escapeHtml(normalizedLabel)}">
       <ha-icon icon="${escapeHtml(icon)}"></ha-icon>
       <span class="static-chip-content">${escapeHtml(value)}</span>
     </span>`;
@@ -620,7 +692,8 @@ export class MeshcoreCard extends HTMLElement {
 
   private _staticDetailChip(value: unknown, label: string): string {
     if (value === null || value === undefined || value === "") return "";
-    return `<span class="chip static-chip" role="note" aria-label="${escapeHtml(`${label} ${String(value)}`)}"><span class="chip-label">${escapeHtml(label)} </span>${escapeHtml(value)}</span>`;
+    const accessibleLabel = [label.trim(), String(value).trim()].filter(Boolean).join(" ");
+    return `<span class="chip static-chip" role="note" aria-label="${escapeHtml(accessibleLabel)}" title="${escapeHtml(accessibleLabel)}"><span class="chip-label">${escapeHtml(label)} </span>${escapeHtml(value)}</span>`;
   }
 
   private _neighborCountChip(
@@ -760,19 +833,25 @@ export class MeshcoreCard extends HTMLElement {
       if (id === "hardware") {
         return details
           ? this._staticDetailChip(hwModel, t("card.hardware"))
-          : this._staticChip(hwModel, "mdi:chip");
+          : this._staticChip(
+              hwModel,
+              "mdi:chip",
+              `${t("card.hardware")} ${String(hwModel ?? "")}`
+            );
       }
       if (id === "firmware") {
         return details
           ? this._staticDetailChip(firmware, t("card.firmware"))
-          : this._staticChip(firmware, "mdi:memory", firmware
-            ? t("card.firmware_label", { version: String(firmware) })
-            : undefined);
+          : this._staticChip(
+              firmware,
+              "mdi:memory",
+              t("card.firmware_label", { version: String(firmware ?? "") })
+            );
       }
       const descriptors: Partial<Record<MeshcoreChipId, [EntityReading, string, string, string]>> = {
         frequency: [freqReading, t("card.frequency"), " MHz", "mdi:sine-wave"],
         bandwidth: [bwReading, t("card.bandwidth"), " kHz", "mdi:arrow-expand-horizontal"],
-        spreading_factor: [sfReading, "SF", "", "mdi:signal-variant"],
+        spreading_factor: [sfReading, t("card.spreading_factor"), "", "mdi:signal-variant"],
         tx_power: [txPowReading, t("card.tx_power"), " dBm", "mdi:transmission-tower-export"],
         ch1_voltage: [ch1VReading, t("card.chip_ch1"), " V", "mdi:flash"],
         rate_limiter: [rateLimReading, t("card.chip_rate"), " tok", "mdi:speedometer"],
@@ -781,9 +860,10 @@ export class MeshcoreCard extends HTMLElement {
       const descriptor = descriptors[id]!;
       const [reading, label, unit, icon] = descriptor;
       if (id === "spreading_factor" && reading.id && reading.value !== null) {
+        const value = `SF${reading.value}`;
         return details
-          ? this._chip(reading.id, "", `SF${reading.value}`)
-          : this._quickChip({ ...reading, value: `SF${reading.value}` }, label, "", icon);
+          ? this._chip(reading.id, "", value, "", `${label} ${value}`)
+          : this._quickChip({ ...reading, value }, label, "", icon);
       }
       return details
         ? this._detailChip(reading, label, unit)
@@ -1076,9 +1156,11 @@ export class MeshcoreCard extends HTMLElement {
     if (id === "firmware") {
       return details
         ? this._staticDetailChip(vm.firmwareVersion, t("card.firmware"))
-        : this._staticChip(vm.firmwareVersion, "mdi:memory", vm.firmwareVersion
-          ? t("card.firmware_label", { version: vm.firmwareVersion })
-          : undefined);
+        : this._staticChip(
+            vm.firmwareVersion,
+            "mdi:memory",
+            t("card.firmware_label", { version: vm.firmwareVersion ?? "" })
+          );
     }
     if (id === "neighbor_count") return this._neighborCountChip(vm.neighbors, t, details);
 
@@ -1089,7 +1171,7 @@ export class MeshcoreCard extends HTMLElement {
       uptime: [vm.uptime, t("card.uptime_label"), "", "mdi:timer-outline"],
       route: [vm.route, t("card.routing_path"), "", "mdi:routes"],
       path_length: [vm.pathLength, t("card.path_length"), "", "mdi:map-marker-distance"],
-      spreading_factor: [vm.spreadingFactor, "SF", "", "mdi:signal-variant"],
+      spreading_factor: [vm.spreadingFactor, t("card.spreading_factor"), "", "mdi:signal-variant"],
       frequency: [vm.frequency, t("card.frequency"), " MHz", "mdi:sine-wave"],
       bandwidth: [vm.bandwidth, t("card.bandwidth"), " kHz", "mdi:arrow-expand-horizontal"],
       tx_power: [vm.txPower, t("card.tx_power"), " dBm", "mdi:transmission-tower-export"],
@@ -1129,9 +1211,10 @@ export class MeshcoreCard extends HTMLElement {
     const descriptor = descriptors[id]!;
     const [reading, label, unit, icon] = descriptor;
     if (id === "spreading_factor" && reading.id && reading.value !== null) {
+      const value = `SF${reading.value}`;
       return details
-        ? this._chip(reading.id, "", `SF${reading.value}`)
-        : this._quickChip({ ...reading, value: `SF${reading.value}` }, label, "", icon);
+        ? this._chip(reading.id, "", value, "", `${label} ${value}`)
+        : this._quickChip({ ...reading, value }, label, "", icon);
     }
     return details
       ? this._detailChip(reading, label, unit)
@@ -1140,15 +1223,23 @@ export class MeshcoreCard extends HTMLElement {
 
   private _renderNodeDetails(vm: NodeViewModel, t: LocalizeFunc): string {
     const layout = effectiveChipLayout({ type: "node", id: vm.node.name }, this._config!);
-    const chips = layout.details.map((id) => this._renderNodeChip(id, true, vm, t)).join("");
+    const runs: Array<{ category: NodeDetailCategoryId; chips: string }> = [];
+    for (const id of layout.details) {
+      const chip = this._renderNodeChip(id, true, vm, t);
+      if (!chip) continue;
+      const category = NODE_DETAIL_CATEGORY_BY_CHIP[id as NodeOnlyChipId];
+      const current = runs[runs.length - 1];
+      if (current?.category === category) current.chips += chip;
+      else runs.push({ category, chips: chip });
+    }
+    const sections = runs.map(({ category, chips }) =>
+      this._detailSection(t(NODE_DETAIL_CATEGORY_LABELS[category]), chips)
+    ).join("");
 
     const location = vm.latitude !== null && vm.longitude !== null
       ? `<section class="detail-section"><h4>${escapeHtml(t("card.location_section"))}</h4>${this._locLink(vm.latitude, vm.longitude, vm.locationEntityId, t)}</section>`
       : "";
-    const neighbours = this._renderNeighbors(vm.neighbors, t);
-    const body = this._detailSection(t("card.chips_section"), chips)
-      + location
-      + neighbours;
+    const body = sections + location;
     return this._renderDetailsDisclosure(vm.node.deviceId, body, t);
   }
 
@@ -1184,11 +1275,6 @@ export class MeshcoreCard extends HTMLElement {
         ${quickChips || voltageFallback ? `<div class="quick-chip-row trim-section">${quickChips}${voltageFallback}</div>` : ""}
         ${this._renderNodeDetails(vm, t)}
       </div>`;
-  }
-
-  private _renderNeighbors(snapshot: NeighborSnapshot, t: LocalizeFunc): string {
-    if (this._config?.show_neighbors === false || !snapshot.supported) return "";
-    return renderNeighborSection(snapshot, t, this._config?.max_neighbors);
   }
 
   // ── Main render ────────────────────────────────────────────────────────────

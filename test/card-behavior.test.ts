@@ -651,7 +651,7 @@ describe("node rendering details", () => {
   });
 
   it("renders explicit top and details chip zones in configured order", () => {
-    const { body } = renderCard({
+    const { card, body } = renderCard({
       ...NODE_TARGET,
       details_default_open: true,
       chip_layout: {
@@ -661,14 +661,15 @@ describe("node rendering details", () => {
       },
     });
     const quickRow = body.match(/<div class="quick-chip-row[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
-    const detailRow = body.match(/<div class="detail-chips">([\s\S]*?)<\/div>/)?.[1] ?? "";
+    const detailEntities = Array.from(
+      card.shadowRoot!.querySelectorAll<HTMLElement>(".detail-chips [data-entity]")
+    ).map((chip) => chip.dataset["entity"]);
     expect(quickRow).toContain(nodeEntity("nb_recv"));
     expect(quickRow).not.toContain(nodeEntity("nb_sent"));
-    expect(detailRow).toContain(nodeEntity("nb_sent"));
-    expect(detailRow).toContain(nodeEntity("temperature"));
-    expect(detailRow.indexOf(nodeEntity("nb_sent"))).toBeLessThan(
-      detailRow.indexOf(nodeEntity("temperature"))
-    );
+    expect(detailEntities).toEqual([
+      nodeEntity("nb_sent"),
+      nodeEntity("temperature"),
+    ]);
   });
 
   it("renders node firmware, spreading factor, and frequency in custom zones", () => {
@@ -810,7 +811,7 @@ describe("node neighbors list", () => {
     }
   );
 
-  it("loads the dialog and renders the same full, ordered neighbor list as Details", async () => {
+  it("loads the full ordered neighbor list only in the dialog", async () => {
     const hass = neighborHass();
     const { card } = renderCard({
       ...NODE_TARGET,
@@ -825,14 +826,8 @@ describe("node neighbors list", () => {
     const popupNames = Array.from(
       root.querySelectorAll<HTMLElement>(".neighbor-name")
     ).map((element) => element.textContent?.trim());
-    const detailNames = Array.from(
-      card.shadowRoot!.querySelectorAll<HTMLElement>(
-        "details.node-details .neighbors-list .neighbor-name"
-      )
-    ).map((element) => element.textContent?.trim());
 
     expect(root.querySelector(".count-badge")?.textContent).toBe("4");
-    expect(popupNames).toEqual(detailNames);
     expect(popupNames).toEqual([
       "Ridge Repeater",
       "Valley Node",
@@ -842,6 +837,9 @@ describe("node neighbors list", () => {
     expect(root.textContent).toContain("12.5 dB");
     expect(root.textContent).toContain("Last seen: 30s");
     expect(root.textContent).toContain("Receptions (48h): 7x");
+    expect(card.shadowRoot!.querySelector(
+      ".neighbors-section, .neighbors-list, .neighbor-row"
+    )).toBeNull();
   });
 
   it("supports Home Assistant's legacy showDialog initialization hook", async () => {
@@ -1177,12 +1175,18 @@ describe("node neighbors list", () => {
     }
   );
 
-  it("lists only strict 48-hour neighbors sorted by raw SNR", () => {
-    const { body } = renderCard(
+  it("lists only strict 48-hour neighbors sorted by raw SNR in the dialog", async () => {
+    const { card } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       neighborHass()
     );
-    expect(body).toContain('<span class="count-badge">4</span>');
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    const root = dialog.shadowRoot!;
+    const body = root.innerHTML;
+    expect(root.querySelector(".count-badge")?.textContent).toBe("4");
     // resolved_name is preferred; contact entities remain a fallback.
     expect(body).toContain("Ridge Repeater");
     expect(body).toContain("Valley Node");
@@ -1205,9 +1209,12 @@ describe("node neighbors list", () => {
     expect(body.indexOf("Ridge Repeater")).toBeLessThan(
       body.indexOf("Valley Node")
     );
+    expect(card.shadowRoot!.querySelector(
+      ".neighbors-section, .neighbors-list, .neighbor-row"
+    )).toBeNull();
   });
 
-  it("keeps the neighbor ID when a matching contact has no name", () => {
+  it("keeps the neighbor ID when a matching contact has no name", async () => {
     const hass = createHass();
     addEntity(
       hass,
@@ -1224,23 +1231,15 @@ describe("node neighbors list", () => {
       { ...NODE_TARGET, details_default_open: true },
       hass
     );
-    const name = card.shadowRoot!.querySelector<HTMLElement>(".neighbor-name");
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    const name = dialog.shadowRoot!.querySelector<HTMLElement>(".neighbor-name");
     expect(name?.dataset["entity"]).toBe(
       "binary_sensor.meshcore_cafe01_contact"
     );
     expect(name?.textContent).toBe("cafe01");
-  });
-
-  it("caps the visible list at max_neighbors but keeps the full count", () => {
-    const { body } = renderCard(
-      { ...NODE_TARGET, details_default_open: true, max_neighbors: 2 },
-      neighborHass()
-    );
-    expect(body).toContain('<span class="count-badge">4</span>');
-    expect(body).toContain("Ridge Repeater");
-    expect(body).toContain("Valley Node");
-    expect(body).not.toContain("cccc03");
-    expect(body).not.toContain("dddd04");
   });
 
   it("hides the section entirely when show_neighbors is off", () => {
@@ -1252,7 +1251,7 @@ describe("node neighbors list", () => {
     expect(body).not.toContain("data-neighbors-dialog");
   });
 
-  it.each(["", "   "])("rejects an empty secs_ago value %j", (secsAgo) => {
+  it.each(["", "   "])("rejects an empty secs_ago value %j", async (secsAgo) => {
     const hass = createHass();
     addEntity(
       hass,
@@ -1264,31 +1263,41 @@ describe("node neighbors list", () => {
       "sensor.meshcore_spring_neighbor_abcd02",
       state(7.5, { secs_ago: 30, resolved_name: "Recent Neighbor" })
     );
-    const { body } = renderCard(
+    const { card } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       hass
     );
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    const body = dialog.shadowRoot!.innerHTML;
     expect(body).not.toContain("Unaged Neighbor");
     expect(body).toContain("Recent Neighbor");
-    expect(body).toContain('<span class="count-badge">1</span>');
+    expect(dialog.shadowRoot!.querySelector(".count-badge")?.textContent).toBe("1");
   });
 
-  it.each([0, "0"])("accepts a real zero secs_ago value %j", (secsAgo) => {
+  it.each([0, "0"])("accepts a real zero secs_ago value %j", async (secsAgo) => {
     const hass = createHass();
     addEntity(
       hass,
       "sensor.meshcore_spring_neighbor_abcd03",
       state(9, { secs_ago: secsAgo, resolved_name: "Just Heard" })
     );
-    const { body } = renderCard(
+    const { card } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       hass
     );
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    const body = dialog.shadowRoot!.innerHTML;
     expect(body).toContain("Just Heard");
     expect(body).toContain("Last seen: 0s");
   });
 
-  it("distinguishes supported zero neighbors from unavailable telemetry", () => {
+  it("distinguishes supported zero neighbors from unavailable telemetry", async () => {
     const unsupported = renderCard({
       ...NODE_TARGET,
       details_default_open: true,
@@ -1298,13 +1307,21 @@ describe("node neighbors list", () => {
 
     const hass = createHass();
     addEntity(hass, "sensor.meshcore_spring_neighbor_count", state(0));
-    const supported = renderCard(
+    const { card, body: supported } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       hass
-    ).body;
+    );
     expect(supported).toContain("data-neighbors-dialog");
-    expect(supported).toContain('<span class="count-badge">0</span>');
-    expect(supported).toContain("No neighbors heard in the last 48 hours");
+    expect(supported).not.toContain("neighbors-section");
+    expect(supported).not.toContain("No neighbors heard in the last 48 hours");
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    expect(dialog.shadowRoot!.querySelector(".count-badge")?.textContent).toBe("0");
+    expect(dialog.shadowRoot!.querySelector(".neighbors-empty")?.textContent).toBe(
+      t("card.no_recent_neighbors")
+    );
   });
 
   it("does not treat an unavailable neighbor count entity as supported", () => {
@@ -1346,22 +1363,27 @@ describe("node neighbors list", () => {
     expect(staticCount).toContain('<span class="chip-label">Neighbors ');
   });
 
-  it("formats neighbor ages beyond one day", () => {
+  it("formats neighbor ages beyond one day", async () => {
     const hass = createHass();
     addEntity(
       hass,
       "sensor.meshcore_spring_neighbor_aabb02",
       state(4, { secs_ago: 25 * 60 * 60, resolved_name: "Day Old Neighbor" })
     );
-    const { body } = renderCard(
+    const { card } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       hass
     );
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    const body = dialog.shadowRoot!.innerHTML;
     expect(body).toContain("Day Old Neighbor");
     expect(body).toContain("Last seen: 1d");
   });
 
-  it("ignores neighbor registry entries whose states are missing", () => {
+  it("ignores neighbor registry entries whose states are missing", async () => {
     const hass = createHass();
     const seenOnlyId = "sensor.meshcore_spring_neighbor_aabb03_seen";
     const seenEntry = registryEntry(NODE_DEVICE_ID);
@@ -1375,13 +1397,19 @@ describe("node neighbors list", () => {
     hass.entities[snrOnlyId] = snrEntry;
     addEntity(hass, "sensor.meshcore_spring_neighbor_aabb04_seen", state(2));
 
-    const { body } = renderCard(
+    const { card, body } = renderCard(
       { ...NODE_TARGET, details_default_open: true },
       hass
     );
     expect(body).toContain("data-neighbors-dialog");
-    expect(body).not.toContain("aabb03");
-    expect(body).not.toContain("aabb04");
+    expect(body).not.toContain("neighbors-section");
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    expect(dialog.shadowRoot!.querySelectorAll(".neighbor-row")).toHaveLength(0);
+    expect(dialog.shadowRoot!.innerHTML).not.toContain("aabb03");
+    expect(dialog.shadowRoot!.innerHTML).not.toContain("aabb04");
   });
 });
 

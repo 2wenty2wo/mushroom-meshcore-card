@@ -1,5 +1,3 @@
-import { NEIGHBOR_STYLES } from "./neighbors.js";
-
 export const STYLES: string = `
   *, *::before, *::after { box-sizing: border-box; }
 
@@ -461,7 +459,6 @@ export const STYLES: string = `
   }
   .map-link { color: var(--mushroom-meshcore-info-color); }
 
-  ${NEIGHBOR_STYLES}
   .blue { color: var(--mushroom-meshcore-info-color); }
 
   .empty {

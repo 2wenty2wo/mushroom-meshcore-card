@@ -24,6 +24,8 @@ import {
   HUB_STATUS_ENTITY,
   NODE_DEVICE_ID,
   NODE_NAME,
+  NODE_PREFIX,
+  NODE_SUFFIX,
   createChannelHass,
   createHass,
   defineOnce,
@@ -142,7 +144,7 @@ describe("hostile advert names in the device card", () => {
     expectRenderedAsText(card.shadowRoot, payload);
   });
 
-  it.each(PAYLOADS)("escapes a crafted neighbour adv_name: %s", (payload) => {
+  it.each(PAYLOADS)("escapes a crafted neighbour adv_name: %s", async (payload) => {
     // The neighbour list resolves names from contact entities' `adv_name`,
     // which is the field the published attack abuses.
     const hass = createHass();
@@ -156,12 +158,16 @@ describe("hostile advert names in the device card", () => {
     );
 
     const card = renderCard(
-      { target: { type: "node", id: NODE_NAME }, details_default_open: true },
+      { target: { type: "node", id: NODE_NAME } },
       hass
     );
 
-    expectNoInjection(card.shadowRoot);
-    expectRenderedAsText(card.shadowRoot, payload);
+    const dialog = await openNeighborsDialog(card);
+    expectNoInjectionWithin(dialog.shadowRoot);
+    expect(dialog.shadowRoot!.textContent ?? "").toContain(payload);
+    expect(
+      dialog.shadowRoot!.querySelector(".neighbor-name")?.textContent
+    ).toBe(payload);
   });
 
   it.each(PAYLOADS)(
@@ -219,6 +225,28 @@ describe("hostile advert names in the device card", () => {
     expectNoInjection(card.shadowRoot);
     expectRenderedAsText(card.shadowRoot, payload);
   });
+
+  it.each(PAYLOADS)(
+    "escapes crafted route text in a Details chip title: %s",
+    (payload) => {
+      const hass = createHass();
+      const routeEntity = `${NODE_PREFIX}out_path${NODE_SUFFIX}`;
+      addEntity(hass, routeEntity, state(payload));
+
+      const card = renderCard(
+        { target: { type: "node", id: NODE_NAME }, details_default_open: true },
+        hass
+      );
+
+      const chip = card.shadowRoot!.querySelector<HTMLElement>(
+        `[data-entity="${routeEntity}"]`
+      );
+      expect(chip).not.toBeNull();
+      expect(chip!.textContent ?? "").toContain(payload);
+      expect(chip!.getAttribute("title")).toBe(`Route ${payload}`);
+      expectNoInjection(card.shadowRoot);
+    }
+  );
 
   it("escapes a crafted icon_color without letting it break out of style", () => {
     // icon_color is interpolated into an inline style attribute, where HTML
@@ -292,22 +320,6 @@ describe("hostile channel traffic", () => {
     expectRenderedAsText(card.shadowRoot, payload);
   });
 
-  it.each(PAYLOADS)("escapes a crafted neighbour resolved_name: %s", (payload) => {
-    const hass = createHass();
-    addEntity(
-      hass,
-      "sensor.meshcore_spring_neighbor_aaaa01",
-      state(12.5, { secs_ago: 10, resolved_name: payload })
-    );
-
-    const card = renderCard(
-      { target: { type: "node", id: NODE_NAME }, details_default_open: true },
-      hass
-    );
-
-    expectNoInjection(card.shadowRoot);
-    expectRenderedAsText(card.shadowRoot, payload);
-  });
 });
 
 describe("hostile mention text", () => {
