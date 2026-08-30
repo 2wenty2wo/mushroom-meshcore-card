@@ -497,6 +497,23 @@ describe("node rendering details", () => {
     expect(body).toContain(">Online");
   });
 
+  it("uses a legacy online sensor when stronger fallback signals are absent", () => {
+    const hass = createHass();
+    const legacyOnlineId = nodeEntity("online");
+    removeEntity(hass, nodeEntity("uptime"));
+    addEntity(hass, nodeEntity("status"), state("offline"));
+    addEntity(hass, legacyOnlineId, state("online"));
+    addEntity(hass, NODE_ONLINE_ENTITY, state("off"));
+    hass.entities[NODE_ONLINE_ENTITY]!.disabled_by = "user";
+
+    const { card, body } = renderCard(NODE_TARGET, hass);
+    expect(body).toContain(">Online");
+    expect(body).toContain('class="metrics-grid');
+    expect(body).toContain(`data-entity="${legacyOnlineId}"`);
+    expect(body).not.toContain(`data-entity="${NODE_ONLINE_ENTITY}"`);
+    expect(card.getCardSize()).toBe(5);
+  });
+
   it("does not treat a non-MeshCore online binary sensor as authoritative", () => {
     const hass = createHass();
     addEntity(

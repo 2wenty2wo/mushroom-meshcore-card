@@ -793,7 +793,14 @@ export class MeshcoreCard extends HTMLElement {
       eSuffix,
       { domain: "binary_sensor", enabledOnly: true, platform: "meshcore" }
     );
-    const statusId  = p("status");
+    const legacyOnlineStatusId = this._findEntityByDevice(
+      deviceId,
+      "online",
+      ePrefix,
+      eSuffix,
+      { domain: "sensor", enabledOnly: true, platform: "meshcore" }
+    );
+    const statusId  = legacyOnlineStatusId ?? p("status");
     const successId = p("request_successes");
     const rssiId    = p("last_rssi");
     const snrId     = p("last_snr");
