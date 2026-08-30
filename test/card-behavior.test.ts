@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HassEntity } from "home-assistant-js-websocket";
 import { MeshcoreCard } from "../src/card.js";
 import { makeLocalize } from "../src/localize.js";
+import { renderNeighborSection } from "../src/neighbors.js";
 import type { HomeAssistant, MeshcoreCardConfig } from "../src/types.js";
 import {
   HUB_DEVICE_ID,
@@ -72,7 +73,7 @@ interface ShowDialogDetail {
 interface TestDialogElement extends HTMLElement {
   params: Record<string, unknown>;
   showDialog(params: Record<string, unknown>): void;
-  closeDialog(): void;
+  closeDialog(): boolean;
 }
 
 function clickForDialog(card: MeshcoreCard, trigger: Element): ShowDialogDetail {
@@ -682,6 +683,7 @@ describe("node neighbors list", () => {
     document.body.appendChild(dialog);
     dialog.showDialog(detail.dialogParams);
 
+    expect(dialog.params).toBe(detail.dialogParams);
     expect(
       dialog.shadowRoot!.querySelector(".count-badge")?.textContent
     ).toBe("4");
@@ -706,6 +708,30 @@ describe("node neighbors list", () => {
     expect(root.querySelectorAll(".neighbor-row")).toHaveLength(2);
     expect(names).toEqual(["Ridge Repeater", "Valley Node"]);
   });
+
+  it.each([0, Infinity])(
+    "treats max_neighbors %s as an uncapped dialog list",
+    async (maxNeighbors) => {
+      const hass = neighborHass();
+      const { card } = renderCard({
+        ...NODE_TARGET,
+        max_neighbors: maxNeighbors,
+      }, hass);
+      const detail = clickForDialog(
+        card,
+        card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+      );
+      const dialog = await instantiateDialog(detail);
+
+      expect(detail.dialogParams).toMatchObject({ maxNeighbors });
+      expect(
+        dialog.shadowRoot!.querySelector(".count-badge")?.textContent
+      ).toBe("4");
+      expect(
+        dialog.shadowRoot!.querySelectorAll(".neighbor-row")
+      ).toHaveLength(4);
+    }
+  );
 
   it("opens a zero-count dialog with the shared empty state", async () => {
     const hass = createHass();
@@ -742,6 +768,8 @@ describe("node neighbors list", () => {
       );
     });
 
+    dialog.shadowRoot!.dispatchEvent(new Event("click", { bubbles: true }));
+    expect(seen).toEqual([]);
     dispatch(dialog.shadowRoot!.querySelector(".neighbor-name")!, "click");
     dispatch(dialog.shadowRoot!.querySelector(".neighbor-snr")!, "click");
     expect(seen).toEqual([
@@ -768,7 +796,26 @@ describe("node neighbors list", () => {
     expect(dialog.isConnected).toBe(false);
   });
 
-  it.each(["cancel", "click"])(
+  it("closes an uninitialized dialog once", async () => {
+    const hass = neighborHass();
+    const { card } = renderCard(NODE_TARGET, hass);
+    const detail = clickForDialog(
+      card,
+      card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+    );
+    await detail.dialogImport();
+    const dialog = document.createElement(detail.dialogTag) as TestDialogElement;
+    const closed = vi.fn();
+    dialog.addEventListener("dialog-closed", closed);
+    document.body.appendChild(dialog);
+
+    expect(dialog.closeDialog()).toBe(true);
+    expect(dialog.closeDialog()).toBe(true);
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(dialog.isConnected).toBe(false);
+  });
+
+  it.each(["cancel", "scrim", "button"] as const)(
     "closes the native fallback after a %s dismissal",
     async (eventType) => {
       const hass = neighborHass();
@@ -777,11 +824,15 @@ describe("node neighbors list", () => {
         card,
         card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
       ));
-      const surface = dialog.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!;
+      const surface = dialog.shadowRoot!
+        .querySelector<HTMLDialogElement>("dialog")!;
       const closed = vi.fn();
       dialog.addEventListener("dialog-closed", closed);
 
-      surface.dispatchEvent(eventType === "cancel"
+      const target = eventType === "button"
+        ? surface.querySelector(".fallback-close")!
+        : surface;
+      target.dispatchEvent(eventType === "cancel"
         ? new Event("cancel", { bubbles: false, cancelable: true })
         : new MouseEvent("click", { bubbles: true }));
 
@@ -789,6 +840,63 @@ describe("node neighbors list", () => {
       expect(dialog.isConnected).toBe(false);
     }
   );
+
+  it("uses the native open fallback when showModal throws", async () => {
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal")
+      .mockImplementation(() => {
+        throw new Error("showModal unavailable");
+      });
+
+    try {
+      const hass = neighborHass();
+      const { card } = renderCard(NODE_TARGET, hass);
+      const dialog = await instantiateDialog(clickForDialog(
+        card,
+        card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+      ));
+      const surface = dialog.shadowRoot!
+        .querySelector<HTMLDialogElement>("dialog")!;
+      const closed = vi.fn();
+      dialog.addEventListener("dialog-closed", closed);
+
+      expect(surface.hasAttribute("open")).toBe(true);
+      surface.removeAttribute("open");
+      expect(dialog.closeDialog()).toBe(true);
+      surface.dispatchEvent(new Event("close"));
+
+      expect(closed).toHaveBeenCalledTimes(1);
+      expect(dialog.isConnected).toBe(false);
+    } finally {
+      showModal.mockRestore();
+    }
+  });
+
+  it("uses the native open fallback when showModal is unavailable", async () => {
+    const prototype = HTMLDialogElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "showModal");
+    Object.defineProperty(prototype, "showModal", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+
+    try {
+      const hass = neighborHass();
+      const { card } = renderCard(NODE_TARGET, hass);
+      const dialog = await instantiateDialog(clickForDialog(
+        card,
+        card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+      ));
+      const surface = dialog.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!;
+
+      expect(surface.hasAttribute("open")).toBe(true);
+      expect(dialog.closeDialog()).toBe(true);
+      expect(dialog.isConnected).toBe(false);
+    } finally {
+      if (descriptor) Object.defineProperty(prototype, "showModal", descriptor);
+      else delete (prototype as unknown as { showModal?: unknown }).showModal;
+    }
+  });
 
   it("uses Home Assistant's adaptive dialog when it is available", async () => {
     defineOnce("ha-adaptive-dialog", class extends HTMLElement {
@@ -832,6 +940,68 @@ describe("node neighbors list", () => {
     card.hass = createHass();
     expect(internal._getNeighbors("")).toEqual(unsupported);
   });
+
+  it("does not render an unsupported shared neighbor snapshot", () => {
+    expect(renderNeighborSection({
+      supported: false,
+      countEntityId: null,
+      neighbors: [],
+    }, t)).toBe("");
+  });
+
+  it.each([
+    ["missing Home Assistant state", NODE_TARGET, undefined],
+    [
+      "disabled neighbors",
+      { ...NODE_TARGET, show_neighbors: false },
+      createHass(),
+    ],
+    ["a hub target", HUB_TARGET, createHass()],
+    [
+      "an unresolved node",
+      { target: { type: "node" as const, id: "Missing" } },
+      createHass(),
+    ],
+    ["unsupported neighbor telemetry", NODE_TARGET, createHass()],
+  ])("does not open the neighbors dialog for %s", (_name, config, hass) => {
+    const card = document.createElement("mushroom-meshcore-card") as MeshcoreCard;
+    card.setConfig(config as MeshcoreCardConfig);
+    if (hass) card.hass = hass;
+    const shown = vi.fn();
+    card.addEventListener("show-dialog", shown);
+
+    (card as unknown as { _showNeighborsDialog(): void })._showNeighborsDialog();
+
+    expect(shown).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["de", "de"],
+    [undefined, "en"],
+  ] as const)(
+    "uses locale %s after a missing primary language",
+    (localeLanguage, expectedLanguage) => {
+      const hass = neighborHass();
+      (hass as unknown as { language?: string }).language = undefined;
+      (hass.locale as { language?: string }).language = localeLanguage;
+      hass.localize = vi.fn(() => "Localized close");
+      const { card } = renderCard(NODE_TARGET, hass);
+      const detail = clickForDialog(
+        card,
+        card.shadowRoot!.querySelector('[data-neighbors-dialog]')!
+      );
+      const params = detail.dialogParams as {
+        closeLabel: string;
+        localize: typeof t;
+      };
+
+      expect(params.localize("card.details")).toBe(
+        makeLocalize(expectedLanguage)("card.details")
+      );
+      expect(params.closeLabel).toBe("Localized close");
+      expect(hass.localize).toHaveBeenCalledWith("ui.common.close");
+    }
+  );
 
   it("lists only strict 48-hour neighbors sorted by raw SNR", () => {
     const { body } = renderCard(

@@ -53,8 +53,10 @@ export function renderNeighborSection(
     </section>`;
   }
 
-  const cap = Number.isFinite(maxNeighbors) && (maxNeighbors ?? 0) > 0
-    ? Math.floor(maxNeighbors!)
+  const cap = typeof maxNeighbors === "number"
+    && Number.isFinite(maxNeighbors)
+    && maxNeighbors > 0
+    ? Math.floor(maxNeighbors)
     : undefined;
   const shownNeighbors = cap === undefined ? neighbors : neighbors.slice(0, cap);
   const lastSeenLabel = t("card.neighbor_last_seen");
