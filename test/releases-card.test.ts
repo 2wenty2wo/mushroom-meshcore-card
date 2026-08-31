@@ -72,6 +72,13 @@ function rowNames(card: MeshcoreReleasesCard): string[] {
   );
 }
 
+function headerSecondary(card: MeshcoreReleasesCard): string {
+  return (
+    card.shadowRoot!.querySelector<HTMLElement>('[slot="secondary"]')
+      ?.textContent ?? ""
+  );
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-31T00:00:00Z"));
@@ -118,6 +125,34 @@ describe("MeshcoreReleasesCard", () => {
       "Beta",
       "Zulu",
     ]);
+  });
+
+  it.each(["configured", "name"] as const)(
+    "reports the actual newest release when rows are sorted by %s order",
+    (sort) => {
+      const card = createCard({
+        sources: [
+          { entity: MESHCORE, name: "Alpha" },
+          { entity: MISHMESH, name: "Zulu" },
+          { entity: ZEPHCORE, name: "Beta" },
+        ],
+        sort,
+      });
+      expect(rowNames(card)[0]).toBe("Alpha");
+      expect(headerSecondary(card)).toBe("3 sources · newest 3 days ago");
+    }
+  );
+
+  it("omits the newest age when no source has a valid publication date", () => {
+    const card = createCard(
+      undefined,
+      createReleaseHass({
+        [MESHCORE]: releaseState("v1", "invalid"),
+        [MISHMESH]: releaseState("v2", null),
+        [ZEPHCORE]: releaseState("v3", "not-a-date"),
+      })
+    );
+    expect(headerSecondary(card)).toBe("3 sources");
   });
 
   it("sorts invalid dates last and preserves configured order for ties", () => {
@@ -182,6 +217,15 @@ describe("MeshcoreReleasesCard", () => {
     expect(shadowBody(card)).toContain("1 of 3 available");
     expect(shadowBody(card)).not.toContain(">unavailable<");
     expect(shadowBody(card)).toContain(`>${t("card.unavailable")}<`);
+    const list = card.shadowRoot!.querySelector<HTMLElement>('[role="list"]')!;
+    expect(
+      Array.from(list.children).every(
+        (item) => item.getAttribute("role") === "listitem"
+      )
+    ).toBe(true);
+    expect(card.shadowRoot!.querySelector(".release-row[role='listitem']")).toBeNull();
+    expect(list.children[0]?.querySelector("a.release-row")).not.toBeNull();
+    expect(list.children[1]?.querySelector("a")).toBeNull();
   });
 
   it("renders prerelease state and safe HTTPS rows as external links", () => {
@@ -201,6 +245,9 @@ describe("MeshcoreReleasesCard", () => {
     expect(link?.target).toBe("_blank");
     expect(link?.rel).toBe("noopener noreferrer");
     expect(link?.textContent).toContain(t("card.releases_prerelease"));
+    expect(link?.getAttribute("role")).toBeNull();
+    expect(link?.parentElement?.getAttribute("role")).toBe("listitem");
+    expect(link?.parentElement?.parentElement?.getAttribute("role")).toBe("list");
   });
 
   it.each([

@@ -44,6 +44,8 @@ const RELEASES_STYLES = `
     flex-direction: column;
   }
 
+  .release-list-item { min-width: 0; }
+
   .release-row {
     position: relative;
     display: grid;
@@ -412,7 +414,13 @@ export class MeshcoreReleasesCard extends HTMLElement {
         total: views.length,
       });
     }
-    const newest = views.find((view) => view.publishedAt)?.publishedAt ?? null;
+    const newest = views.reduce<Date | null>((latest, view) => {
+      if (!view.publishedAt) return latest;
+      if (!latest || view.publishedAt.getTime() > latest.getTime()) {
+        return view.publishedAt;
+      }
+      return latest;
+    }, null);
     if (!this._config?.hide_age && newest) {
       return t("card.releases_summary_age", {
         count: this._sourceCountLabel(views.length, t),
@@ -449,15 +457,15 @@ export class MeshcoreReleasesCard extends HTMLElement {
       age: this._config?.hide_age ? "" : age,
     }).trim();
     if (!view.url) {
-      return `<div class="release-row${view.available ? "" : " unavailable"}" role="listitem" aria-label="${escapeHtml(
+      return `<div class="release-list-item" role="listitem"><div class="release-row${view.available ? "" : " unavailable"}" aria-label="${escapeHtml(
         label
-      )}">${contents}</div>`;
+      )}">${contents}</div></div>`;
     }
-    return `<a class="release-row linked" role="listitem" href="${escapeHtml(
+    return `<div class="release-list-item" role="listitem"><a class="release-row linked" href="${escapeHtml(
       view.url
     )}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(
       t("card.releases_open", { name: view.name, tag })
-    )}"><ha-ripple></ha-ripple>${contents}</a>`;
+    )}"><ha-ripple></ha-ripple>${contents}</a></div>`;
   }
 
   private _render(): void {
