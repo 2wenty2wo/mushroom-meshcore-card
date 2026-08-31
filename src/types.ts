@@ -219,6 +219,24 @@ export interface MeshcoreMentionsCardConfig {
   grid_options?: GridOptions;
 }
 
+export type MeshcoreReleaseSort = "newest" | "configured" | "name";
+
+export interface MeshcoreReleaseSourceConfig {
+  entity: string;
+  name?: string;
+}
+
+export interface MeshcoreReleasesCardConfig {
+  type?: string;
+  sources?: MeshcoreReleaseSourceConfig[];
+  name?: string;
+  icon?: string;
+  icon_color?: string;
+  sort?: MeshcoreReleaseSort;
+  hide_age?: boolean;
+  grid_options?: GridOptions;
+}
+
 // ── Discovery result types ────────────────────────────────────────────────────
 
 export interface HubInfo {

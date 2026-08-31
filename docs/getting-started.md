@@ -1,11 +1,12 @@
 # Getting started
 
-Mushroom MeshCore Card adds three Home Assistant dashboard cards for the
+Mushroom MeshCore Card adds four Home Assistant dashboard cards for the
 [MeshCore integration](https://github.com/meshcore-dev/meshcore-ha):
 
 - [Main card](/cards/main) for one hub or remote node
 - [Channel card](/cards/channel) for one MeshCore channel conversation
 - [Mentions card](/cards/mentions) for an automation-backed mention inbox
+- [Releases card](/cards/releases) for explicitly configured software release sensors
 
 The cards follow Mushroom and Home Assistant Tile styling, but neither
 Mushroom nor Card Mod is required. They use Home Assistant theme fallbacks and
@@ -50,8 +51,9 @@ a hard refresh so the browser does not keep an older bundle cached. See
 ## Add your first card
 
 Add a new card in the Home Assistant dashboard editor and choose the relevant
-Mushroom MeshCore card. Each editor starts with its required target; supporting
-entities are discovered automatically wherever possible.
+Mushroom MeshCore card. Device, Channel, and Mentions editors begin with their
+required target; Releases begins with its explicit source list. Supporting
+device entities are discovered automatically wherever possible.
 
 ### A remote node
 
@@ -109,10 +111,27 @@ automation from the bundled blueprint. Follow the
 [Mentions card guide](/cards/mentions) and the
 [blueprint setup guide](/mentions-blueprint).
 
+### Software releases
+
+The Releases card reads Home Assistant sensors whose states and attributes
+contain release metadata:
+
+```yaml
+type: custom:mushroom-meshcore-releases-card
+sources:
+  - entity: sensor.meshcore_latest_release
+    name: MeshCore
+```
+
+The frontend card does not contact GitHub or Codeberg. Follow the
+[Releases card guide](/cards/releases) for the complete REST sensor setup and
+the seven-source MeshCore ecosystem example.
+
 ## Next steps
 
 - Review every field in the [configuration reference](/configuration).
 - Arrange main-card content with the [chip reference](/chips).
+- Monitor ecosystem software with the [Releases card](/cards/releases).
 - Match the cards to your dashboard using [theming and Card Mod](/theming).
 - Use [Troubleshooting](/troubleshooting) for installation, discovery, and
   entity-state problems.

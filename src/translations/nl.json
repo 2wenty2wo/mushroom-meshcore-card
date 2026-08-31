@@ -144,7 +144,18 @@
     "mentions_channel": "op {channel}",
     "mentions_handle_label": "Markeren als afgehandeld: {item}",
     "mentions_reopen_label": "Vermelding heropenen: {item}",
-    "mentions_update_failed": "Deze vermelding kon niet worden bijgewerkt. Probeer het opnieuw."
+    "mentions_update_failed": "Deze vermelding kon niet worden bijgewerkt. Probeer het opnieuw.",
+    "releases_select_sources": "Selecteer ten minste één releasesensor in de kaarteditor.",
+    "releases_title": "Softwarereleases",
+    "releases_source_count_one": "1 bron",
+    "releases_source_count": "{n} bronnen",
+    "releases_summary_age": "{count} · nieuwste {age}",
+    "releases_available": "{available} van {total} beschikbaar",
+    "releases_unknown_age": "Leeftijd onbekend",
+    "releases_just_now": "Zojuist",
+    "releases_prerelease": "Vooruitgave",
+    "releases_open": "Open {name} {tag}",
+    "releases_row_label": "{name}, {tag}, {age}"
   },
   "time": {
     "s_ago": "{n}s geleden",
@@ -212,6 +223,22 @@
     "target_mentions": "Takenlijst voor vermeldingen",
     "no_todo_entities": "Nog geen Home Assistant-takenlijsten gedetecteerd. Voeg Lokale takenlijst toe en bewerk de kaart opnieuw.",
     "hide_completed_mentions": "Afgehandelde vermeldingen verbergen",
-    "section_mentions_behavior": "Vermeldingen"
+    "section_mentions_behavior": "Vermeldingen",
+    "section_releases_sources": "Bronnen",
+    "releases_sources_help": "Voeg releasesensoren toe, geef ze desgewenst een andere naam en sleep ze naar de terugvalvolgorde.",
+    "releases_add_source": "Bron toevoegen",
+    "releases_source_entity": "Releasesensor",
+    "releases_source_name": "Weergavenaam (optioneel)",
+    "releases_source_drag": "Sleep {name}",
+    "releases_source_move_up": "Verplaats {name} omhoog",
+    "releases_source_move_down": "Verplaats {name} omlaag",
+    "releases_source_remove": "Verwijder {name}",
+    "releases_no_sensors": "Er zijn nog geen Home Assistant-sensorentiteiten beschikbaar.",
+    "section_releases_behavior": "Releases",
+    "releases_sort": "Sorteervolgorde",
+    "releases_sort_newest": "Nieuwste eerst",
+    "releases_sort_configured": "Ingestelde volgorde",
+    "releases_sort_name": "Softwarenaam",
+    "releases_hide_age": "Releaseleeftijd verbergen"
   }
 }
