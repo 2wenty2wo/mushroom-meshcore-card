@@ -21,6 +21,20 @@ import {
   type ChannelPathContact,
   type ChannelPathsDialogParams,
 } from "./channel-paths-dialog.js";
+import {
+  CHANNEL_ROUTE_STORAGE_KEY,
+  emptyRouteStorage,
+  loadRouteStorageResult,
+  mergeRouteStorage,
+  messageRouteStorageIdentity,
+  pruneRouteStorage,
+  saveRouteStorage,
+  subscribeRouteStorage,
+  validateRouteStorage,
+  type RouteStorageEnvelope,
+  type RouteStorageRecord,
+  type SerializedRoute,
+} from "./channel-route-storage.js";
 
 const CHANNEL_ENTITY_RE = /^binary_sensor\.meshcore_.*_ch_\d+_messages$/;
 const DEFAULT_HOURS_TO_SHOW = 24;
@@ -279,6 +293,10 @@ interface RoutingRecord {
   matchedDistance?: number;
   matchAuthoritative?: boolean;
   updatedAt: number;
+  /** True when the record was reconstructed from frontend user storage. */
+  hydratedFromStorage?: boolean;
+  /** Set once a live native event supplies usable routing metadata. */
+  liveMetadataSeen?: boolean;
 }
 
 interface PendingSentScope {
@@ -718,6 +736,18 @@ export class MeshcoreChannelCard extends HTMLElement {
   private _routeContactCache = new Map<string, RouteContactCacheEntry>();
   private _routeContactGeneration = 0;
   private _nextRouteDialogId = 0;
+  private _routeStorage: RouteStorageEnvelope = emptyRouteStorage();
+  private _routeStorageLoaded = false;
+  private _routeStorageLoading = false;
+  private _routeStorageGeneration = 0;
+  private _routeStorageFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private _routeStorageWrite: Promise<void> | null = null;
+  private _routeStorageWriteRequested = false;
+  private _routeStorageDirty = false;
+  private _pendingRouteStorageRecords = new Map<string, RoutingRecord>();
+  private _routeStorageUnsubscribe: (() => void | Promise<void>) | null = null;
+  private _routeStorageSupported?: boolean;
+  private _routeStorageAvailable = false;
   private readonly _headerActions: HeaderActionController;
 
   constructor() {
@@ -765,6 +795,7 @@ export class MeshcoreChannelCard extends HTMLElement {
       }, 60_000);
     }
     this._ensureSubscription();
+    this._ensureRouteStorage();
   }
 
   disconnectedCallback(): void {
@@ -798,23 +829,33 @@ export class MeshcoreChannelCard extends HTMLElement {
       this._clearRoutingMetadata();
       this._loading = true;
       this._historyError = false;
+      this._resetRouteStorageLoad();
       this._restartSubscription();
     }
     if (previousEntity !== this._config.entity) this._clearRouteContactCache();
     this._stateFingerprint = "";
     this._render();
+    this._ensureRouteStorage();
   }
 
   set hass(hass: HomeAssistant) {
     const oldConnection = this._connection;
+    if (this._routeStorageSupported === undefined) {
+      // HA exposes callWS on the initial hass object. Treat its absence as a
+      // capability decision so test/legacy hosts that add it later remain
+      // live-only rather than issuing unrelated storage requests.
+      this._routeStorageSupported = !!hass.callWS;
+    }
     this._hass = hass;
     this._connection = hass.connection;
     if (oldConnection !== this._connection) {
       this._clearRouteContactCache();
+      this._resetRouteStorageLoad();
       if (oldConnection) this._detachReadyListener(oldConnection);
       this._readyListenerAttached = false;
       this._attachReadyListener();
       if (this._subscribed) this._restartSubscription();
+      this._ensureRouteStorage();
     }
 
     const entityId = this._config?.entity;
@@ -892,11 +933,13 @@ export class MeshcoreChannelCard extends HTMLElement {
     // the new connection; Home Assistant's native Logbook follows this pattern.
     this._subscriptionId++;
     this._clearRouteContactCache();
+    this._resetRouteStorageLoad();
     this._subscribed = false;
     this._unsubscribes = [];
     this._historyError = false;
     if (!this._messages.length) this._loading = true;
     this._ensureSubscription();
+    this._ensureRouteStorage();
   };
 
   private _ensureSubscription(): void {
@@ -910,6 +953,316 @@ export class MeshcoreChannelCard extends HTMLElement {
       return;
     }
     this._subscribe();
+  }
+
+  private _resetRouteStorageLoad(): void {
+    this._routeStorageGeneration++;
+    this._routeStorageLoaded = false;
+    this._routeStorageLoading = false;
+    this._routeStorageAvailable = false;
+    const unsubscribe = this._routeStorageUnsubscribe;
+    this._routeStorageUnsubscribe = null;
+    if (unsubscribe) this._invokeUnsubscribe(unsubscribe);
+  }
+
+  private _ensureRouteStorage(): void {
+    const hass = this._hass;
+    const entityId = this._config?.entity;
+    if (
+      !this._connected ||
+      !hass ||
+      !this._hasValidTarget() ||
+      !hass.connection ||
+      this._routeStorageSupported !== true ||
+      this._routeStorageLoaded ||
+      this._routeStorageLoading
+    ) {
+      return;
+    }
+    const generation = this._routeStorageGeneration;
+    this._routeStorageLoading = true;
+    void loadRouteStorageResult(hass).then(({ envelope: loaded, available }) => {
+      if (
+        generation !== this._routeStorageGeneration ||
+        hass !== this._hass ||
+        entityId !== this._config?.entity
+      ) {
+        return;
+      }
+      this._routeStorage = mergeRouteStorage(this._routeStorage, loaded);
+      this._routeStorageAvailable = available;
+      this._routeStorageLoaded = true;
+      this._routeStorageLoading = false;
+      this._hydrateStoredRoutes();
+      this._pruneStoredRoutes();
+      this._scheduleRender();
+    });
+
+    void subscribeRouteStorage(hass, (loaded) => {
+      if (
+        generation !== this._routeStorageGeneration ||
+        hass !== this._hass ||
+        entityId !== this._config?.entity
+      ) {
+        return;
+      }
+      this._routeStorage = mergeRouteStorage(this._routeStorage, loaded);
+      this._routeStorageLoaded = true;
+      this._routeStorageAvailable = true;
+      this._hydrateStoredRoutes();
+      this._pruneStoredRoutes();
+      this._scheduleRender();
+    }).then((unsubscribe) => {
+      if (
+        generation !== this._routeStorageGeneration ||
+        hass !== this._hass ||
+        entityId !== this._config?.entity ||
+        !this._connected
+      ) {
+        this._invokeUnsubscribe(unsubscribe);
+        return;
+      }
+      this._routeStorageUnsubscribe = unsubscribe;
+    });
+  }
+
+  private _hydrateStoredRoutes(): void {
+    for (const entry of this._entries.values()) {
+      void this._hydrateStoredRoute(entry);
+    }
+    for (const record of this._pendingRouteStorageRecords.values()) {
+      this._persistRoutingRecord(record);
+    }
+  }
+
+  private async _hydrateStoredRoute(entry: LogbookEntry): Promise<void> {
+    const entityId = this._config?.entity;
+    const hass = this._hass;
+    const generation = this._routeStorageGeneration;
+    if (!entityId || !hass || !this._routeStorageLoaded) return;
+    const identity = await messageRouteStorageIdentity({
+      contextId: entry.context_id,
+      entryKey: this._entryKey(entry),
+    });
+    if (
+      generation !== this._routeStorageGeneration ||
+      hass !== this._hass ||
+      entityId !== this._config?.entity
+    ) {
+      return;
+    }
+    const stored = this._routeStorage.targets[entityId]?.[identity];
+    if (!stored) return;
+    const current = this._routingByEntry.get(this._entryKey(entry));
+    if (
+      current &&
+      !current.hydratedFromStorage &&
+      stored.updatedAt <= current.updatedAt
+    ) {
+      return;
+    }
+    const parsed = parseMessage(entry.message ?? "");
+    if (!parsed) return;
+    const record: RoutingRecord = current ?? {
+      dialogId: String(++this._nextRouteDialogId),
+      entityId,
+      sender: parsed.sender ?? "",
+      message: parsed.body,
+      outgoing: stored.outgoing,
+      timestampMs: entry.when * 1000,
+      eventTimeMs: null,
+      messageEventSeen: true,
+      updatedAt: stored.updatedAt,
+      hydratedFromStorage: true,
+    };
+    record.entityId = entityId;
+    record.sender = parsed.sender ?? record.sender;
+    record.message = parsed.body;
+    record.outgoing = stored.outgoing;
+    record.timestampMs = entry.when * 1000;
+    record.topHopCount = stored.topHopCount;
+    record.routes = stored.routes.map((route) => this._deserializeRoute(route));
+    const selectedRoute = stored.selectedRoute
+      ? this._deserializeRoute(stored.selectedRoute)
+      : undefined;
+    const selectedByKey = stored.selectedRouteKey
+      ? record.routes.find((route) => route.key === stored.selectedRouteKey)
+      : undefined;
+    const selected =
+      selectedByKey ??
+      (selectedRoute?.key
+        ? record.routes.find((route) => route.key === selectedRoute.key)
+        : undefined) ??
+      record.routes[0];
+    record.selectedRouteKey = selected?.key;
+    record.selectedRoute = selected;
+    record.outgoingScope = stored.outgoingScope;
+    record.updatedAt = stored.updatedAt;
+    record.contextId = entry.context_id;
+    record.signature = routingSignature(
+      entityId,
+      record.outgoing,
+      record.sender,
+      record.message,
+      entry.when * 1000
+    );
+    record.hydratedFromStorage = true;
+    record.liveMetadataSeen = false;
+    if (!current) {
+      this._routingRecords.add(record);
+      this._routingByDialogId.set(record.dialogId, record);
+    }
+    this._assignRoutingRecord(entry, record, true);
+    this._routingByEntry.set(this._entryKey(entry), record);
+    if (record.contextId) this._routingByContext.set(record.contextId, record);
+    if (record.signature) this._routingBySignature.set(record.signature, record);
+    this._scheduleRender();
+  }
+
+  private _deserializeRoute(route: SerializedRoute): NormalizedRxRoute {
+    return {
+      ...route,
+      ...(route.pathSegments ? { pathSegments: route.pathSegments.slice() } : {}),
+    };
+  }
+
+  private _serializeRoute(route: NormalizedRxRoute): SerializedRoute {
+    return {
+      ...route,
+      ...(route.pathSegments ? { pathSegments: route.pathSegments.slice() } : {}),
+    };
+  }
+
+  private _pruneStoredRoutes(): void {
+    if (!this._routeStorageLoaded) return;
+    const next = pruneRouteStorage(this._routeStorage, {
+      hoursToShow: this._hoursToShow(),
+      maxMessages: this._maxMessages(),
+    });
+    if (JSON.stringify(next) !== JSON.stringify(this._routeStorage)) {
+      this._routeStorage = next;
+      this._scheduleRouteStorageWrite();
+    }
+  }
+
+  private _hasPersistableRoute(record: RoutingRecord): boolean {
+    return !!record.matchedEntryKey && !!this._routeDetails(record);
+  }
+
+  private _persistRoutingRecord(record: RoutingRecord): void {
+    if (!this._hasPersistableRoute(record)) return;
+    const entryKey = record.matchedEntryKey!;
+    this._pendingRouteStorageRecords.set(entryKey, record);
+    if (this._routeStorageLoaded && !this._routeStorageAvailable) return;
+    if (!this._routeStorageLoaded) {
+      this._ensureRouteStorage();
+      return;
+    }
+    const hass = this._hass;
+    const entityId = this._config?.entity;
+    const generation = this._routeStorageGeneration;
+    const entry = this._entries.get(entryKey);
+    if (!hass || !entityId || !entry) return;
+    void messageRouteStorageIdentity({
+      contextId: entry.context_id,
+      entryKey,
+    }).then((identity) => {
+      if (
+        generation !== this._routeStorageGeneration ||
+        hass !== this._hass ||
+        entityId !== this._config?.entity ||
+        this._routingByEntry.get(entryKey) !== record
+      ) {
+        return;
+      }
+      const details = this._routeDetails(record);
+      if (!details) return;
+      const stored: RouteStorageRecord = {
+        when: entry.when,
+        updatedAt: record.updatedAt,
+        outgoing: record.outgoing,
+        routes: (record.routes ?? []).map((route) => this._serializeRoute(route)),
+        ...(record.topHopCount !== undefined
+          ? { topHopCount: record.topHopCount }
+          : {}),
+        ...(record.selectedRouteKey
+          ? { selectedRouteKey: record.selectedRouteKey }
+          : {}),
+        ...(record.selectedRoute
+          ? { selectedRoute: this._serializeRoute(record.selectedRoute) }
+          : {}),
+        ...(record.outgoingScope
+          ? { outgoingScope: record.outgoingScope }
+          : {}),
+      };
+      const target = (this._routeStorage.targets[entityId] ??= {});
+      target[identity] = stored;
+      this._pendingRouteStorageRecords.delete(entryKey);
+      this._routeStorage = pruneRouteStorage(this._routeStorage, {
+        hoursToShow: this._hoursToShow(),
+        maxMessages: this._maxMessages(),
+      });
+      this._scheduleRouteStorageWrite();
+    });
+  }
+
+  private _scheduleRouteStorageWrite(): void {
+    this._routeStorageDirty = true;
+    if (this._routeStorageFlushTimer !== null) return;
+    this._routeStorageFlushTimer = setTimeout(() => {
+      this._routeStorageFlushTimer = null;
+      void this._flushRouteStorageWrite();
+    }, 500);
+  }
+
+  private async _flushRouteStorageWrite(): Promise<void> {
+    if (!this._routeStorageDirty) return;
+    const hass = this._hass;
+    const callWS = hass?.callWS;
+    if (!hass || !callWS) return;
+    if (this._routeStorageWrite) {
+      this._routeStorageWriteRequested = true;
+      return;
+    }
+    this._routeStorageDirty = false;
+    const envelope = this._routeStorage;
+    const generation = this._routeStorageGeneration;
+    const write = (async () => {
+      try {
+        const response = await callWS<unknown>({
+          type: "frontend/get_user_data",
+          key: CHANNEL_ROUTE_STORAGE_KEY,
+        });
+        const raw =
+          response &&
+          typeof response === "object" &&
+          !Array.isArray(response) &&
+          Object.prototype.hasOwnProperty.call(response, "value")
+            ? (response as Record<string, unknown>)["value"]
+            : response;
+        const latest = validateRouteStorage(raw);
+        if (generation !== this._routeStorageGeneration || hass !== this._hass) {
+          this._routeStorageDirty = true;
+          return;
+        }
+        const merged = pruneRouteStorage(mergeRouteStorage(latest, envelope), {
+          hoursToShow: this._hoursToShow(),
+          maxMessages: this._maxMessages(),
+        });
+        this._routeStorage = merged;
+        const saved = await saveRouteStorage(hass, merged);
+        if (!saved) this._routeStorageDirty = false;
+      } catch {
+        this._routeStorageDirty = false;
+      }
+    })();
+    this._routeStorageWrite = write;
+    await write;
+    this._routeStorageWrite = null;
+    if (this._routeStorageWriteRequested || this._routeStorageDirty) {
+      this._routeStorageWriteRequested = false;
+      this._scheduleRouteStorageWrite();
+    }
   }
 
   private _restartSubscription(clearLoading = true): void {
@@ -926,6 +1279,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     for (const unsubscribe of unsubscribes) {
       this._invokeUnsubscribe(unsubscribe);
     }
+    this._resetRouteStorageLoad();
   }
 
   private _invokeUnsubscribe(unsubscribe: () => void | Promise<void>): void {
@@ -978,6 +1332,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     ] as const) {
       this._subscribeRoutingEvent(hass, subscriptionId, eventType);
     }
+    this._ensureRouteStorage();
   }
 
   private _registerSubscription(
@@ -1201,7 +1556,11 @@ export class MeshcoreChannelCard extends HTMLElement {
     }
     const record = this._routingBySendId.get(sendId);
     if (record && this._mergePendingSentScope(record, pending)) {
+      record.updatedAt = Date.now();
+      record.hydratedFromStorage = false;
+      record.liveMetadataSeen = true;
       this._scheduleRoutingRender(record);
+      if (record.matchedEntryKey) this._persistRoutingRecord(record);
     }
   }
 
@@ -1253,6 +1612,25 @@ export class MeshcoreChannelCard extends HTMLElement {
       (sendId ? this._routingBySendId.get(sendId) : undefined) ??
       (contextId ? this._routingByContext.get(contextId) : undefined) ??
       (signature ? this._routingBySignature.get(signature) : undefined);
+    if (!record) {
+      const correlationTime = timestampMs ?? eventTimeMs;
+      record = Array.from(this._routingRecords)
+        .filter(
+          (candidate) =>
+            candidate.hydratedFromStorage &&
+            candidate.entityId === entityId &&
+            candidate.message === message &&
+            candidate.outgoing === outgoing &&
+            candidate.timestampMs !== null &&
+            correlationTime !== null &&
+            Math.abs(candidate.timestampMs - correlationTime) <= ROUTE_MATCH_WINDOW_MS
+        )
+        .sort(
+          (a, b) =>
+            Math.abs((a.timestampMs ?? 0) - (correlationTime ?? 0)) -
+            Math.abs((b.timestampMs ?? 0) - (correlationTime ?? 0))
+        )[0];
+    }
     if (
       record &&
       (record.entityId !== entityId ||
@@ -1280,12 +1658,13 @@ export class MeshcoreChannelCard extends HTMLElement {
     }
 
     const previousDetails = JSON.stringify(this._routeDetails(record));
+    const wasHydrated = record.hydratedFromStorage === true;
+    const previousUpdatedAt = record.updatedAt;
     record.timestampMs = record.timestampMs ?? timestampMs;
     if (eventType === "meshcore_message") {
       record.messageEventSeen = true;
       record.eventTimeMs = eventTimeMs ?? record.eventTimeMs;
     }
-    record.updatedAt = Date.now();
     if (contextId) {
       record.contextId = contextId;
       this._routingByContext.set(contextId, record);
@@ -1300,15 +1679,27 @@ export class MeshcoreChannelCard extends HTMLElement {
     }
 
     const topHopCount = routeHopCount(data["hop_count"]);
-    if (topHopCount !== undefined) record.topHopCount = topHopCount;
+    if (topHopCount !== undefined) {
+      record.topHopCount = topHopCount;
+      record.liveMetadataSeen = true;
+    }
     this._mergeRxLogData(record, data["rx_log_data"]);
+    let pendingScopeChanged = false;
     if (sendId) {
       const pending = this._pendingSentScopes.get(sendId);
-      if (pending) this._mergePendingSentScope(record, pending);
+      if (pending) pendingScopeChanged = this._mergePendingSentScope(record, pending);
     }
+    const liveMetadata =
+      topHopCount !== undefined ||
+      pendingScopeChanged ||
+      (wasHydrated && record.hydratedFromStorage !== true);
+    record.updatedAt = wasHydrated && !liveMetadata ? previousUpdatedAt : Date.now();
     const newlyMatched = this._matchRoutingRecord(record);
     const detailsChanged = previousDetails !== JSON.stringify(this._routeDetails(record));
     if (newlyMatched || detailsChanged) this._scheduleRoutingRender(record);
+    if (record.matchedEntryKey && (newlyMatched || detailsChanged || record.liveMetadataSeen)) {
+      this._persistRoutingRecord(record);
+    }
   }
 
   private _mergeRxLogData(record: RoutingRecord, value: unknown): void {
@@ -1318,6 +1709,9 @@ export class MeshcoreChannelCard extends HTMLElement {
     for (let index = 0; index < limit; index += 1) {
       const route = normalizeRxRoute(value[index]);
       if (route) routes.push(route);
+    }
+    if (!routes.length && record.hydratedFromStorage && !record.liveMetadataSeen) {
+      return;
     }
     record.routes = routes;
     const selectableRoutes = routes.filter(
@@ -1329,6 +1723,8 @@ export class MeshcoreChannelCard extends HTMLElement {
     const nextSelected = selected ?? selectableRoutes[0];
     record.selectedRouteKey = nextSelected?.key;
     record.selectedRoute = nextSelected;
+    record.liveMetadataSeen = record.liveMetadataSeen || routes.length > 0;
+    if (routes.length > 0) record.hydratedFromStorage = false;
   }
 
   private _mergePendingSentScope(
@@ -1516,10 +1912,14 @@ export class MeshcoreChannelCard extends HTMLElement {
     this._routingByEntry.clear();
     this._routingByDialogId.clear();
     this._pendingSentScopes.clear();
+    this._pendingRouteStorageRecords.clear();
   }
 
   private _deleteRoutingRecord(record: RoutingRecord): void {
     this._routingRecords.delete(record);
+    if (record.matchedEntryKey) {
+      this._pendingRouteStorageRecords.delete(record.matchedEntryKey);
+    }
     this._routingByDialogId.delete(record.dialogId);
     for (const lookup of [
       this._routingByContext,
@@ -1573,6 +1973,9 @@ export class MeshcoreChannelCard extends HTMLElement {
       }
       this._entries.set(this._entryKey(entry), entry);
       this._matchEntryToRouting(entry);
+      const matchedRecord = this._routingByEntry.get(this._entryKey(entry));
+      if (matchedRecord) this._persistRoutingRecord(matchedRecord);
+      void this._hydrateStoredRoute(entry);
     }
     this._loading = false;
     this._historyError = false;
@@ -1602,6 +2005,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     }
     this._purgeRoutingMetadata(retainedKeys);
     this._messages = entries;
+    this._pruneStoredRoutes();
     return oldKeys !== entries.map((entry) => this._entryKey(entry)).join("\u0001");
   }
 
