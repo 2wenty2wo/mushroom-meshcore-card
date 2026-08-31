@@ -2,7 +2,7 @@
   "name": "mushroom-meshcore-card",
   "version": "0.18.1",
   "description": "Mushroom-styled Home Assistant Lovelace cards for MeshCore",
-  "homepage": "https://github.com/2wenty2wo/mushroom-meshcore-card",
+  "homepage": "https://2wenty2wo.github.io/mushroom-meshcore-card/",
   "repository": {
     "type": "git",
     "url": "https://github.com/2wenty2wo/mushroom-meshcore-card.git"
@@ -16,6 +16,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:render": "node scripts/render-smoke.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "dev": "npm run typecheck && npm run watch",
     "translate": "node scripts/translate.mjs",
     "translate:dry": "node scripts/translate.mjs --dry-run",
@@ -33,6 +36,7 @@
     "rollup": "^4.62.0",
     "tslib": "^2.6.3",
     "typescript": "^5.9.3",
+    "vitepress": "^1.6.4",
     "vitest": "^3.2.7",
     "yaml": "^2.9.0"
   }

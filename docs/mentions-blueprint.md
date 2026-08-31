@@ -2,6 +2,8 @@
 
 The **MeshCore Mentions** automation blueprint listens for channel-message events from the MeshCore integration, detects a configured companion tag, writes a persistent item to a Local To-do list, and can optionally send the same mention to one or more Home Assistant notification entities. The Mentions card reads that To-do list and presents the items as a dated inbox.
 
+For dashboard-side behavior and every card field, see the [Mentions card guide](/cards/mentions) and [configuration reference](/configuration#mentions-card). General installation and frontend issues are covered in [Troubleshooting](/troubleshooting).
+
 ## Requirements
 
 - Home Assistant 2026.5.0 or later

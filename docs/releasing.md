@@ -6,7 +6,7 @@ Publish releases only from `2wenty2wo/mushroom-meshcore-card`. The `jpettitt/mes
 
 1. Update `package.json` and `package-lock.json` to the same version.
 2. Label each user-facing pull request with the most relevant release label: `breaking-change`, `enhancement`, `bug`, `documentation`, `translation`, `maintenance`, or `dependencies`. Use `skip-changelog` for internal-only changes that should not appear in HACS update notes.
-3. Run `npm ci`, `npm run typecheck`, `npm run check-translations`, `npm test`, `npm run build`, `npm run test:render`, and `git diff --check`.
+3. Run `npm ci`, `npm run docs:build`, `npm run typecheck`, `npm run check-translations`, `npm test`, `npm run build`, `npm run test:render`, and `git diff --check`.
 4. Use a full SemVer tag that exactly matches both package files, such as `v0.16.0` or `v0.16.0-beta.1`.
 
 ## AI-authored pull requests
@@ -54,7 +54,7 @@ Stable versions use GitHub's normal Latest selection. A SemVer prerelease suffix
 
 ## Images and HACS
 
-Keep the logo in the rendered README instead of repeating it in every release body. HACS can combine multiple skipped release descriptions in one update, so release notes should stay compact.
+Keep the logo in the deliberately minimal rendered README instead of repeating it in every release body. Detailed screenshots and usage guidance belong in the VitePress documentation. HACS can combine multiple skipped release descriptions in one update, so release notes should stay compact.
 
 When a release genuinely benefits from a screenshot, use an absolute URL pinned to that release tag, never `main`:
 
@@ -62,4 +62,4 @@ When a release genuinely benefits from a screenshot, use an absolute URL pinned 
 ![Main card](https://raw.githubusercontent.com/2wenty2wo/mushroom-meshcore-card/vX.Y.Z/screenshots/main-card.png)
 ```
 
-Repository-relative screenshot paths are appropriate in `README.md` because HACS renders that file with repository context. The generic Dashboard icon in HACS list and update entities is controlled by HACS; the rendered README is the branded details surface.
+Repository-relative screenshot paths remain appropriate for repository Markdown, while public usage pages should link through the VitePress site. The generic Dashboard icon in HACS list and update entities is controlled by HACS; the rendered README remains the compact branded installation surface.
