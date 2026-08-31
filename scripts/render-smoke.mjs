@@ -107,7 +107,11 @@ globalThis.customElements = {
   define: (name, constructor) => registry.set(name, constructor),
 };
 customElements.define("ha-tile-info", class extends FakeHTMLElement {});
-globalThis.window = { customCards: [] };
+globalThis.window = {
+  customCards: [],
+  setInterval: () => 1,
+  clearInterval: () => {},
+};
 globalThis.document = {
   createElement: (tagName) => new FakeHTMLElement(tagName),
 };
@@ -1486,4 +1490,48 @@ assert.match(
   /No Home Assistant to-do lists detected/,
 );
 
-console.log("Main, channel, and mentions render smoke tests passed");
+const ReleasesCard = registry.get("mushroom-meshcore-releases-card");
+assert.ok(ReleasesCard, "releases card is registered");
+const releasesHass = createHass();
+releasesHass.states["sensor.meshcore_latest_release"] = state("v1.17.1", {
+  friendly_name: "MeshCore Latest Release",
+  html_url: "https://github.com/meshcore-dev/MeshCore/releases/tag/v1.17.1",
+  published_at: "2026-08-20T00:00:00Z",
+  prerelease: false,
+});
+releasesHass.states["sensor.mishmesh_latest_release"] = state("mishmesh-v1.4.1", {
+  friendly_name: "mishmesh Latest Release",
+  html_url: "https://github.com/burakcan/MeshCore-mishmesh/releases/tag/mishmesh-v1.4.1",
+  published_at: "2026-08-28T00:00:00Z",
+  prerelease: true,
+});
+const releasesCard = new ReleasesCard();
+releasesCard.setConfig({
+  sources: [
+    { entity: "sensor.meshcore_latest_release", name: "MeshCore" },
+    { entity: "sensor.mishmesh_latest_release", name: "mishmesh" },
+    { entity: "sensor.missing_latest_release", name: "Missing" },
+  ],
+  grid_options: { columns: "full", rows: 5 },
+});
+releasesCard.hass = releasesHass;
+releasesCard.connectedCallback();
+const releasesHtml = releasesCard.shadowRoot.innerHTML;
+assert.match(releasesHtml, /releases-card grid-rows/);
+assert.ok(
+  releasesHtml.indexOf("mishmesh-v1.4.1") < releasesHtml.indexOf("v1.17.1"),
+  "releases are newest-first",
+);
+assert.match(releasesHtml, /Pre-release/);
+assert.match(releasesHtml, /2 of 3 available/);
+assert.match(releasesHtml, /rel="noopener noreferrer"/);
+assert.doesNotMatch(releasesHtml, /href="[^"]*sensor\.missing/);
+assert.deepEqual(releasesCard.getGridOptions(), {
+  columns: "full",
+  rows: "auto",
+  min_columns: 6,
+  min_rows: 1,
+});
+releasesCard.disconnectedCallback();
+
+console.log("Main, channel, mentions, and releases render smoke tests passed");

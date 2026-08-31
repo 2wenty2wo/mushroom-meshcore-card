@@ -38,6 +38,7 @@ export default defineConfig({
           { text: "Main card", link: "/cards/main" },
           { text: "Channel card", link: "/cards/channel" },
           { text: "Mentions card", link: "/cards/mentions" },
+          { text: "Releases card", link: "/cards/releases" },
         ],
       },
       {

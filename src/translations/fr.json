@@ -144,7 +144,18 @@
     "mentions_channel": "sur {channel}",
     "mentions_handle_label": "Marquer comme traitée : {item}",
     "mentions_reopen_label": "Rouvrir la mention : {item}",
-    "mentions_update_failed": "Impossible de mettre à jour cette mention. Réessayez."
+    "mentions_update_failed": "Impossible de mettre à jour cette mention. Réessayez.",
+    "releases_select_sources": "Sélectionnez au moins un capteur de version dans l’éditeur de carte.",
+    "releases_title": "Versions logicielles",
+    "releases_source_count_one": "1 source",
+    "releases_source_count": "{n} sources",
+    "releases_summary_age": "{count} · plus récente {age}",
+    "releases_available": "{available} sur {total} disponibles",
+    "releases_unknown_age": "Âge inconnu",
+    "releases_just_now": "À l’instant",
+    "releases_prerelease": "Préversion",
+    "releases_open": "Ouvrir {name} {tag}",
+    "releases_row_label": "{name}, {tag}, {age}"
   },
   "time": {
     "s_ago": "il y a {n}s",
@@ -212,6 +223,22 @@
     "target_mentions": "Liste de tâches des mentions",
     "no_todo_entities": "Aucune liste de tâches Home Assistant détectée. Ajoutez Liste de tâches locale, puis modifiez à nouveau la carte.",
     "hide_completed_mentions": "Masquer les mentions traitées",
-    "section_mentions_behavior": "Mentions"
+    "section_mentions_behavior": "Mentions",
+    "section_releases_sources": "Sources",
+    "releases_sources_help": "Ajoutez des capteurs de version, renommez-les si nécessaire et faites-les glisser pour définir l’ordre de secours.",
+    "releases_add_source": "Ajouter une source",
+    "releases_source_entity": "Capteur de version",
+    "releases_source_name": "Nom d’affichage (facultatif)",
+    "releases_source_drag": "Déplacer {name}",
+    "releases_source_move_up": "Monter {name}",
+    "releases_source_move_down": "Descendre {name}",
+    "releases_source_remove": "Supprimer {name}",
+    "releases_no_sensors": "Aucune entité de capteur Home Assistant n’est encore disponible.",
+    "section_releases_behavior": "Versions",
+    "releases_sort": "Ordre de tri",
+    "releases_sort_newest": "Plus récentes d’abord",
+    "releases_sort_configured": "Ordre configuré",
+    "releases_sort_name": "Nom du logiciel",
+    "releases_hide_age": "Masquer l’âge de la version"
   }
 }

@@ -144,7 +144,18 @@
     "mentions_channel": "on {channel}",
     "mentions_handle_label": "Mark handled: {item}",
     "mentions_reopen_label": "Reopen mention: {item}",
-    "mentions_update_failed": "Could not update this mention. Try again."
+    "mentions_update_failed": "Could not update this mention. Try again.",
+    "releases_select_sources": "Select at least one release sensor in the card editor.",
+    "releases_title": "Software releases",
+    "releases_source_count_one": "1 source",
+    "releases_source_count": "{n} sources",
+    "releases_summary_age": "{count} · newest {age}",
+    "releases_available": "{available} of {total} available",
+    "releases_unknown_age": "Unknown age",
+    "releases_just_now": "Just now",
+    "releases_prerelease": "Pre-release",
+    "releases_open": "Open {name} {tag}",
+    "releases_row_label": "{name}, {tag}, {age}"
   },
   "time": {
     "s_ago": "{n}s ago",
@@ -212,6 +223,22 @@
     "target_mentions": "Mentions to-do list",
     "no_todo_entities": "No Home Assistant to-do lists detected yet. Add Local To-do, then edit the card again.",
     "hide_completed_mentions": "Hide handled mentions",
-    "section_mentions_behavior": "Mentions"
+    "section_mentions_behavior": "Mentions",
+    "section_releases_sources": "Sources",
+    "releases_sources_help": "Add release sensors, optionally rename them, and drag to set the fallback order.",
+    "releases_add_source": "Add source",
+    "releases_source_entity": "Release sensor",
+    "releases_source_name": "Display name (optional)",
+    "releases_source_drag": "Drag {name}",
+    "releases_source_move_up": "Move {name} up",
+    "releases_source_move_down": "Move {name} down",
+    "releases_source_remove": "Remove {name}",
+    "releases_no_sensors": "No Home Assistant sensor entities are available yet.",
+    "section_releases_behavior": "Releases",
+    "releases_sort": "Sort order",
+    "releases_sort_newest": "Newest first",
+    "releases_sort_configured": "Configured order",
+    "releases_sort_name": "Software name",
+    "releases_hide_age": "Hide release age"
   }
 }

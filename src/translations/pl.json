@@ -144,7 +144,18 @@
     "mentions_channel": "na {channel}",
     "mentions_handle_label": "Oznacz jako obsłużoną: {item}",
     "mentions_reopen_label": "Otwórz ponownie wzmiankę: {item}",
-    "mentions_update_failed": "Nie udało się zaktualizować tej wzmianki. Spróbuj ponownie."
+    "mentions_update_failed": "Nie udało się zaktualizować tej wzmianki. Spróbuj ponownie.",
+    "releases_select_sources": "Wybierz w edytorze karty co najmniej jeden czujnik wydania.",
+    "releases_title": "Wydania oprogramowania",
+    "releases_source_count_one": "1 źródło",
+    "releases_source_count": "Źródła: {n}",
+    "releases_summary_age": "{count} · najnowsze {age}",
+    "releases_available": "Dostępne: {available} z {total}",
+    "releases_unknown_age": "Wiek nieznany",
+    "releases_just_now": "Przed chwilą",
+    "releases_prerelease": "Wersja wstępna",
+    "releases_open": "Otwórz {name} {tag}",
+    "releases_row_label": "{name}, {tag}, {age}"
   },
   "time": {
     "s_ago": "{n} s temu",
@@ -212,6 +223,22 @@
     "target_mentions": "Lista zadań ze wzmiankami",
     "no_todo_entities": "Nie wykryto jeszcze list zadań Home Assistant. Dodaj integrację Lokalna lista zadań, a następnie ponownie edytuj kartę.",
     "hide_completed_mentions": "Ukryj obsłużone wzmianki",
-    "section_mentions_behavior": "Wzmianki"
+    "section_mentions_behavior": "Wzmianki",
+    "section_releases_sources": "Źródła",
+    "releases_sources_help": "Dodaj czujniki wydań, opcjonalnie zmień ich nazwy i przeciągnij, aby ustawić kolejność zapasową.",
+    "releases_add_source": "Dodaj źródło",
+    "releases_source_entity": "Czujnik wydania",
+    "releases_source_name": "Nazwa wyświetlana (opcjonalnie)",
+    "releases_source_drag": "Przeciągnij {name}",
+    "releases_source_move_up": "Przenieś {name} w górę",
+    "releases_source_move_down": "Przenieś {name} w dół",
+    "releases_source_remove": "Usuń {name}",
+    "releases_no_sensors": "Nie ma jeszcze dostępnych encji czujników Home Assistant.",
+    "section_releases_behavior": "Wydania",
+    "releases_sort": "Kolejność sortowania",
+    "releases_sort_newest": "Najnowsze najpierw",
+    "releases_sort_configured": "Skonfigurowana kolejność",
+    "releases_sort_name": "Nazwa oprogramowania",
+    "releases_hide_age": "Ukryj wiek wydania"
   }
 }

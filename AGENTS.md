@@ -15,13 +15,14 @@ This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve
 
 ## Architecture
 
-- `src/index.ts` registers the three cards and their card-picker metadata.
+- `src/index.ts` registers the four cards and their card-picker metadata.
 - `src/discovery.ts` contains registry-based MeshCore hub, node, contact, channel, and entity discovery. Treat this as stable backend logic; do not rewrite it for presentation work.
 - `src/card.ts` owns the single-target hub/node card, configuration, throttled rendering, and more-info interactions.
 - `src/styles.ts` contains shared card styling and Mushroom/HA theme-token mappings.
 - `src/editor.ts` provides the target-first visual editor for the main card.
 - `src/channel-card.ts` provides the channel card.
 - `src/mentions-card.ts` provides the automation-backed mentions card.
+- `src/releases-card.ts` provides the sensor-backed software releases card.
 - `src/helpers.ts`, `src/types.ts`, `src/localize.ts`, and `src/translations/` provide shared helpers, types, and localisation.
 - `docs/` contains the public VitePress documentation. `docs/releasing.md` is maintainer-only and excluded from the generated site.
 
@@ -34,6 +35,7 @@ The fork must be installable alongside upstream. Register only these public card
 - `mushroom-meshcore-card`
 - `mushroom-meshcore-channel-card`
 - `mushroom-meshcore-mentions-card`
+- `mushroom-meshcore-releases-card`
 - Their matching `*-editor` elements
 
 Use `mushroom-meshcore-card` consistently for package, HACS, resource, bundle, workflow, and documentation naming. The distributable filename is `mushroom-meshcore-card.js`.

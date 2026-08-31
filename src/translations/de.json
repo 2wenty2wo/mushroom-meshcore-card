@@ -144,7 +144,18 @@
     "mentions_channel": "auf {channel}",
     "mentions_handle_label": "Als erledigt markieren: {item}",
     "mentions_reopen_label": "Erwähnung erneut öffnen: {item}",
-    "mentions_update_failed": "Diese Erwähnung konnte nicht aktualisiert werden. Versuchen Sie es erneut."
+    "mentions_update_failed": "Diese Erwähnung konnte nicht aktualisiert werden. Versuchen Sie es erneut.",
+    "releases_select_sources": "Wählen Sie im Karteneditor mindestens einen Release-Sensor aus.",
+    "releases_title": "Software-Veröffentlichungen",
+    "releases_source_count_one": "1 Quelle",
+    "releases_source_count": "{n} Quellen",
+    "releases_summary_age": "{count} · neueste {age}",
+    "releases_available": "{available} von {total} verfügbar",
+    "releases_unknown_age": "Alter unbekannt",
+    "releases_just_now": "Gerade eben",
+    "releases_prerelease": "Vorabversion",
+    "releases_open": "{name} {tag} öffnen",
+    "releases_row_label": "{name}, {tag}, {age}"
   },
   "time": {
     "s_ago": "vor {n}s",
@@ -212,6 +223,22 @@
     "target_mentions": "Aufgabenliste für Erwähnungen",
     "no_todo_entities": "Noch keine Home-Assistant-Aufgabenlisten erkannt. Fügen Sie Lokale Aufgaben hinzu und bearbeiten Sie die Karte erneut.",
     "hide_completed_mentions": "Erledigte Erwähnungen ausblenden",
-    "section_mentions_behavior": "Erwähnungen"
+    "section_mentions_behavior": "Erwähnungen",
+    "section_releases_sources": "Quellen",
+    "releases_sources_help": "Fügen Sie Release-Sensoren hinzu, benennen Sie sie optional um und ziehen Sie sie in die gewünschte Ersatzreihenfolge.",
+    "releases_add_source": "Quelle hinzufügen",
+    "releases_source_entity": "Release-Sensor",
+    "releases_source_name": "Anzeigename (optional)",
+    "releases_source_drag": "{name} ziehen",
+    "releases_source_move_up": "{name} nach oben verschieben",
+    "releases_source_move_down": "{name} nach unten verschieben",
+    "releases_source_remove": "{name} entfernen",
+    "releases_no_sensors": "Noch keine Home-Assistant-Sensorentitäten verfügbar.",
+    "section_releases_behavior": "Veröffentlichungen",
+    "releases_sort": "Sortierung",
+    "releases_sort_newest": "Neueste zuerst",
+    "releases_sort_configured": "Konfigurierte Reihenfolge",
+    "releases_sort_name": "Softwarename",
+    "releases_hide_age": "Alter der Veröffentlichung ausblenden"
   }
 }

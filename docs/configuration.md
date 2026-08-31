@@ -1,6 +1,6 @@
 # Configuration reference
 
-All three cards have target-first visual editors, but every setting is also available in YAML. Start with [Getting started](/getting-started), or see the focused guides for the [Main card](/cards/main), [Channel card](/cards/channel), and [Mentions card](/cards/mentions).
+All four cards have visual editors, but every setting is also available in YAML. The Main, Channel, and Mentions cards begin with their required target; the Releases card begins with its explicit source list. Start with [Getting started](/getting-started), or see the focused guides for the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), and [Releases card](/cards/releases).
 
 ## Main card
 
@@ -172,6 +172,36 @@ entity: todo.meshcore_mentions
 
 Card installation and blueprint import are separate. Follow the [Mentions card guide](/cards/mentions) and [MeshCore Mentions blueprint](/mentions-blueprint) before selecting the To-do entity.
 
+## Releases card
+
+The Releases card reads an explicit list of Home Assistant release sensors.
+
+```yaml
+type: custom:mushroom-meshcore-releases-card
+sources:
+  - entity: sensor.meshcore_latest_release
+    name: MeshCore
+  - entity: sensor.mishmesh_latest_release
+    name: mishmesh
+```
+
+| Field | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `type` | string | required | Must be `custom:mushroom-meshcore-releases-card`. |
+| `sources` | list | required | Explicit `{ entity, name? }` release sensor entries. Duplicate entities keep their first entry. |
+| `name` | string | `Software releases` | Overrides the Tile header name. |
+| `icon` | string | `mdi:download` | Overrides the Tile header icon. |
+| `icon_color` | string | `primary` | Recolors the neutral header icon. |
+| `sort` | `newest`, `configured`, or `name` | `newest` | Controls row ordering. Matching or missing dates retain configured order. |
+| `hide_age` | boolean | `false` | Hides relative ages and the newest-age header summary. |
+| `grid_options` | object | card defaults | Home Assistant Sections-grid sizing. |
+
+The entity state supplies the tag. `html_url`, `published_at`, and `prerelease`
+attributes supply the link, age, and optional badge. Missing entities remain as
+muted rows; unsafe or non-HTTPS links are never opened. Follow the
+[Releases card guide](/cards/releases) for the complete sensor contract and
+REST examples.
+
 ## Header actions
 
 The three header action fields accept this Home Assistant-compatible subset:
@@ -223,9 +253,10 @@ The defaults advertised to Home Assistant are:
 | Main | `full` | `auto` | 6 | 1 |
 | Channel | `full` | 8 | 6 | 4 |
 | Mentions | `full` | `auto` | 6 | 1 |
+| Releases | `full` | `auto` | 6 | 1 |
 
-With numeric `rows`, the main card clips content that falls outside its allocated height, while Channel and Mentions use an internal scrolling content area. Increase the row count or return to `rows: auto` if expected content is not visible.
+With numeric `rows`, the main card clips content that falls outside its allocated height, while Channel, Mentions, and Releases use an internal scrolling content area. Increase the row count or return to `rows: auto` if expected content is not visible.
 
 ## Full examples
 
-Complete, copyable YAML for each card lives in the [Main card](/cards/main), [Channel card](/cards/channel), and [Mentions card](/cards/mentions) guides. See [Troubleshooting](/troubleshooting) when a target or metric is not found.
+Complete, copyable YAML for each card lives in the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), and [Releases card](/cards/releases) guides. See [Troubleshooting](/troubleshooting) when a target, source, or metric is not found.
