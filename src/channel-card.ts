@@ -1146,13 +1146,7 @@ export class MeshcoreChannelCard extends HTMLElement {
 
   private _pruneStoredRoutes(): void {
     if (!this._routeStorageLoaded) return;
-    const entityId = this._config?.entity;
-    if (!entityId) return;
-    const next = pruneRouteStorage(this._routeStorage, {
-      targetId: entityId,
-      hoursToShow: this._hoursToShow(),
-      maxMessages: this._maxMessages(),
-    });
+    const next = pruneRouteStorage(this._routeStorage);
     if (JSON.stringify(next) !== JSON.stringify(this._routeStorage)) {
       this._routeStorage = next;
       this._scheduleRouteStorageWrite();
@@ -1212,11 +1206,7 @@ export class MeshcoreChannelCard extends HTMLElement {
       const target = (this._routeStorage.targets[entityId] ??= {});
       target[identity] = stored;
       this._pendingRouteStorageRecords.delete(entryKey);
-      this._routeStorage = pruneRouteStorage(this._routeStorage, {
-        targetId: entityId,
-        hoursToShow: this._hoursToShow(),
-        maxMessages: this._maxMessages(),
-      });
+      this._routeStorage = pruneRouteStorage(this._routeStorage);
       this._scheduleRouteStorageWrite();
     });
   }
@@ -1275,11 +1265,7 @@ export class MeshcoreChannelCard extends HTMLElement {
             this._routeStorageDirty = true;
             return;
           }
-          const merged = pruneRouteStorage(mergeRouteStorage(latest, envelope), {
-            targetId: entityId,
-            hoursToShow: this._hoursToShow(),
-            maxMessages: this._maxMessages(),
-          });
+          const merged = pruneRouteStorage(mergeRouteStorage(latest, envelope));
           this._routeStorage = merged;
           const saved = await saveRouteStorage(hass, merged);
           if (!saved) this._routeStorageDirty = false;

@@ -137,6 +137,29 @@ function logbookForTarget(
   });
 }
 
+function broadcastLogbookForTarget(
+  subscriptions: Subscription[],
+  entityId: string,
+  events: Array<{
+    when: number;
+    name: string;
+    entity_id: string;
+    context_id: string;
+    message: string;
+  }>
+): void {
+  for (const subscription of subscriptions) {
+    if (
+      subscription.params["type"] !== "logbook/event_stream" ||
+      !Array.isArray(subscription.params["entity_ids"]) ||
+      !subscription.params["entity_ids"].includes(entityId)
+    ) {
+      continue;
+    }
+    subscription.callback({ events });
+  }
+}
+
 async function settle(milliseconds = 1_000): Promise<void> {
   await vi.advanceTimersByTimeAsync(milliseconds);
   await Promise.resolve();
@@ -331,6 +354,131 @@ describe("channel route frontend storage", () => {
     await settle();
     expect(card.shadowRoot?.querySelector(".message-route-details")).not.toBeNull();
     expect(hass.callWS).toHaveBeenCalled();
+  });
+
+  it("keeps shared same-channel storage independent of each card's visible history", async () => {
+    const oldContext = "shared-old";
+    const currentContext = "shared-current";
+    const route = {
+      key: "1:A1",
+      hopCount: 1,
+      pathSegments: ["A1"],
+      hashSizeBytes: 1,
+      direct: false,
+      regionScoped: false,
+    };
+    let stored: unknown = {
+      version: CHANNEL_ROUTE_STORAGE_VERSION,
+      targets: {
+        [CHANNEL_ENTITY]: {
+          [`context:${oldContext}`]: {
+            when: NOW - 7_200,
+            updatedAt: (NOW - 7_200) * 1_000,
+            outgoing: false,
+            routes: [route],
+          },
+          [`context:${currentContext}`]: {
+            when: NOW - 60,
+            updatedAt: (NOW - 60) * 1_000,
+            outgoing: false,
+            routes: [route],
+          },
+        },
+      },
+    };
+    const callWS = vi.fn(async (message: Record<string, unknown>) => {
+      if (message["type"] === "frontend/get_user_data") {
+        return { value: JSON.parse(JSON.stringify(stored)) };
+      }
+      if (message["type"] === "frontend/set_user_data") {
+        stored = JSON.parse(JSON.stringify(message["value"]));
+      }
+      return {};
+    });
+    const sharedConnection = makeConnection();
+    const hass = createChannelHass();
+    hass.connection = sharedConnection.connection;
+    hass.callWS = callWS as unknown as NonNullable<HomeAssistant["callWS"]>;
+
+    const narrow = document.createElement(
+      "mushroom-meshcore-channel-card"
+    ) as MeshcoreChannelCard;
+    narrow.setConfig({
+      entity: CHANNEL_ENTITY,
+      hours_to_show: 1,
+      max_messages: 1,
+    });
+    narrow.hass = hass;
+    document.body.appendChild(narrow);
+
+    const wide = document.createElement(
+      "mushroom-meshcore-channel-card"
+    ) as MeshcoreChannelCard;
+    wide.setConfig({
+      entity: CHANNEL_ENTITY,
+      hours_to_show: 168,
+      max_messages: 200,
+    });
+    wide.hass = hass;
+    document.body.appendChild(wide);
+    await settle(0);
+
+    callWS.mockClear();
+    const publishSharedEnvelope = (): void => {
+      for (const subscription of sharedConnection.subscriptions) {
+        if (subscription.params["type"] !== "frontend/subscribe_user_data") {
+          continue;
+        }
+        subscription.callback({ value: JSON.parse(JSON.stringify(stored)) });
+      }
+    };
+    publishSharedEnvelope();
+
+    broadcastLogbookForTarget(sharedConnection.subscriptions, CHANNEL_ENTITY, [
+      {
+        when: NOW - 7_200,
+        name: "Public",
+        entity_id: CHANNEL_ENTITY,
+        context_id: oldContext,
+        message: "Alice: old",
+      },
+      {
+        when: NOW - 60,
+        name: "Public",
+        entity_id: CHANNEL_ENTITY,
+        context_id: currentContext,
+        message: "Alice: current",
+      },
+    ]);
+    await settle(1_000);
+
+    expect(narrow.shadowRoot?.querySelectorAll(".message-row")).toHaveLength(1);
+    expect(wide.shadowRoot?.querySelectorAll(".message-row")).toHaveLength(2);
+    expect(
+      Object.keys(
+        (stored as { targets: Record<string, Record<string, unknown>> }).targets[
+          CHANNEL_ENTITY
+        ] ?? {}
+      )
+    ).toEqual([
+      `context:${oldContext}`,
+      `context:${currentContext}`,
+    ]);
+    expect(
+      callWS.mock.calls.filter(
+        ([message]) => message["type"] === "frontend/set_user_data"
+      )
+    ).toHaveLength(0);
+
+    // Replaying the shared namespace must remain a no-op for both cards rather
+    // than causing the narrow card to delete and the wide card to repair it.
+    publishSharedEnvelope();
+    await settle(1_000);
+    expect(
+      callWS.mock.calls.filter(
+        ([message]) => message["type"] === "frontend/set_user_data"
+      )
+    ).toHaveLength(0);
   });
 
   it("serializes simultaneous writes from separate channel-card instances", async () => {

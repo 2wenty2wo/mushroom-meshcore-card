@@ -296,17 +296,24 @@ export function validateRouteStorage(value: unknown): RouteStorageEnvelope {
     }
     const records = asRecord(rawRecords);
     if (!records) continue;
-    const valid: RouteStorageTarget = {};
+    const candidates: Array<[string, RouteStorageRecord]> = [];
     for (const [identity, rawRecord] of Object.entries(records)) {
       if (
-        Object.keys(valid).length >= MAX_ROUTE_STORAGE_RECORDS_PER_TARGET ||
         !boundedString(identity, MAX_ROUTE_STORAGE_KEY_LENGTH) ||
         !safeObjectKey(identity)
       ) {
         continue;
       }
       const record = normalizeStorageRecord(rawRecord);
-      if (record) valid[identity] = record;
+      if (record) candidates.push([identity, record]);
+    }
+    candidates.sort(([, first], [, second]) => recordSortTime(second) - recordSortTime(first));
+    const valid: RouteStorageTarget = {};
+    for (const [identity, record] of candidates.slice(
+      0,
+      MAX_ROUTE_STORAGE_RECORDS_PER_TARGET
+    )) {
+      valid[identity] = record;
     }
     if (Object.keys(valid).length) envelope.targets[target] = valid;
   }
@@ -428,13 +435,20 @@ function validateEnvelopeOnly(value: unknown): RouteStorageEnvelope {
         !safeObjectKey(target)) continue;
     const records = asRecord(rawRecords);
     if (!records) continue;
-    const valid: RouteStorageTarget = {};
+    const candidates: Array<[string, RouteStorageRecord]> = [];
     for (const [identity, rawRecord] of Object.entries(records)) {
-      if (Object.keys(valid).length >= MAX_ROUTE_STORAGE_RECORDS_PER_TARGET ||
-          !boundedString(identity, MAX_ROUTE_STORAGE_KEY_LENGTH) ||
+      if (!boundedString(identity, MAX_ROUTE_STORAGE_KEY_LENGTH) ||
           !safeObjectKey(identity)) continue;
       const record = normalizeStorageRecord(rawRecord);
-      if (record) valid[identity] = record;
+      if (record) candidates.push([identity, record]);
+    }
+    candidates.sort(([, first], [, second]) => recordSortTime(second) - recordSortTime(first));
+    const valid: RouteStorageTarget = {};
+    for (const [identity, record] of candidates.slice(
+      0,
+      MAX_ROUTE_STORAGE_RECORDS_PER_TARGET
+    )) {
+      valid[identity] = record;
     }
     if (Object.keys(valid).length) envelope.targets[target] = valid;
   }

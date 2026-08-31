@@ -320,7 +320,7 @@ describe("channel route persistence coverage", () => {
     expect(internals._routingByEntry.has(internals._entryKey(stale))).toBe(false);
   });
 
-  it("drains queued records and prunes changed storage only when ready", () => {
+  it("drains queued records and applies only hard storage bounds when ready", () => {
     const { card, internals } = bareCard();
     const queued = routingRecord({ matchedEntryKey: "queued" });
     internals._pendingRouteStorageRecords.set("queued", queued);
@@ -354,14 +354,37 @@ describe("channel route persistence coverage", () => {
       version: CHANNEL_ROUTE_STORAGE_VERSION,
       targets: {
         [CHANNEL_ENTITY]: {
-          old: storedRecord([pathRoute()], { when: NOW - 7_200 }),
           current: storedRecord(),
+          old: storedRecord([pathRoute()], {
+            when: NOW - 7_200,
+            updatedAt: (NOW - 7_200) * 1_000,
+          }),
         },
       },
     };
+    schedule.mockClear();
     internals._pruneStoredRoutes();
-    expect(internals._routeStorage.targets[CHANNEL_ENTITY]?.old).toBeUndefined();
+    expect(internals._routeStorage.targets[CHANNEL_ENTITY]?.old).toBeDefined();
     expect(internals._routeStorage.targets[CHANNEL_ENTITY]?.current).toBeDefined();
+    expect(schedule).toHaveBeenCalledTimes(1);
+    schedule.mockClear();
+
+    internals._routeStorage.targets[CHANNEL_ENTITY] = Object.fromEntries(
+      Array.from({ length: 201 }, (_, index) => [
+        `record-${index}`,
+        storedRecord([pathRoute()], {
+          when: NOW + index,
+          updatedAt: NOW * 1000 + index,
+        }),
+      ])
+    );
+    internals._pruneStoredRoutes();
+    expect(
+      Object.keys(internals._routeStorage.targets[CHANNEL_ENTITY] ?? {})
+    ).toHaveLength(200);
+    expect(
+      internals._routeStorage.targets[CHANNEL_ENTITY]?.["record-0"]
+    ).toBeUndefined();
     expect(schedule).toHaveBeenCalledTimes(1);
 
     const scheduled = bareCard().internals;

@@ -62,12 +62,11 @@ describe("channel route storage", () => {
     ).toHaveLength(200);
     expect(
       result.targets["binary_sensor.meshcore_test_messages"]?.["message-0"]
+    ).toBeUndefined();
+    expect(
+      result.targets["binary_sensor.meshcore_test_messages"]?.["message-204"]
         ?.routes[0]?.pathSegments
     ).toEqual(["CCDD"]);
-    expect(
-      result.targets["binary_sensor.meshcore_test_messages"]?.["message-1"]
-        ?.routes[0]?.pathSegments
-    ).toEqual(["AABB"]);
   });
 
   it("ignores malformed records and wrong versions", () => {
