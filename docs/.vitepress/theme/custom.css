@@ -1,0 +1,38 @@
+:root {
+  --mmc-logo-green: #2f9e57;
+  --vp-c-brand-1: #237a43;
+  --vp-c-brand-2: #288c4d;
+  --vp-c-brand-3: var(--mmc-logo-green);
+  --vp-c-brand-soft: rgba(47, 158, 87, 0.14);
+  --vp-button-brand-border: #237a43;
+  --vp-button-brand-text: #ffffff;
+  --vp-button-brand-bg: #237a43;
+  --vp-button-brand-hover-border: #1d6838;
+  --vp-button-brand-hover-text: #ffffff;
+  --vp-button-brand-hover-bg: #1d6838;
+  --vp-button-brand-active-border: #18582f;
+  --vp-button-brand-active-text: #ffffff;
+  --vp-button-brand-active-bg: #18582f;
+  --vp-home-hero-name-color: #237a43;
+}
+
+.dark {
+  --vp-c-brand-1: #6ed08d;
+  --vp-c-brand-2: #59bf79;
+  --vp-c-brand-3: #43ad66;
+  --vp-c-brand-soft: rgba(110, 208, 141, 0.16);
+  --vp-button-brand-border: #6ed08d;
+  --vp-button-brand-text: #102718;
+  --vp-button-brand-bg: #6ed08d;
+  --vp-button-brand-hover-border: #82d99c;
+  --vp-button-brand-hover-text: #0c2013;
+  --vp-button-brand-hover-bg: #82d99c;
+  --vp-button-brand-active-border: #95e1aa;
+  --vp-button-brand-active-text: #09190f;
+  --vp-button-brand-active-bg: #95e1aa;
+  --vp-home-hero-name-color: #78d596;
+}
+
+.VPNavBarTitle .logo {
+  border-radius: 50%;
+}

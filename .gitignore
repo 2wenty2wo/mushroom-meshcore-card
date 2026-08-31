@@ -2,5 +2,7 @@
 node_modules/
 dist/
 coverage/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
 .claude/
 harness.html

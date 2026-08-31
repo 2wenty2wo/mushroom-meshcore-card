@@ -23,6 +23,7 @@ This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve
 - `src/channel-card.ts` provides the channel card.
 - `src/mentions-card.ts` provides the automation-backed mentions card.
 - `src/helpers.ts`, `src/types.ts`, `src/localize.ts`, and `src/translations/` provide shared helpers, types, and localisation.
+- `docs/` contains the public VitePress documentation. `docs/releasing.md` is maintainer-only and excluded from the generated site.
 
 Keep data/entity resolution separate from rendering. Prefer small presentation helpers over duplicating discovery or configuration logic.
 
@@ -117,6 +118,13 @@ Before preparing, opening, or updating a pull request or GitHub release, read an
 - Do not bump versions, create or push tags, create releases, or publish drafts unless the user explicitly requests a release operation.
 - When a release is requested, use the curated-draft or direct-tag flow in `docs/releasing.md`. Preserve existing release titles and bodies, use full SemVer matching `package.json` and `package-lock.json`, and publish only to `2wenty2wo/mushroom-meshcore-card`.
 
+## Documentation
+
+- Keep the root `README.md` as a deliberately minimal HACS-facing landing and installation page. Detailed setup, card configuration, examples, compatibility notes, and troubleshooting belong in the VitePress site under `docs/`.
+- Preserve `docs/mentions-blueprint.md` at its stable source path. Keep `docs/releasing.md` excluded from VitePress routes, navigation, and search.
+- Use absolute `https://2wenty2wo.github.io/mushroom-meshcore-card/` links from README and HACS-facing content. Use site-relative links within VitePress source.
+- Do not commit `docs/.vitepress/cache/` or `docs/.vitepress/dist/`. Build the site with `npm run docs:build` and visually verify material layout changes with `npm run docs:preview`.
+
 ## Development and verification
 
 Install and verify with:
@@ -127,6 +135,7 @@ npm run typecheck
 npm run check-translations
 npm test
 npm run build
+npm run docs:build
 npm run test:render
 git diff --check
 ```
