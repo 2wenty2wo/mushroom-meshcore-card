@@ -36,3 +36,64 @@
 .VPNavBarTitle .logo {
   border-radius: 50%;
 }
+
+/* Give the product name and value proposition distinct visual roles. */
+.VPHero .name {
+  max-width: 100%;
+  letter-spacing: -0.2px;
+  line-height: 28px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.VPHero .text {
+  padding-top: 8px;
+  max-width: 560px;
+  letter-spacing: -0.6px;
+  line-height: 38px;
+  font-size: 32px;
+}
+
+.VPHero .tagline {
+  line-height: 24px;
+  font-size: 16px;
+}
+
+@media (min-width: 640px) {
+  .VPHero .name {
+    line-height: 32px;
+    font-size: 24px;
+  }
+
+  .VPHero .text {
+    padding-top: 10px;
+    line-height: 48px;
+    font-size: 40px;
+  }
+
+  .VPHero .tagline {
+    line-height: 28px;
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHero .name {
+    line-height: 36px;
+    font-size: 26px;
+  }
+
+  .VPHero .text {
+    line-height: 52px;
+    font-size: 44px;
+  }
+
+  .VPHero .image-src {
+    max-width: 280px;
+    max-height: 280px;
+  }
+
+  .VPDoc.has-sidebar .content {
+    padding-left: 48px;
+  }
+}
