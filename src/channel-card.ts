@@ -1659,8 +1659,8 @@ export class MeshcoreChannelCard extends HTMLElement {
         )
         .sort(
           (a, b) =>
-            Math.abs((a.timestampMs ?? 0) - (correlationTime ?? 0)) -
-            Math.abs((b.timestampMs ?? 0) - (correlationTime ?? 0))
+            Math.abs(a.timestampMs! - correlationTime!) -
+            Math.abs(b.timestampMs! - correlationTime!)
         )[0];
     }
     if (
