@@ -90,6 +90,41 @@ afterEach(() => {
 });
 
 describe("MeshcoreReleasesCard", () => {
+  it("normalizes malformed sources and exposes sizing and editor metadata", () => {
+    const card = new MeshcoreReleasesCard();
+    expect(card.getCardSize()).toBe(2);
+    card.disconnectedCallback();
+
+    card.setConfig({
+      sources: [
+        { entity: MESHCORE },
+        { entity: MISHMESH },
+        { entity: ZEPHCORE },
+      ],
+    });
+    expect(card.getCardSize()).toBe(4);
+
+    const malformedSources = [
+      null,
+      42,
+      { entity: 7 },
+      { entity: " " },
+      ...Array.from({ length: 9 }, (_, index) => ({
+        entity: `sensor.release_${index}`,
+      })),
+    ];
+    card.setConfig({
+      sources: malformedSources,
+    } as unknown as MeshcoreReleasesCardConfig);
+    card.hass = createReleaseHass();
+    expect(card.shadowRoot!.querySelectorAll(".release-row")).toHaveLength(9);
+    expect(card.getCardSize()).toBe(8);
+    expect(MeshcoreReleasesCard.getConfigElement().localName).toBe(
+      "mushroom-meshcore-releases-card-editor"
+    );
+    expect(MeshcoreReleasesCard.getStubConfig()).toEqual({ sources: [] });
+  });
+
   it("waits for config and hass, then prompts for explicit sources", () => {
     const card = new MeshcoreReleasesCard();
     card.setConfig({ sources: [] });
@@ -153,6 +188,70 @@ describe("MeshcoreReleasesCard", () => {
       })
     );
     expect(headerSecondary(card)).toBe("3 sources");
+  });
+
+  it("renders just-now and future relative ages", () => {
+    const card = createCard(
+      {
+        sources: [
+          { entity: MESHCORE, name: "Recent" },
+          { entity: MISHMESH, name: "Future" },
+        ],
+        sort: "configured",
+      },
+      createReleaseHass({
+        [MESHCORE]: releaseState("v1", "2026-08-30T23:59:30Z"),
+        [MISHMESH]: releaseState("v2", "2026-09-01T00:00:00Z"),
+      })
+    );
+    const ages = Array.from(card.shadowRoot!.querySelectorAll(".release-age")).map(
+      (element) => element.textContent
+    );
+    expect(ages).toEqual([t("card.releases_just_now"), "in 1 day"]);
+  });
+
+  it("falls back to English relative time for an invalid locale", () => {
+    const hass = createReleaseHass();
+    hass.language = "invalid_locale";
+    const card = createCard(
+      { sources: [{ entity: MISHMESH, name: "mishmesh" }] },
+      hass
+    );
+    expect(card.shadowRoot!.querySelector(".release-age")?.textContent).toBe(
+      "3 days ago"
+    );
+  });
+
+  it("uses locale fallbacks and configured order for equal localized names", () => {
+    const sources = [
+      { entity: MISHMESH, name: "alpha" },
+      { entity: MESHCORE, name: "Alpha" },
+    ];
+    const localeHass = createReleaseHass();
+    const mutableLocaleHass = localeHass as unknown as {
+      language?: string;
+      locale: { language?: string };
+    };
+    mutableLocaleHass.language = undefined;
+    mutableLocaleHass.locale.language = "en";
+    const localeCard = createCard({ sources, sort: "name" }, localeHass);
+    expect(rowNames(localeCard)).toEqual(["alpha", "Alpha"]);
+    expect(localeCard.shadowRoot!.querySelector(".release-age")?.textContent).toBe(
+      "3 days ago"
+    );
+
+    const defaultHass = createReleaseHass();
+    const mutableDefaultHass = defaultHass as unknown as {
+      language?: string;
+      locale: { language?: string };
+    };
+    mutableDefaultHass.language = undefined;
+    mutableDefaultHass.locale.language = undefined;
+    const defaultCard = createCard({ sources, sort: "name" }, defaultHass);
+    expect(rowNames(defaultCard)).toEqual(["alpha", "Alpha"]);
+    expect(defaultCard.shadowRoot!.querySelector(".release-age")?.textContent).toBe(
+      "3 days ago"
+    );
   });
 
   it("sorts invalid dates last and preserves configured order for ties", () => {
@@ -251,11 +350,16 @@ describe("MeshcoreReleasesCard", () => {
   });
 
   it.each([
+    undefined,
+    null,
+    42,
+    "",
+    "   ",
     "javascript:alert(1)",
     "data:text/html,boom",
     "http://example.com/release",
     "not a URL",
-  ])("rejects unsafe release URL %s", (htmlUrl) => {
+  ])("rejects missing or unsafe release URL %s", (htmlUrl) => {
     const card = createCard(
       { sources: [{ entity: MESHCORE, name: "MeshCore" }] },
       createReleaseHass({

@@ -103,6 +103,9 @@ describe("MeshcoreReleasesCardEditor", () => {
     const field = add.schema[0] as HaFormFieldSchema;
     expect(field.selector.entity?.domain).toBe("sensor");
     expect(field.selector.entity?.include_entities).toContain(FIRST);
+    changeValue(add, { entity: null });
+    changeValue(add, { entity: "binary_sensor.not_a_release" });
+    expect(configs).toHaveLength(0);
     changeValue(add, { entity: FIRST });
     expect(lastConfig(configs)).toEqual({
       type: "custom:mushroom-meshcore-releases-card",
@@ -117,6 +120,13 @@ describe("MeshcoreReleasesCardEditor", () => {
       sources: [{ entity: FIRST }, { entity: SECOND }],
     });
     const sourceForms = forms(editor).filter((form) => form.schema.length === 2);
+    changeValue(sourceForms[0]!, { entity: null, name: "Ignored" });
+    expect(configs).toHaveLength(0);
+    changeValue(sourceForms[0]!, { entity: FIRST, name: null });
+    expect(lastConfig(configs)?.sources).toEqual([
+      { entity: FIRST },
+      { entity: SECOND },
+    ]);
     changeValue(sourceForms[0]!, { entity: FIRST, name: "MeshCore" });
     expect(lastConfig(configs)?.sources).toEqual([
       { entity: FIRST, name: "MeshCore" },
@@ -131,18 +141,126 @@ describe("MeshcoreReleasesCardEditor", () => {
     const { editor, configs } = createEditor({
       sources: [{ entity: FIRST }, { entity: SECOND }, { entity: THIRD }],
     });
-    const first = editor.querySelector<HTMLElement>(".source-editor-item")!;
-    const down = Array.from(first.querySelectorAll<HTMLButtonElement>(".source-order")).find(
-      (button) => button.textContent === "↓"
-    )!;
-    down.click();
+    let items = Array.from(
+      editor.querySelectorAll<HTMLElement>(".source-editor-item")
+    );
+    const firstUp = Array.from(
+      items[0]!.querySelectorAll<HTMLButtonElement>(".source-order")
+    ).find((button) => button.textContent === "↑")!;
+    firstUp.click();
+    expect(configs).toHaveLength(0);
+
+    const secondUp = Array.from(
+      items[1]!.querySelectorAll<HTMLButtonElement>(".source-order")
+    ).find((button) => button.textContent === "↑")!;
+    secondUp.click();
     expect(lastConfig(configs)?.sources?.map((source) => source.entity)).toEqual([
       SECOND,
       FIRST,
       THIRD,
     ]);
+
+    items = Array.from(editor.querySelectorAll<HTMLElement>(".source-editor-item"));
+    const down = Array.from(items[0]!.querySelectorAll<HTMLButtonElement>(".source-order")).find(
+      (button) => button.textContent === "↓"
+    )!;
+    down.click();
+    expect(lastConfig(configs)?.sources?.map((source) => source.entity)).toEqual([
+      FIRST,
+      SECOND,
+      THIRD,
+    ]);
+
+    const list = editor.querySelector<HTMLElement>(".source-sortable-list")!;
+    const ghost = document.createElement("div");
+    ghost.className = "source-editor-item";
+    list.appendChild(ghost);
+    editor
+      .querySelector("ha-sortable")!
+      .dispatchEvent(new CustomEvent("item-moved"));
+    expect(lastConfig(configs)?.sources?.map((source) => source.entity)).toEqual([
+      FIRST,
+      SECOND,
+      THIRD,
+    ]);
+
     editor.querySelector<HTMLButtonElement>(".source-remove")!.click();
     expect(lastConfig(configs)?.sources).toHaveLength(2);
+  });
+
+  it("labels every form and preserves the source disclosure state", () => {
+    const { editor } = createEditor({ sources: [{ entity: FIRST }] });
+    const allForms = forms(editor);
+    const source = allForms.find((form) => form.schema.length === 2)!;
+    const add = allForms.find(
+      (form) =>
+        form.schema.length === 1 &&
+        (form.schema[0] as Partial<HaFormExpandableSchema> | undefined)?.type !==
+          "expandable"
+    )!;
+    const settings = settingsForm(editor);
+    for (const form of [source, add, settings]) {
+      expect(form.computeLabel({ name: "bare", selector: {} })).toBe("bare");
+      expect(
+        form.computeLabel({
+          name: "fallback",
+          label: undefined,
+          selector: {},
+        })
+      ).toBe("fallback");
+      expect(
+        form.computeLabel({
+          name: "explicit",
+          label: "Explicit label",
+          selector: {},
+        })
+      ).toBe("Explicit label");
+    }
+
+    const organizer = editor.querySelector<HTMLDetailsElement>(
+      ".source-organizer"
+    )!;
+    organizer.open = false;
+    organizer.dispatchEvent(new Event("toggle"));
+    editor.setConfig({ sources: [{ entity: FIRST }], name: "Releases" });
+    expect(
+      editor.querySelector<HTMLDetailsElement>(".source-organizer")!.open
+    ).toBe(false);
+  });
+
+  it("uses locale fallbacks and handles sensor discovery without hass", () => {
+    const bareEditor = new MeshcoreReleasesCardEditor();
+    expect(
+      (
+        bareEditor as unknown as {
+          _sensorEntities: () => string[];
+        }
+      )._sensorEntities()
+    ).toEqual([]);
+
+    const localeHass = editorHass();
+    const mutableLocaleHass = localeHass as unknown as {
+      language?: string;
+      locale: { language?: string };
+    };
+    mutableLocaleHass.language = undefined;
+    mutableLocaleHass.locale.language = "de";
+    const { editor: localeEditor } = createEditor({ sources: [] }, localeHass);
+    expect(localeEditor.querySelector("summary")?.textContent).toBe(
+      makeLocalize("de")("editor.section_releases_sources")
+    );
+
+    const defaultHass = editorHass();
+    const mutableDefaultHass = defaultHass as unknown as {
+      language?: string;
+      locale: { language?: string };
+    };
+    mutableDefaultHass.language = undefined;
+    mutableDefaultHass.locale.language = undefined;
+    const { editor: defaultEditor } = createEditor({ sources: [] }, defaultHass);
+    expect(defaultEditor.querySelector("summary")?.textContent).toBe(
+      t("editor.section_releases_sources")
+    );
   });
 
   it("configures focused Appearance and Releases sections", () => {
