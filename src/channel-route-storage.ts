@@ -61,6 +61,8 @@ export interface RouteStorageIdentityInput {
 export interface RouteStoragePruneOptions {
   /** Logbook timestamps are seconds since epoch. */
   nowSeconds?: number;
+  /** Apply configured retention only to this target; hard bounds remain global. */
+  targetId?: string;
   hoursToShow?: number;
   maxMessages?: number;
 }
@@ -74,6 +76,8 @@ export interface RouteStorageLoadResult {
   envelope: RouteStorageEnvelope;
   available: boolean;
 }
+
+const routeStorageWriteQueues = new WeakMap<object, Promise<void>>();
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -344,8 +348,9 @@ export function mergeRouteStorage(
 }
 
 /**
- * Apply the configured history retention and the hard storage bounds.
- * Records are newest-first by their event/update timestamp when a cap is hit.
+ * Apply configured history retention and the hard storage bounds. When a
+ * target is supplied, its card-specific retention never affects another
+ * channel namespace. Records are newest-first when a cap is hit.
  */
 export function pruneRouteStorage(
   value: unknown,
@@ -364,14 +369,26 @@ export function pruneRouteStorage(
       options.maxMessages >= 0
     ? Math.min(options.maxMessages, MAX_ROUTE_STORAGE_RECORDS_PER_TARGET)
     : MAX_ROUTE_STORAGE_RECORDS_PER_TARGET;
+  const configuredTarget = options.targetId;
 
   const result = emptyRouteStorage();
   const all: Array<{ target: string; identity: string; record: RouteStorageRecord }> = [];
   for (const [target, records] of Object.entries(source.targets)) {
+    const applyConfiguredRetention = target === configuredTarget;
     const candidates = Object.entries(records)
-      .filter(([, record]) => cutoff === undefined || record.when >= cutoff)
+      .filter(
+        ([, record]) =>
+          !applyConfiguredRetention ||
+          cutoff === undefined ||
+          record.when >= cutoff
+      )
       .sort(([, a], [, b]) => recordSortTime(b) - recordSortTime(a))
-      .slice(0, maxMessages);
+      .slice(
+        0,
+        applyConfiguredRetention
+          ? maxMessages
+          : MAX_ROUTE_STORAGE_RECORDS_PER_TARGET
+      );
     if (!candidates.length) continue;
     result.targets[target] = {};
     for (const [identity, record] of candidates) {
@@ -535,6 +552,43 @@ export async function saveRouteStorage(
     return true;
   } catch {
     return false;
+  }
+}
+
+function routeStorageWriteQueueKey(
+  hass: HomeAssistant | undefined
+): object | undefined {
+  if (hass?.connection && typeof hass.connection === "object") {
+    return hass.connection;
+  }
+  return hass && typeof hass === "object" ? hass : undefined;
+}
+
+/**
+ * Serialize a complete read/merge/write transaction across every channel-card
+ * instance sharing the same Home Assistant connection. Rejections do not
+ * poison later writes in the queue.
+ */
+export async function runSerializedRouteStorageWrite<T>(
+  hass: HomeAssistant | undefined,
+  operation: () => Promise<T>
+): Promise<T> {
+  const key = routeStorageWriteQueueKey(hass);
+  if (!key) return operation();
+
+  const previous = routeStorageWriteQueues.get(key) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(operation);
+  const tail = current.then(
+    () => undefined,
+    () => undefined
+  );
+  routeStorageWriteQueues.set(key, tail);
+  try {
+    return await current;
+  } finally {
+    if (routeStorageWriteQueues.get(key) === tail) {
+      routeStorageWriteQueues.delete(key);
+    }
   }
 }
 

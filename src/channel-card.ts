@@ -28,6 +28,7 @@ import {
   mergeRouteStorage,
   messageRouteStorageIdentity,
   pruneRouteStorage,
+  runSerializedRouteStorageWrite,
   saveRouteStorage,
   subscribeRouteStorage,
   validateRouteStorage,
@@ -971,6 +972,7 @@ export class MeshcoreChannelCard extends HTMLElement {
     if (
       !this._connected ||
       !hass ||
+      !entityId ||
       !this._hasValidTarget() ||
       !hass.connection ||
       this._routeStorageSupported !== true ||
@@ -1006,11 +1008,20 @@ export class MeshcoreChannelCard extends HTMLElement {
       ) {
         return;
       }
-      this._routeStorage = mergeRouteStorage(this._routeStorage, loaded);
+      const merged = mergeRouteStorage(this._routeStorage, loaded);
+      const currentTarget = this._routeStorage.targets[entityId] ?? {};
+      const remoteTarget = loaded.targets[entityId] ?? {};
+      const needsRepair = Object.entries(currentTarget).some(
+        ([identity, record]) =>
+          !remoteTarget[identity] ||
+          record.updatedAt > remoteTarget[identity]!.updatedAt
+      );
+      this._routeStorage = merged;
       this._routeStorageLoaded = true;
       this._routeStorageAvailable = true;
       this._hydrateStoredRoutes();
       this._pruneStoredRoutes();
+      if (needsRepair) this._scheduleRouteStorageWrite();
       this._scheduleRender();
     }).then((unsubscribe) => {
       if (
@@ -1135,7 +1146,10 @@ export class MeshcoreChannelCard extends HTMLElement {
 
   private _pruneStoredRoutes(): void {
     if (!this._routeStorageLoaded) return;
+    const entityId = this._config?.entity;
+    if (!entityId) return;
     const next = pruneRouteStorage(this._routeStorage, {
+      targetId: entityId,
       hoursToShow: this._hoursToShow(),
       maxMessages: this._maxMessages(),
     });
@@ -1199,6 +1213,7 @@ export class MeshcoreChannelCard extends HTMLElement {
       target[identity] = stored;
       this._pendingRouteStorageRecords.delete(entryKey);
       this._routeStorage = pruneRouteStorage(this._routeStorage, {
+        targetId: entityId,
         hoursToShow: this._hoursToShow(),
         maxMessages: this._maxMessages(),
       });
@@ -1227,31 +1242,48 @@ export class MeshcoreChannelCard extends HTMLElement {
     this._routeStorageDirty = false;
     const envelope = this._routeStorage;
     const generation = this._routeStorageGeneration;
+    const entityId = this._config?.entity;
+    if (!entityId) return;
     const write = (async () => {
       try {
-        const response = await callWS<unknown>({
-          type: "frontend/get_user_data",
-          key: CHANNEL_ROUTE_STORAGE_KEY,
+        await runSerializedRouteStorageWrite(hass, async () => {
+          if (
+            generation !== this._routeStorageGeneration ||
+            hass !== this._hass ||
+            entityId !== this._config?.entity
+          ) {
+            this._routeStorageDirty = true;
+            return;
+          }
+          const response = await callWS<unknown>({
+            type: "frontend/get_user_data",
+            key: CHANNEL_ROUTE_STORAGE_KEY,
+          });
+          const raw =
+            response &&
+            typeof response === "object" &&
+            !Array.isArray(response) &&
+            Object.prototype.hasOwnProperty.call(response, "value")
+              ? (response as Record<string, unknown>)["value"]
+              : response;
+          const latest = validateRouteStorage(raw);
+          if (
+            generation !== this._routeStorageGeneration ||
+            hass !== this._hass ||
+            entityId !== this._config?.entity
+          ) {
+            this._routeStorageDirty = true;
+            return;
+          }
+          const merged = pruneRouteStorage(mergeRouteStorage(latest, envelope), {
+            targetId: entityId,
+            hoursToShow: this._hoursToShow(),
+            maxMessages: this._maxMessages(),
+          });
+          this._routeStorage = merged;
+          const saved = await saveRouteStorage(hass, merged);
+          if (!saved) this._routeStorageDirty = false;
         });
-        const raw =
-          response &&
-          typeof response === "object" &&
-          !Array.isArray(response) &&
-          Object.prototype.hasOwnProperty.call(response, "value")
-            ? (response as Record<string, unknown>)["value"]
-            : response;
-        const latest = validateRouteStorage(raw);
-        if (generation !== this._routeStorageGeneration || hass !== this._hass) {
-          this._routeStorageDirty = true;
-          return;
-        }
-        const merged = pruneRouteStorage(mergeRouteStorage(latest, envelope), {
-          hoursToShow: this._hoursToShow(),
-          maxMessages: this._maxMessages(),
-        });
-        this._routeStorage = merged;
-        const saved = await saveRouteStorage(hass, merged);
-        if (!saved) this._routeStorageDirty = false;
       } catch {
         this._routeStorageDirty = false;
       }

@@ -10,6 +10,7 @@ import {
   mergeRouteStorage,
   pruneRouteStorage,
   routeStorageIdentity,
+  runSerializedRouteStorageWrite,
   saveRouteStorage,
   subscribeRouteStorage,
   validateRouteStorage,
@@ -132,6 +133,81 @@ describe("channel route storage", () => {
     );
     expect(count).toBeLessThanOrEqual(MAX_ROUTE_STORAGE_RECORDS);
     expect(result.targets["target-0"]).toBeUndefined();
+  });
+
+  it("applies configured retention only to the selected target", () => {
+    const result = pruneRouteStorage(
+      {
+        version: CHANNEL_ROUTE_STORAGE_VERSION,
+        targets: {
+          selected: {
+            old: record({ when: 1_699_990_000 }),
+            newer: record({ when: 1_700_000_000, updatedAt: 1_700_000_000_100 }),
+            newest: record({ when: 1_700_000_100, updatedAt: 1_700_000_100_000 }),
+          },
+          other: {
+            old: record({ when: 1_699_990_000 }),
+            newer: record({ when: 1_700_000_000, updatedAt: 1_700_000_000_100 }),
+            newest: record({ when: 1_700_000_100, updatedAt: 1_700_000_100_000 }),
+          },
+        },
+      },
+      {
+        targetId: "selected",
+        nowSeconds: 1_700_000_200,
+        hoursToShow: 1,
+        maxMessages: 1,
+      }
+    );
+
+    expect(Object.keys(result.targets.selected ?? {})).toEqual(["newest"]);
+    expect(Object.keys(result.targets.other ?? {}).sort()).toEqual([
+      "newer",
+      "newest",
+      "old",
+    ]);
+  });
+
+  it("serializes writes sharing a Home Assistant connection", async () => {
+    const connection = {} as NonNullable<HomeAssistant["connection"]>;
+    const firstHass = { connection } as HomeAssistant;
+    const secondHass = { connection } as HomeAssistant;
+    const order: string[] = [];
+    let active = 0;
+    let maximumActive = 0;
+
+    const operation = (name: string) =>
+      runSerializedRouteStorageWrite(
+        name === "first" ? firstHass : secondHass,
+        async () => {
+          active += 1;
+          maximumActive = Math.max(maximumActive, active);
+          order.push(`${name}:start`);
+          await Promise.resolve();
+          order.push(`${name}:end`);
+          active -= 1;
+          return name;
+        }
+      );
+
+    await expect(Promise.all([operation("first"), operation("second")])).resolves
+      .toEqual(["first", "second"]);
+    expect(maximumActive).toBe(1);
+    expect(order).toEqual([
+      "first:start",
+      "first:end",
+      "second:start",
+      "second:end",
+    ]);
+
+    await expect(
+      runSerializedRouteStorageWrite(firstHass, async () => {
+        throw new Error("failed write");
+      })
+    ).rejects.toThrow("failed write");
+    await expect(
+      runSerializedRouteStorageWrite(secondHass, async () => "recovered")
+    ).resolves.toBe("recovered");
   });
 
   it("prefers context identity and hashes the exact entry key", async () => {

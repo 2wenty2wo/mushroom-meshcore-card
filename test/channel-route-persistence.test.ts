@@ -95,6 +95,48 @@ function logbook(
   });
 }
 
+function broadcastRouteEvent(
+  subscriptions: Subscription[],
+  eventType: string,
+  data: Record<string, unknown>,
+  contextId: string
+): void {
+  for (const subscription of subscriptions) {
+    if (subscription.params["event_type"] !== eventType) continue;
+    subscription.callback({
+      event_type: eventType,
+      data,
+      time_fired: new Date(NOW * 1000).toISOString(),
+      context: { id: contextId },
+    });
+  }
+}
+
+function logbookForTarget(
+  subscriptions: Subscription[],
+  entityId: string,
+  message: string,
+  contextId: string
+): void {
+  findSubscription(
+    subscriptions,
+    (params) =>
+      params["type"] === "logbook/event_stream" &&
+      Array.isArray(params["entity_ids"]) &&
+      params["entity_ids"].includes(entityId)
+  ).callback({
+    events: [
+      {
+        when: NOW,
+        name: "Public",
+        entity_id: entityId,
+        context_id: contextId,
+        message,
+      },
+    ],
+  });
+}
+
 async function settle(milliseconds = 1_000): Promise<void> {
   await vi.advanceTimersByTimeAsync(milliseconds);
   await Promise.resolve();
@@ -214,6 +256,19 @@ describe("channel route frontend storage", () => {
     await settle(300);
     expect(second.shadowRoot?.querySelector(".message-route-detail.path")?.textContent).toContain("A1B2");
 
+    // A remote last-writer-wins race can temporarily publish an envelope that
+    // omits this card's record. The subscription merge must schedule a repair.
+    const storageSubscription = findSubscription(
+      secondConnection.subscriptions,
+      (params) => params["type"] === "frontend/subscribe_user_data"
+    );
+    stored = emptyRouteStorage();
+    storageSubscription.callback({ value: stored });
+    await settle(1_000);
+    expect(
+      (stored as typeof persisted).targets[CHANNEL_ENTITY]
+    ).toBeDefined();
+
     const targetRecords = persisted.targets[CHANNEL_ENTITY]!;
     const firstIdentity = Object.keys(targetRecords)[0]!;
     const remote = JSON.parse(JSON.stringify(persisted)) as typeof persisted;
@@ -228,10 +283,6 @@ describe("channel route frontend storage", () => {
         regionScoped: false,
       },
     ];
-    const storageSubscription = findSubscription(
-      secondConnection.subscriptions,
-      (params) => params["type"] === "frontend/subscribe_user_data"
-    );
     storageSubscription.callback({ value: remote });
     await settle(300);
     await Promise.resolve();
@@ -280,5 +331,122 @@ describe("channel route frontend storage", () => {
     await settle();
     expect(card.shadowRoot?.querySelector(".message-route-details")).not.toBeNull();
     expect(hass.callWS).toHaveBeenCalled();
+  });
+
+  it("serializes simultaneous writes from separate channel-card instances", async () => {
+    const secondEntity = "binary_sensor.meshcore_edfaf6_ch_1_messages";
+    let stored: unknown = emptyRouteStorage();
+    const callOrder: string[] = [];
+    const callWS = vi.fn(async (message: Record<string, unknown>) => {
+      if (message["type"] === "frontend/get_user_data") {
+        callOrder.push("get");
+        return { value: JSON.parse(JSON.stringify(stored)) };
+      }
+      if (message["type"] === "frontend/set_user_data") {
+        callOrder.push("set");
+        stored = JSON.parse(JSON.stringify(message["value"]));
+      }
+      return {};
+    });
+    const sharedConnection = makeConnection();
+    const hass = createChannelHass();
+    hass.connection = sharedConnection.connection;
+    hass.callWS = callWS as unknown as NonNullable<HomeAssistant["callWS"]>;
+    hass.states[secondEntity] = {
+      ...hass.states[CHANNEL_ENTITY]!,
+      entity_id: secondEntity,
+      attributes: {
+        ...hass.states[CHANNEL_ENTITY]!.attributes,
+        friendly_name: "🌳 Test Hub (HA) Regional Messages",
+        channel_index: 1,
+      },
+    };
+    hass.entities[secondEntity] = {
+      ...hass.entities[CHANNEL_ENTITY]!,
+      entity_id: secondEntity,
+    };
+
+    const first = document.createElement(
+      "mushroom-meshcore-channel-card"
+    ) as MeshcoreChannelCard;
+    first.setConfig({ entity: CHANNEL_ENTITY });
+    first.hass = hass;
+    document.body.appendChild(first);
+    const second = document.createElement(
+      "mushroom-meshcore-channel-card"
+    ) as MeshcoreChannelCard;
+    second.setConfig({ entity: secondEntity });
+    second.hass = hass;
+    document.body.appendChild(second);
+    await settle(0);
+    callWS.mockClear();
+    callOrder.length = 0;
+
+    broadcastRouteEvent(
+      sharedConnection.subscriptions,
+      "meshcore_message",
+      {
+        message_type: "channel",
+        entity_id: CHANNEL_ENTITY,
+        channel_idx: 0,
+        sender_name: "Alice",
+        message: "first",
+        timestamp: NOW,
+        hop_count: 1,
+        rx_log_data: [
+          {
+            path_len: 1,
+            path: "A1B2",
+            path_hash_size: 2,
+            region_scope: false,
+            flood_scope: null,
+          },
+        ],
+      },
+      "first-context"
+    );
+    broadcastRouteEvent(
+      sharedConnection.subscriptions,
+      "meshcore_message",
+      {
+        message_type: "channel",
+        entity_id: secondEntity,
+        channel_idx: 1,
+        sender_name: "Bob",
+        message: "second",
+        timestamp: NOW,
+        hop_count: 1,
+        rx_log_data: [
+          {
+            path_len: 1,
+            path: "C3D4",
+            path_hash_size: 2,
+            region_scope: false,
+            flood_scope: null,
+          },
+        ],
+      },
+      "second-context"
+    );
+    logbookForTarget(
+      sharedConnection.subscriptions,
+      CHANNEL_ENTITY,
+      "Alice: first",
+      "first-context"
+    );
+    logbookForTarget(
+      sharedConnection.subscriptions,
+      secondEntity,
+      "Bob: second",
+      "second-context"
+    );
+    await settle(1_000);
+
+    const envelope = stored as {
+      targets: Record<string, Record<string, unknown>>;
+    };
+    expect(Object.keys(envelope.targets[CHANNEL_ENTITY] ?? {})).toHaveLength(1);
+    expect(Object.keys(envelope.targets[secondEntity] ?? {})).toHaveLength(1);
+    expect(callOrder).toEqual(["get", "set", "get", "set"]);
   });
 });
