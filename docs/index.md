@@ -24,6 +24,6 @@ features:
     details: Tile-style headers and Mushroom primitives blend into existing dashboards without requiring Mushroom or Card Mod.
   - title: Automatic discovery
     details: Select a MeshCore target and let device-scoped discovery resolve its supporting entities, with optional overrides when needed.
-  - title: Three focused cards
+  - title: Focused cards
     details: Build views for individual hubs or nodes, channel messaging, and automation-backed mentions.
 ---
