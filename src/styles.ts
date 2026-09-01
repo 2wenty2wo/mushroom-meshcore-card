@@ -33,6 +33,8 @@ export const STYLES: string = `
     --mushroom-meshcore-danger-color: var(--error-color, rgb(var(--mush-rgb-danger, var(--rgb-danger, 244, 67, 54))));
     --mushroom-meshcore-info-color: var(--info-color, rgb(var(--mush-rgb-info, var(--rgb-info, 3, 169, 244))));
     --mushroom-meshcore-muted-color: var(--secondary-text-color, #727272);
+    --mushroom-meshcore-sparkline-color: var(--mushroom-meshcore-muted-color);
+    --mushroom-meshcore-sparkline-opacity: 0.14;
     --mushroom-meshcore-card-padding: var(--mush-spacing, 10px);
 
     /* Compatibility aliases for the retained hub/channel layouts. */
@@ -278,11 +280,40 @@ export const STYLES: string = `
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
+    isolation: isolate;
     padding: var(--mush-spacing, 10px);
     border-radius: var(--mushroom-meshcore-control-radius);
     background: var(--mushroom-meshcore-surface);
     text-align: left;
   }
+
+  .metric-sparkline {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    color: var(--mushroom-meshcore-sparkline-color);
+    opacity: var(--mushroom-meshcore-sparkline-opacity);
+    pointer-events: none;
+  }
+
+  .metric-sparkline-line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.25;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .node-metric > .metric-label,
+  .node-metric > .metric-value {
+    position: relative;
+    z-index: 1;
+  }
+
+  .node-metric > ha-ripple { z-index: 2; }
+  .node-metric.clickable::after { z-index: 3; }
 
   .metric-label {
     color: var(--secondary-text-color, #727272);

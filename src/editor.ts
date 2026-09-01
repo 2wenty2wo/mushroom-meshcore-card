@@ -44,6 +44,7 @@ const DEVICE_SETTING_KEYS = [
   "double_tap_action",
   "hide_battery",
   "hide_metrics",
+  "hide_signal_graphs",
   "hide_quick_stats",
   "show_firmware",
   "chip_layout",
@@ -75,6 +76,7 @@ const STRING_SETTING_KEYS = ["name", "icon", "icon_color"] as const;
 const BOOLEAN_SETTING_KEYS = [
   "hide_battery",
   "hide_metrics",
+  "hide_signal_graphs",
   "hide_details",
   "details_default_open",
 ] as const;
@@ -239,7 +241,10 @@ export class MeshcoreCardEditor extends HTMLElement {
       { name: "icon_color", label: t("editor.icon_color_label"), selector: { ui_color: {} } },
       { name: "hide_battery", label: t("editor.hide_battery"), selector: { boolean: {} } },
       ...(isNode
-        ? [{ name: "hide_metrics", label: t("editor.hide_metrics"), selector: { boolean: {} } } as HaFormFieldSchema]
+        ? [
+            { name: "hide_metrics", label: t("editor.hide_metrics"), selector: { boolean: {} } },
+            { name: "hide_signal_graphs", label: t("editor.hide_signal_graphs"), selector: { boolean: {} } },
+          ] as HaFormFieldSchema[]
         : []),
       { name: "hide_details", label: t("editor.hide_details"), selector: { boolean: {} } },
       { name: "details_default_open", label: t("editor.details_default_open"), selector: { boolean: {} } },
@@ -360,6 +365,7 @@ export class MeshcoreCardEditor extends HTMLElement {
     };
     if (target.type === "node") {
       data["hide_metrics"] = config.hide_metrics === true;
+      data["hide_signal_graphs"] = config.hide_signal_graphs === true;
       data["location_entity"] = config.location_entity ?? null;
       data["temperature_entity"] = config.temperature_entity ?? null;
       data["humidity_entity"] = config.humidity_entity ?? null;

@@ -151,6 +151,7 @@ describe("MeshcoreCardEditor target selection", () => {
       target: HUB_TARGET,
       name: "My hub",
       hide_battery: true,
+      hide_signal_graphs: true,
       battery_entity: "sensor.batt",
       chip_layout: { top: ["hardware"], details: [], hidden: ["firmware"] },
       map_metro: "smf",
@@ -160,6 +161,7 @@ describe("MeshcoreCardEditor target selection", () => {
     expect(config.target).toEqual(NODE_TARGET);
     expect(config.name).toBeUndefined();
     expect(config.hide_battery).toBeUndefined();
+    expect(config.hide_signal_graphs).toBeUndefined();
     expect(config.battery_entity).toBeUndefined();
     expect(config.chip_layout).toBeUndefined();
     // map_metro is not device-specific and survives the switch.
@@ -218,6 +220,10 @@ describe("MeshcoreCardEditor settings schema", () => {
       t("editor.section_behavior"),
     ]);
     expect(fieldNames(schema[0]!)).toContain("hide_metrics");
+    expect(fieldNames(schema[0]!)).toContain("hide_signal_graphs");
+    expect(
+      schema[0]!.schema.find((field) => field.name === "hide_signal_graphs")?.label
+    ).toBe(t("editor.hide_signal_graphs"));
     expect(fieldNames(schema[0]!)).not.toContain("show_firmware");
     expect(fieldNames(schema[2]!)).toEqual([
       "battery_entity",
@@ -240,6 +246,7 @@ describe("MeshcoreCardEditor settings schema", () => {
       "sensor.meshcore_spring_battery_percentage_spring_farm"
     );
     // The settings form starts from the current config's data.
+    expect(settings.data["hide_signal_graphs"]).toBe(false);
     expect(settings.data["show_neighbors"]).toBe(true);
     expect(settings.data["map_provider"]).toBe("analyzer");
   });
@@ -254,6 +261,7 @@ describe("MeshcoreCardEditor settings schema", () => {
       t("editor.section_map"),
     ]);
     expect(fieldNames(schema[0]!)).not.toContain("hide_metrics");
+    expect(fieldNames(schema[0]!)).not.toContain("hide_signal_graphs");
     expect(fieldNames(schema[2]!)).toEqual(["battery_entity", "voltage_entity"]);
     expect(fieldNames(schema[3]!)).toEqual(["map_provider", "map_metro"]);
   });
@@ -462,6 +470,7 @@ describe("MeshcoreCardEditor settings edits", () => {
         icon_color: "green",
         hide_battery: true,
         hide_metrics: false,
+        hide_signal_graphs: true,
         battery_entity: "sensor.batt",
         voltage_entity: "",
         tap_action: { action: "navigate", navigation_path: "/x" },
@@ -477,6 +486,7 @@ describe("MeshcoreCardEditor settings edits", () => {
     expect(config.icon_color).toBe("green");
     expect(config.hide_battery).toBe(true);
     expect(config.hide_metrics).toBeUndefined();
+    expect(config.hide_signal_graphs).toBe(true);
     expect(config.battery_entity).toBe("sensor.batt");
     expect(config.voltage_entity).toBeUndefined();
     expect(config.tap_action).toEqual({

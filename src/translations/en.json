@@ -205,6 +205,7 @@
     "icon_color_label": "Icon color",
     "hide_battery": "Hide battery",
     "hide_metrics": "Hide signal metrics",
+    "hide_signal_graphs": "Hide signal graphs",
     "hide_quick_stats": "Hide quick stats",
     "show_firmware": "Show firmware version",
     "hide_details": "Hide details section",

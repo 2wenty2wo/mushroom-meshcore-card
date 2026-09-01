@@ -205,6 +205,7 @@
     "icon_color_label": "Kolor ikony",
     "hide_battery": "Ukryj baterię",
     "hide_metrics": "Ukryj metryki sygnału",
+    "hide_signal_graphs": "Ukryj wykresy sygnału",
     "hide_quick_stats": "Ukryj szybkie statystyki",
     "show_firmware": "Pokaż wersję oprogramowania sprzętowego",
     "hide_details": "Ukryj sekcję szczegółów",

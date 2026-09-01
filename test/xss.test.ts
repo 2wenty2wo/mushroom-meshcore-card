@@ -50,8 +50,49 @@ const PAYLOADS = [
   `<iframe src="javascript:alert(1)"></iframe>`,
 ];
 
-const INJECTED_SELECTOR = "script, img, svg, iframe, object, embed, link, base";
+const INJECTED_SELECTOR = "script, img, iframe, object, embed, link, base";
 const EVENT_ATTRS = ["onerror", "onload", "onclick", "onmouseover", "onfocus", "ontoggle"];
+
+/** SVG is otherwise forbidden in card-generated markup. The signal history
+ *  sparkline is the sole exception, so pin its complete, inert DOM shape. */
+function expectOnlyTrustedSparklines(root: ParentNode): void {
+  for (const svg of Array.from(root.querySelectorAll("svg"))) {
+    expect(svg.getAttribute("class")).toBe("metric-sparkline");
+    expect(svg.getAttribute("viewBox")).toBe("0 0 100 56");
+    expect(svg.getAttribute("preserveAspectRatio")).toBe("none");
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+    expect(svg.getAttribute("focusable")).toBe("false");
+    expect(
+      Array.from(svg.attributes, ({ name }) => name).sort()
+    ).toEqual(
+      ["aria-hidden", "class", "focusable", "preserveAspectRatio", "viewBox"].sort()
+    );
+
+    expect(svg.children).toHaveLength(1);
+    const line = svg.children[0];
+    expect(line.tagName.toLowerCase()).toBe("polyline");
+    expect(line.getAttribute("class")).toBe("metric-sparkline-line");
+    expect(line.getAttribute("vector-effect")).toBe("non-scaling-stroke");
+    expect(
+      Array.from(line.attributes, ({ name }) => name).sort()
+    ).toEqual(["class", "points", "vector-effect"].sort());
+    expect(line.children).toHaveLength(0);
+
+    const points = line.getAttribute("points") ?? "";
+    expect(points).toMatch(
+      /^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?(?:\s+-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?)+$/
+    );
+    for (const point of points.split(/\s+/)) {
+      const [x, y] = point.split(",").map(Number);
+      expect(Number.isFinite(x)).toBe(true);
+      expect(Number.isFinite(y)).toBe(true);
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(100);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(y).toBeLessThanOrEqual(56);
+    }
+  }
+}
 
 /** Assert a crafted string reached the DOM as inert text: no element it named
  *  was created, and no inline handler it carried survived as an attribute. */
@@ -60,6 +101,7 @@ function expectNoInjection(root: ShadowRoot | null): void {
   const card = root!.querySelector("ha-card");
   expect(card).not.toBeNull();
   expect(card!.querySelector(INJECTED_SELECTOR)).toBeNull();
+  expectOnlyTrustedSparklines(card!);
   for (const element of Array.from(card!.querySelectorAll("*"))) {
     for (const attr of EVENT_ATTRS) {
       expect(element.hasAttribute(attr)).toBe(false);
@@ -75,6 +117,7 @@ function expectRenderedAsText(root: ShadowRoot | null, payload: string): void {
 function expectNoInjectionWithin(root: ShadowRoot | null): void {
   expect(root).not.toBeNull();
   expect(root!.querySelector(INJECTED_SELECTOR)).toBeNull();
+  expectOnlyTrustedSparklines(root!);
   for (const element of Array.from(root!.querySelectorAll("*"))) {
     for (const attr of EVENT_ATTRS) {
       expect(element.hasAttribute(attr)).toBe(false);
@@ -263,6 +306,50 @@ describe("hostile advert names in the device card", () => {
     const shape = card.shadowRoot!.querySelector(".device-icon-shape");
     expect(shape?.getAttribute("style") ?? "").not.toContain("javascript");
     expectNoInjection(card.shadowRoot);
+  });
+
+  it("allows only the trusted sparkline SVG when Recorder history is hostile", async () => {
+    const hass = createHass();
+    const now = Date.now() / 1000;
+    const rssiId = `${NODE_PREFIX}last_rssi${NODE_SUFFIX}`;
+    const snrId = `${NODE_PREFIX}last_snr${NODE_SUFFIX}`;
+    const noiseId = `${NODE_PREFIX}noise_floor${NODE_SUFFIX}`;
+    hass.callWS = vi.fn().mockResolvedValue({
+      [rssiId]: [
+        { s: "-62.5", lu: now - 7200 },
+        { s: `-40\" onload=\"alert(1)`, lu: now - 5400 },
+        { s: "-48", lu: now - 3600 },
+      ],
+      [snrId]: [
+        { s: "3.5", lu: now - 7200 },
+        { s: "Infinity", lu: now - 5400 },
+        { s: "11", lu: now - 3600 },
+      ],
+      [noiseId]: [
+        { s: "-118", lu: now - 7200 },
+        { s: "NaN", lu: now - 5400 },
+        { s: "-112", lu: now - 3600 },
+      ],
+      [`\"><svg onload=alert(1)>`]: [
+        { s: `0,0\"/><script>alert(1)</script>`, lu: now - 1 },
+      ],
+    }) as HomeAssistant["callWS"];
+
+    const card = renderCard(
+      { target: { type: "node", id: NODE_NAME } },
+      hass
+    );
+    document.body.appendChild(card);
+    (card as unknown as { _lastRender: number })._lastRender = 0;
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(hass.callWS).toHaveBeenCalledTimes(1);
+    expect(card.shadowRoot!.querySelectorAll("svg")).toHaveLength(3);
+    expectNoInjection(card.shadowRoot);
+    expect(card.shadowRoot!.innerHTML).not.toContain("Infinity");
+    expect(card.shadowRoot!.innerHTML).not.toContain("NaN");
   });
 });
 

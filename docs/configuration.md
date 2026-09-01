@@ -38,6 +38,7 @@ The visual editor is the safest way to obtain the exact target ID. A missing or 
 | `double_tap_action` | action | `none` | both | Header double-tap action. |
 | `hide_battery` | boolean | `false` | both | Hides the battery percentage, voltage, and bar. |
 | `hide_metrics` | boolean | `false` | node | Hides the RSSI, SNR, and noise-floor metric tiles. |
+| `hide_signal_graphs` | boolean | `false` | node | Keeps the signal metric tiles but hides their six-hour Recorder history lines. |
 | `hide_details` | boolean | `false` | both | Removes the Details disclosure entirely. |
 | `details_default_open` | boolean | `false` | both | Opens Details on the first render. User disclosure state is then preserved. |
 | `chip_layout` | object | target defaults | both | Ordered `top`, `details`, and `hidden` chip arrays. See [Chip layout and metrics](/chips). |

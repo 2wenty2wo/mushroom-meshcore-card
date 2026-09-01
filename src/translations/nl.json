@@ -205,6 +205,7 @@
     "icon_color_label": "Pictogramkleur",
     "hide_battery": "Batterij verbergen",
     "hide_metrics": "Signaalwaarden verbergen",
+    "hide_signal_graphs": "Signaalgrafieken verbergen",
     "hide_quick_stats": "Snelle statistieken verbergen",
     "show_firmware": "Firmwareversie tonen",
     "hide_details": "Detailsectie verbergen",
