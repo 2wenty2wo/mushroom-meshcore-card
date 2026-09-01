@@ -81,6 +81,12 @@ describe("device signal history graphs", () => {
     vi.useRealTimers();
   });
 
+  it("can connect before Home Assistant supplies config and state", () => {
+    const card = document.createElement("mushroom-meshcore-card") as MeshcoreCard;
+    expect(() => document.body.appendChild(card)).not.toThrow();
+    card.remove();
+  });
+
   it("loads all visible signals in one six-hour request and preserves metric controls", async () => {
     const hass = createHass();
     const callWS = vi.fn().mockResolvedValue(historyResponse());
@@ -210,6 +216,23 @@ describe("device signal history graphs", () => {
     expect(card.shadowRoot!.querySelectorAll(".metric-sparkline")).toHaveLength(0);
   });
 
+  it("loads Recorder history when current states have invalid timestamps", async () => {
+    const hass = createHass();
+    for (const entityId of SIGNAL_IDS) {
+      hass.states[entityId]!.last_changed = "invalid";
+      hass.states[entityId]!.last_updated = "invalid";
+    }
+    const callWS = vi.fn().mockResolvedValue(historyResponse());
+    hass.callWS = callWS as HomeAssistant["callWS"];
+
+    const card = mount(hass);
+    expect(card.shadowRoot!.querySelectorAll(".metric-sparkline")).toHaveLength(0);
+    await settleThrottledGraphRender();
+
+    expect(callWS).toHaveBeenCalledTimes(1);
+    expect(card.shadowRoot!.querySelectorAll(".metric-sparkline")).toHaveLength(3);
+  });
+
   it("builds a real live-only graph after Recorder rejects", async () => {
     const hass = createHass();
     const callWS = vi.fn().mockRejectedValue(new Error("Recorder unavailable"));
@@ -253,11 +276,40 @@ describe("device signal history graphs", () => {
     expect(callWS).toHaveBeenCalledTimes(1);
     await settleThrottledGraphRender();
 
+    // Reapplying the same hass object has no new fingerprint or connection.
+    card.hass = hass;
+    expect(callWS).toHaveBeenCalledTimes(1);
+
+    const readyListener = [...readyListeners][0]!;
     for (const listener of readyListeners) listener();
     expect(callWS).toHaveBeenCalledTimes(2);
     await settleThrottledGraphRender();
 
+    const replacementListeners = new Set<() => void>();
+    const replacementConnection = {
+      subscribeMessage: vi.fn(async () => () => undefined),
+      addEventListener: vi.fn((type: string, listener: () => void) => {
+        if (type === "ready") replacementListeners.add(listener);
+      }),
+      removeEventListener: vi.fn((type: string, listener: () => void) => {
+        if (type === "ready") replacementListeners.delete(listener);
+      }),
+    };
+    card.hass = { ...hass, connection: replacementConnection };
+    expect(callWS).toHaveBeenCalledTimes(3);
+    await settleThrottledGraphRender();
+
+    card.hass = { ...hass, connection: undefined };
+    expect(callWS).toHaveBeenCalledTimes(4);
+    await settleThrottledGraphRender();
+
+    card.setConfig({ ...NODE_CONFIG, hide_signal_graphs: true });
+    readyListener();
+    expect(callWS).toHaveBeenCalledTimes(4);
+
     card.remove();
+    readyListener();
+    expect(callWS).toHaveBeenCalledTimes(4);
     expect(removeEventListener).toHaveBeenCalledWith("ready", expect.any(Function));
     expect(readyListeners).toHaveLength(0);
   });

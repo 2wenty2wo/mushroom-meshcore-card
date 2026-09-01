@@ -141,8 +141,7 @@ export function pruneSignalTrendPoints(
   return retained;
 }
 
-function strongestExtreme(points: readonly SignalTrendPoint[]): SignalTrendPoint | undefined {
-  if (points.length === 0) return undefined;
+function strongestExtreme(points: readonly SignalTrendPoint[]): SignalTrendPoint {
   let minimum = points[0].value;
   let maximum = points[0].value;
   for (let index = 1; index < points.length; index += 1) {
@@ -196,7 +195,7 @@ function timeBucketExtrema(
     );
     const span = last.timestamp - first.timestamp;
     for (const point of interior) {
-      const fraction = span > 0 ? (point.timestamp - first.timestamp) / span : 0;
+      const fraction = (point.timestamp - first.timestamp) / span;
       const index = Math.min(
         pairedBuckets - 1,
         Math.max(0, Math.floor(fraction * pairedBuckets))
@@ -221,7 +220,7 @@ function timeBucketExtrema(
   if (interiorBudget % 2 === 1) {
     const remaining = interior.filter((point) => !selected.has(point.timestamp));
     const extreme = strongestExtreme(remaining);
-    if (extreme) selected.set(extreme.timestamp, extreme);
+    selected.set(extreme.timestamp, extreme);
   }
 
   // Empty time buckets or constant buckets can leave spare capacity. Fill the
@@ -243,8 +242,9 @@ function timeBucketExtrema(
         candidateDistance = distance;
       }
     }
-    if (!candidate) break;
-    selected.set(candidate.timestamp, candidate);
+    // The loop condition plus points.length > maxPoints guarantees at least
+    // one unselected interior point remains.
+    selected.set(candidate!.timestamp, candidate!);
   }
 
   return [...selected.values()]
@@ -282,10 +282,9 @@ export function withSignalTrendEndpoint(
   return mergeSignalTrendPoints(retained, { timestamp: endMs, value });
 }
 
-function svgCoordinate(value: number): string | undefined {
-  if (!Number.isFinite(value)) return undefined;
+function svgCoordinate(value: number): string {
   const rounded = Math.round(value * 1000) / 1000;
-  return String(Object.is(rounded, -0) ? 0 : rounded);
+  return String(rounded);
 }
 
 /**
@@ -328,9 +327,6 @@ export function buildSignalTrendSvgPoints(
   const scale = Math.max(Math.abs(minimum), Math.abs(maximum), 1);
   const scaledMinimum = minimum / scale;
   const scaledRange = maximum / scale - scaledMinimum;
-  if (!constant && (!Number.isFinite(scaledRange) || scaledRange <= 0)) {
-    return undefined;
-  }
 
   const rendered = downsampleSignalTrendPoints(visible, maxPoints);
   const duration = endMs - startMs;
@@ -348,9 +344,8 @@ export function buildSignalTrendSvgPoints(
       : SVG_BOTTOM - Math.min(1, Math.max(0, ratio)) * (SVG_BOTTOM - SVG_TOP);
     const safeX = svgCoordinate(x);
     const safeY = svgCoordinate(y);
-    if (safeX === undefined || safeY === undefined) return undefined;
     coordinates.push(`${safeX},${safeY}`);
   }
 
-  return coordinates.length >= 2 ? coordinates.join(" ") : undefined;
+  return coordinates.join(" ");
 }

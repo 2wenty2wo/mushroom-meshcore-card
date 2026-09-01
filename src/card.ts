@@ -520,9 +520,11 @@ export class MeshcoreCard extends HTMLElement {
       const history = parseSignalTrendHistory(response, entityIds);
       const now = Date.now();
       for (const entityId of entityIds) {
-        const live = this._signalTrendSeries.get(entityId) ?? [];
+        // The current render initializes every requested series, and the
+        // parser returns one map entry for every requested entity ID.
+        const live = this._signalTrendSeries.get(entityId)!;
         const merged = mergeSignalTrendPoints(
-          history.get(entityId) ?? [],
+          history.get(entityId)!,
           live
         );
         this._signalTrendSeries.set(
@@ -736,18 +738,18 @@ export class MeshcoreCard extends HTMLElement {
     );
     this._signalTrendSeries.set(reading.id, stored);
     if (stored.length < 2) return "";
-    const currentValue = Number(reading.value);
     const points = withSignalTrendEndpoint(
       stored,
       now,
-      Number.isFinite(currentValue) ? currentValue : undefined
+      Number(reading.value)
     );
+    // Two validated, in-window points and a finite current reading satisfy
+    // the SVG helper's complete output contract.
     const svgPoints = buildSignalTrendSvgPoints(
       points,
       now - SIGNAL_TREND_WINDOW_MS,
       now
-    );
-    if (!svgPoints) return "";
+    )!;
     return `<svg class="metric-sparkline" viewBox="0 0 100 56" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <polyline class="metric-sparkline-line" vector-effect="non-scaling-stroke" points="${escapeHtml(svgPoints)}"></polyline>
     </svg>`;
