@@ -20,6 +20,16 @@ import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
 import { effectiveChipLayout } from "./chip-layout.js";
 import {
+  SIGNAL_TREND_WINDOW_MS,
+  buildSignalTrendSvgPoints,
+  limitStoredSignalTrendPoints,
+  mergeSignalTrendPoints,
+  parseSignalTrendHistory,
+  pruneSignalTrendPoints,
+  withSignalTrendEndpoint,
+  type SignalTrendPoint,
+} from "./signal-trends.js";
+import {
   type NeighborInfo,
   type NeighborSnapshot,
 } from "./neighbors.js";
@@ -191,6 +201,19 @@ export class MeshcoreCard extends HTMLElement {
   private _openDetails = new Set<string>();
   private _detailsSeeded = false;
   private _cardSize = 1;
+  private _connected = false;
+  private _signalTrendSeries = new Map<string, SignalTrendPoint[]>();
+  private _signalTrendEntityIds: string[] = [];
+  private _signalTrendContext: string | null = null;
+  private _signalTrendGeneration = 0;
+  private _signalTrendPending = false;
+  private _signalTrendLoaded = false;
+  private _signalTrendReadyConnection?: NonNullable<HomeAssistant["connection"]>;
+  private readonly _signalTrendReadyListener = (): void => {
+    if (!this._connected || !this._signalTrendContext) return;
+    this._invalidateSignalTrendRequest(false);
+    this._ensureSignalTrendHistory();
+  };
 
   constructor() {
     super();
@@ -234,6 +257,11 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   connectedCallback(): void {
+    this._connected = true;
+    this._attachSignalTrendReadyListener(this._hass?.connection);
+    this._invalidateSignalTrendRequest(false);
+    this._captureSignalTrendLivePoints();
+    this._ensureSignalTrendHistory();
     // Relative timestamps ("5m ago", neighbor last-seen) go stale without
     // state changes; refresh them on a slow tick while the card is on screen.
     if (this._tickTimer === null) {
@@ -244,6 +272,9 @@ export class MeshcoreCard extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    this._connected = false;
+    this._detachSignalTrendReadyListener();
+    this._invalidateSignalTrendRequest(false);
     if (this._tickTimer !== null) {
       clearInterval(this._tickTimer);
       this._tickTimer = null;
@@ -273,6 +304,7 @@ export class MeshcoreCard extends HTMLElement {
     ) {
       this._openDetails.clear();
       this._detailsSeeded = false;
+      this._setSignalTrendContext(null, []);
     }
     if (previous?.details_default_open !== config.details_default_open) {
       this._detailsSeeded = false;
@@ -297,6 +329,12 @@ export class MeshcoreCard extends HTMLElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
+    const trendConnectionChanged = this._connected
+      ? this._attachSignalTrendReadyListener(hass.connection)
+      : false;
+    if (trendConnectionChanged) this._invalidateSignalTrendRequest(false);
+    this._captureSignalTrendLivePoints(hass);
+    if (trendConnectionChanged) this._ensureSignalTrendHistory();
     const overrides = this._overrideEntityIds();
     const target = this._config?.target;
     const targetDevices = target?.type === "node"
@@ -329,6 +367,10 @@ export class MeshcoreCard extends HTMLElement {
     const fp = `${stateFp}|device=${deviceFp}|online-registry=${onlineRegistryFp}`;
     if (fp === this._fp) return;
     this._fp = fp;
+    this._scheduleRender();
+  }
+
+  private _scheduleRender(): void {
     const now = Date.now();
     if (now - this._lastRender >= 10000) {
       this._lastRender = now;
@@ -341,6 +383,170 @@ export class MeshcoreCard extends HTMLElement {
         this._render();
       }, delay);
     }
+  }
+
+  private _attachSignalTrendReadyListener(
+    connection: HomeAssistant["connection"]
+  ): boolean {
+    if (this._signalTrendReadyConnection === connection) return false;
+    this._detachSignalTrendReadyListener();
+    if (!connection) return true;
+    this._signalTrendReadyConnection = connection;
+    connection.addEventListener?.("ready", this._signalTrendReadyListener);
+    return true;
+  }
+
+  private _detachSignalTrendReadyListener(): void {
+    this._signalTrendReadyConnection?.removeEventListener?.(
+      "ready",
+      this._signalTrendReadyListener
+    );
+    this._signalTrendReadyConnection = undefined;
+  }
+
+  private _invalidateSignalTrendRequest(clearSeries: boolean): void {
+    this._signalTrendGeneration++;
+    this._signalTrendPending = false;
+    this._signalTrendLoaded = false;
+    if (clearSeries) this._signalTrendSeries.clear();
+  }
+
+  private _setSignalTrendContext(
+    context: string | null,
+    entityIds: string[]
+  ): void {
+    if (context === this._signalTrendContext) return;
+    this._invalidateSignalTrendRequest(true);
+    this._signalTrendContext = context;
+    this._signalTrendEntityIds = entityIds;
+  }
+
+  private _updateSignalTrendContext(node: NodeInfo, vm: NodeViewModel): void {
+    const hidden = this._config?.hide_metrics || this._config?.hide_signal_graphs;
+    const readings = [vm.rssi, vm.snr, vm.noiseFloor];
+    const entityIds = hidden || vm.connectivity !== "online"
+      ? []
+      : readings
+          .filter(
+            (reading): reading is EntityReading & { id: string; value: string } =>
+              !!reading.id && reading.value !== null
+          )
+          .map((reading) => reading.id);
+    const uniqueIds = [...new Set(entityIds)];
+    const context = uniqueIds.length
+      ? JSON.stringify([node.deviceId, ...uniqueIds])
+      : null;
+    this._setSignalTrendContext(context, uniqueIds);
+    this._captureSignalTrendLivePoints();
+    this._ensureSignalTrendHistory();
+  }
+
+  private _captureSignalTrendLivePoints(
+    hass: HomeAssistant | undefined = this._hass
+  ): void {
+    if (!hass || !this._signalTrendContext) return;
+    const now = Date.now();
+    for (const entityId of this._signalTrendEntityIds) {
+      const state = hass.states[entityId];
+      const text = state?.state.trim() ?? "";
+      const value = text ? Number(text) : Number.NaN;
+      const changed = state
+        ? Date.parse(state.last_changed) || Date.parse(state.last_updated)
+        : Number.NaN;
+      if (!Number.isFinite(value) || !Number.isFinite(changed)) continue;
+      const current = this._signalTrendSeries.get(entityId) ?? [];
+      const merged = mergeSignalTrendPoints(current, {
+        timestamp: changed,
+        value,
+      });
+      this._signalTrendSeries.set(
+        entityId,
+        limitStoredSignalTrendPoints(
+          pruneSignalTrendPoints(merged, now)
+        )
+      );
+    }
+  }
+
+  private _ensureSignalTrendHistory(): void {
+    const hass = this._hass;
+    const callWS = hass?.callWS;
+    if (
+      !this._connected ||
+      !hass ||
+      !callWS ||
+      !this._signalTrendContext ||
+      this._signalTrendEntityIds.length === 0 ||
+      this._signalTrendPending ||
+      this._signalTrendLoaded
+    ) {
+      return;
+    }
+
+    const context = this._signalTrendContext;
+    const entityIds = [...this._signalTrendEntityIds];
+    const connection = this._signalTrendReadyConnection ?? hass.connection;
+    const generation = ++this._signalTrendGeneration;
+    const end = Date.now();
+    this._signalTrendPending = true;
+
+    let request: Promise<unknown>;
+    try {
+      request = callWS<unknown>({
+        type: "history/history_during_period",
+        start_time: new Date(end - SIGNAL_TREND_WINDOW_MS).toISOString(),
+        end_time: new Date(end).toISOString(),
+        entity_ids: entityIds,
+        include_start_time_state: true,
+        significant_changes_only: true,
+        minimal_response: true,
+        no_attributes: true,
+      });
+    } catch {
+      this._signalTrendPending = false;
+      this._signalTrendLoaded = true;
+      return;
+    }
+
+    void request.then((response) => {
+      if (
+        !this._connected ||
+        generation !== this._signalTrendGeneration ||
+        context !== this._signalTrendContext ||
+        connection !== (this._signalTrendReadyConnection ?? this._hass?.connection)
+      ) {
+        return;
+      }
+      const history = parseSignalTrendHistory(response, entityIds);
+      const now = Date.now();
+      for (const entityId of entityIds) {
+        const live = this._signalTrendSeries.get(entityId) ?? [];
+        const merged = mergeSignalTrendPoints(
+          history.get(entityId) ?? [],
+          live
+        );
+        this._signalTrendSeries.set(
+          entityId,
+          limitStoredSignalTrendPoints(
+            pruneSignalTrendPoints(merged, now)
+          )
+        );
+      }
+      this._signalTrendLoaded = true;
+      this._captureSignalTrendLivePoints();
+      this._scheduleRender();
+    }).catch(() => {
+      if (
+        generation === this._signalTrendGeneration &&
+        context === this._signalTrendContext
+      ) {
+        this._signalTrendLoaded = true;
+      }
+    }).finally(() => {
+      if (generation === this._signalTrendGeneration) {
+        this._signalTrendPending = false;
+      }
+    });
   }
 
   // ── Entity accessors ───────────────────────────────────────────────────────
@@ -513,11 +719,46 @@ export class MeshcoreCard extends HTMLElement {
     }${escapeHtml(displayValue)}</button>`;
   }
 
+  private _metricSparkline(reading: EntityReading): string {
+    if (
+      this._config?.hide_signal_graphs ||
+      !reading.id ||
+      reading.value === null
+    ) {
+      return "";
+    }
+    const now = Date.now();
+    const stored = limitStoredSignalTrendPoints(
+      pruneSignalTrendPoints(
+        this._signalTrendSeries.get(reading.id) ?? [],
+        now
+      )
+    );
+    this._signalTrendSeries.set(reading.id, stored);
+    if (stored.length < 2) return "";
+    const currentValue = Number(reading.value);
+    const points = withSignalTrendEndpoint(
+      stored,
+      now,
+      Number.isFinite(currentValue) ? currentValue : undefined
+    );
+    const svgPoints = buildSignalTrendSvgPoints(
+      points,
+      now - SIGNAL_TREND_WINDOW_MS,
+      now
+    );
+    if (!svgPoints) return "";
+    return `<svg class="metric-sparkline" viewBox="0 0 100 56" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <polyline class="metric-sparkline-line" vector-effect="non-scaling-stroke" points="${escapeHtml(svgPoints)}"></polyline>
+    </svg>`;
+  }
+
   private _metric(reading: EntityReading, label: string, unit: string): string {
     if (!reading.id || reading.value === null) return "";
     const ariaLabel = `${label} ${reading.value}${unit ? ` ${unit}` : ""}`;
     return `<button type="button" class="node-metric clickable" part="metric" data-entity="${escapeHtml(reading.id)}" aria-label="${escapeHtml(ariaLabel)}">
       <ha-ripple></ha-ripple>
+      ${this._metricSparkline(reading)}
       <span class="metric-label">${escapeHtml(label)}</span>
       <span class="metric-value">${escapeHtml(reading.value)}${unit ? `<span class="metric-unit"> ${escapeHtml(unit)}</span>` : ""}</span>
     </button>`;
@@ -1289,12 +1530,14 @@ export class MeshcoreCard extends HTMLElement {
       typeof target.id !== "string" ||
       !target.id.trim()
     ) {
+      this._setSignalTrendContext(null, []);
       this._cardSize = 1;
       this._setBody(`<div class="empty config-prompt">${escapeHtml(t("card.select_device_prompt"))}</div>`);
       return;
     }
 
     if (target.type === "hub") {
+      this._setSignalTrendContext(null, []);
       const hub = this._discoverHubs().find((item) => item.pubkey === target.id);
       if (!hub) {
         this._cardSize = 1;
@@ -1309,11 +1552,13 @@ export class MeshcoreCard extends HTMLElement {
 
     const node = this._discoverNodes().find((item) => item.name === target.id);
     if (!node) {
+      this._setSignalTrendContext(null, []);
       this._cardSize = 1;
       this._setBody(`<div class="empty config-prompt">${escapeHtml(t("card.target_not_found", { id: target.id }))}</div>`);
       return;
     }
     const vm = this._buildNodeViewModel(node, t);
+    this._updateSignalTrendContext(node, vm);
     this._cardSize = vm.connectivity === "online" ? 5 : 1;
     this._seedDetails(node.deviceId);
     this._setBody(this._renderNode(node, t, vm), vm.connectivity !== "online");

@@ -205,6 +205,7 @@
     "icon_color_label": "Symbolfarbe",
     "hide_battery": "Batterie ausblenden",
     "hide_metrics": "Signalmetriken ausblenden",
+    "hide_signal_graphs": "Signaldiagramme ausblenden",
     "hide_quick_stats": "Kurzstatistiken ausblenden",
     "show_firmware": "Firmware-Version anzeigen",
     "hide_details": "Detailbereich ausblenden",

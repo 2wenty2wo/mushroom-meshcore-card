@@ -350,6 +350,80 @@ function render(config, hass = createHass()) {
   };
 }
 
+function renderConnected(config, hass) {
+  const card = new MainCard();
+  card.setConfig(config);
+  card.connectedCallback();
+  card.hass = hass;
+  return card;
+}
+
+function attributeValue(tag, name) {
+  return tag.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+}
+
+function assertSignalSparklines(html, expectedCount) {
+  const svgTags = Array.from(
+    html.matchAll(/<svg\b[^>]*class="metric-sparkline"[^>]*>/g),
+    ([tag]) => tag,
+  );
+  const lineTags = Array.from(
+    html.matchAll(/<polyline\b(?=[^>]*class="metric-sparkline-line")[^>]*>/g),
+    ([tag]) => tag,
+  );
+  assert.equal(svgTags.length, expectedCount);
+  assert.equal(lineTags.length, expectedCount);
+  assert.equal((html.match(/<\/svg>/g) ?? []).length, expectedCount);
+
+  for (const tag of svgTags) {
+    assert.equal(attributeValue(tag, "viewBox"), "0 0 100 56");
+    assert.equal(attributeValue(tag, "preserveAspectRatio"), "none");
+    assert.equal(attributeValue(tag, "aria-hidden"), "true");
+    assert.equal(attributeValue(tag, "focusable"), "false");
+  }
+  for (const tag of lineTags) {
+    assert.equal(attributeValue(tag, "vector-effect"), "non-scaling-stroke");
+    const points = attributeValue(tag, "points") ?? "";
+    assert.match(
+      points,
+      /^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?(?:\s+-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?)+$/,
+    );
+    for (const point of points.split(/\s+/)) {
+      const [x, y] = point.split(",").map(Number);
+      assert.ok(Number.isFinite(x) && Number.isFinite(y), "sparkline coordinates are finite");
+      assert.ok(x >= 0 && x <= 100, "sparkline x coordinate stays inside its viewBox");
+      assert.ok(y >= 0 && y <= 56, "sparkline y coordinate stays inside its viewBox");
+    }
+  }
+  assert.doesNotMatch(html, /(?:NaN|Infinity|undefined)/);
+}
+
+const SIGNAL_ENTITIES = {
+  rssi: "sensor.meshcore_spring_last_rssi_spring_farm",
+  snr: "sensor.meshcore_spring_last_snr_spring_farm",
+  noise: "sensor.meshcore_spring_noise_floor_spring_farm",
+};
+
+function signalHistoryResponse(nowSeconds = Date.now() / 1000) {
+  return {
+    [SIGNAL_ENTITIES.rssi]: [
+      { s: "-62.5", lu: nowSeconds - 5 * 60 * 60 },
+      { s: "-48", lu: nowSeconds - 3 * 60 * 60 },
+      { s: "-54.25", lu: nowSeconds - 60 * 60 },
+    ],
+    [SIGNAL_ENTITIES.snr]: [
+      { s: "3.5", lu: nowSeconds - 5 * 60 * 60 },
+      { s: "12", lu: nowSeconds - 2 * 60 * 60 },
+      { s: "8.25", lu: nowSeconds - 30 * 60 },
+    ],
+    [SIGNAL_ENTITIES.noise]: [
+      { s: "-118", lu: nowSeconds - 5 * 60 * 60 },
+      { s: "-111.5", lu: nowSeconds - 2.5 * 60 * 60 },
+      { s: "-115", lu: nowSeconds - 15 * 60 },
+    ],
+  };
+}
+
 const noTarget = render({});
 assert.match(noTarget.body, /Select a MeshCore device/);
 
@@ -383,6 +457,116 @@ assert.equal(
   (onlineNode.body.match(/data-entity="sensor\.meshcore_spring_noise_floor_spring_farm"/g) ?? []).length,
   1,
 );
+
+const historyHass = createHass();
+const historyRequests = [];
+let resolveHistory;
+historyHass.connection = {
+  addEventListener: () => {},
+  removeEventListener: () => {},
+};
+historyHass.callWS = (message) => {
+  historyRequests.push(message);
+  return new Promise((resolve) => {
+    resolveHistory = resolve;
+  });
+};
+const historyNode = renderConnected(
+  { target: { type: "node", id: "Spring Farm" } },
+  historyHass,
+);
+await Promise.resolve();
+assert.equal(historyRequests.length, 1, "visible signal metrics share one history request");
+const historyRequest = historyRequests[0];
+assert.equal(historyRequest.type, "history/history_during_period");
+assert.deepEqual(historyRequest.entity_ids, [
+  SIGNAL_ENTITIES.rssi,
+  SIGNAL_ENTITIES.snr,
+  SIGNAL_ENTITIES.noise,
+]);
+assert.equal(historyRequest.minimal_response, true);
+assert.equal(historyRequest.no_attributes, true);
+assert.equal(historyRequest.include_start_time_state, true);
+assert.equal(historyRequest.significant_changes_only, true);
+assert.ok(
+  Math.abs(
+    Date.parse(historyRequest.end_time) - Date.parse(historyRequest.start_time)
+      - 6 * 60 * 60 * 1000,
+  ) < 1000,
+  "history request covers a fixed six-hour window",
+);
+
+// Let the history completion render immediately while still exercising the
+// card's normal throttled scheduling path.
+historyNode._lastRender = 0;
+resolveHistory(signalHistoryResponse());
+await Promise.resolve();
+await Promise.resolve();
+await wait(0);
+assertSignalSparklines(historyNode.shadowRoot.innerHTML, 3);
+assert.equal(historyRequests.length, 1, "history rendering does not refetch the same window");
+historyNode.disconnectedCallback();
+
+const hiddenGraphHass = createHass();
+const hiddenGraphRequests = [];
+hiddenGraphHass.callWS = async (message) => {
+  hiddenGraphRequests.push(message);
+  return signalHistoryResponse();
+};
+const hiddenGraphNode = renderConnected(
+  {
+    target: { type: "node", id: "Spring Farm" },
+    hide_signal_graphs: true,
+  },
+  hiddenGraphHass,
+);
+await Promise.resolve();
+assert.equal(hiddenGraphRequests.length, 0, "hide_signal_graphs skips Recorder history");
+assertSignalSparklines(hiddenGraphNode.shadowRoot.innerHTML, 0);
+assert.match(hiddenGraphNode.shadowRoot.innerHTML, />RSSI</);
+assert.match(hiddenGraphNode.shadowRoot.innerHTML, />SNR</);
+assert.match(hiddenGraphNode.shadowRoot.innerHTML, />Noise Floor</);
+hiddenGraphNode.disconnectedCallback();
+
+const missingGraphHass = createHass();
+missingGraphHass.states[SIGNAL_ENTITIES.rssi].state = "unavailable";
+const missingGraphRequests = [];
+missingGraphHass.callWS = async (message) => {
+  missingGraphRequests.push(message);
+  return signalHistoryResponse();
+};
+const missingGraphNode = renderConnected(
+  { target: { type: "node", id: "Spring Farm" } },
+  missingGraphHass,
+);
+missingGraphNode._lastRender = 0;
+await Promise.resolve();
+await Promise.resolve();
+await wait(0);
+assert.equal(missingGraphRequests.length, 1);
+assert.deepEqual(missingGraphRequests[0].entity_ids, [
+  SIGNAL_ENTITIES.snr,
+  SIGNAL_ENTITIES.noise,
+]);
+assertSignalSparklines(missingGraphNode.shadowRoot.innerHTML, 2);
+assert.doesNotMatch(missingGraphNode.shadowRoot.innerHTML, />RSSI</);
+missingGraphNode.disconnectedCallback();
+
+const offlineGraphHass = createHass(false);
+const offlineGraphRequests = [];
+offlineGraphHass.callWS = async (message) => {
+  offlineGraphRequests.push(message);
+  return signalHistoryResponse();
+};
+const offlineGraphNode = renderConnected(
+  { target: { type: "node", id: "Spring Farm" } },
+  offlineGraphHass,
+);
+await Promise.resolve();
+assert.equal(offlineGraphRequests.length, 0, "offline nodes skip Recorder history");
+assertSignalSparklines(offlineGraphNode.shadowRoot.innerHTML, 0);
+offlineGraphNode.disconnectedCallback();
+
 assert.doesNotMatch(onlineNode.body, /Node ID/);
 assert.doesNotMatch(onlineNode.body, /<h4>Technical<\/h4>/);
 assert.match(onlineNode.body, /class="battery-percentage clickable" data-entity="sensor\.meshcore_spring_battery_percentage_spring_farm"/);

@@ -167,6 +167,7 @@ export interface MeshcoreCardConfig {
   double_tap_action?: ActionConfig;
   hide_battery?: boolean;
   hide_metrics?: boolean;
+  hide_signal_graphs?: boolean;
   hide_quick_stats?: boolean;
   show_firmware?: boolean;
   hide_details?: boolean;

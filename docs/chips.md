@@ -107,7 +107,10 @@ The neighbour chip is shown only when the integration exposes neighbour data and
 | `bandwidth` | Bandwidth | `bandwidth` | kHz | Details |
 | `tx_power` | TX power | `tx_power` | dBm | Details |
 
-RSSI, SNR, and noise floor are core metric tiles rather than configurable chips. Use `hide_metrics: true` to hide all three.
+RSSI, SNR, and noise floor are core metric tiles rather than configurable chips.
+Their faint background graphs show six hours of Home Assistant Recorder history
+when enough data is available. Use `hide_signal_graphs: true` to hide only the
+graphs, or `hide_metrics: true` to hide all three tiles.
 
 ### Network traffic
 

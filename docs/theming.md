@@ -38,6 +38,8 @@ Internally, the shared styles expose scoped values for targeted customization:
 | `--mushroom-meshcore-danger-color` | Error and low-battery accent. |
 | `--mushroom-meshcore-info-color` | Informational links and accents. |
 | `--mushroom-meshcore-muted-color` | Offline, unavailable, and secondary state color. |
+| `--mushroom-meshcore-sparkline-color` | Signal-history line color; defaults to the muted secondary text color. |
+| `--mushroom-meshcore-sparkline-opacity` | Signal-history line opacity; defaults to `0.14`. |
 | `--mushroom-meshcore-primary-*` | Primary font size, weight, line height, and letter spacing. |
 | `--mushroom-meshcore-secondary-*` | Secondary font size, weight, line height, and letter spacing. |
 | `--mushroom-meshcore-chip-*` | Chip height, radius, spacing, background, border width, and border color. |
@@ -62,6 +64,7 @@ card_mod:
       --mushroom-meshcore-card-padding: 12px;
       --mushroom-meshcore-surface: var(--secondary-background-color);
       --mushroom-meshcore-info-color: var(--primary-color);
+      --mushroom-meshcore-sparkline-opacity: 0.2;
     }
 ```
 

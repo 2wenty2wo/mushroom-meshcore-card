@@ -53,6 +53,12 @@ Missing data is normally omitted by design. The Main card treats `unknown`, `una
 
 RSSI, SNR, and noise floor are metric tiles, not chip IDs. `hide_metrics: true` hides them. Battery is also separate from chip layout. See [Chip layout and metrics](/chips) for every ID and MeshCore HA 2.9 alias.
 
+The faint graphs behind those three signal values need at least two valid points
+from the last six hours of Home Assistant Recorder history. If a graph is
+missing, confirm Recorder includes that sensor and has retained recent state
+changes. A history request can fail while the live value and more-info action
+continue to work normally. Also confirm `hide_signal_graphs` is not `true`.
+
 ## A node shows Offline or Unknown
 
 When available, the enabled MeshCore `online` binary sensor is authoritative:

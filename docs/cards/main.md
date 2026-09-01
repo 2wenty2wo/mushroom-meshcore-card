@@ -39,6 +39,12 @@ percentage and voltage, sent and received traffic, uptime, temperature,
 location, and repeater diagnostics. Unknown, unavailable, empty, and invalid
 numeric states are omitted rather than displayed as useful readings.
 
+RSSI, SNR, and noise floor tiles include a faint background line showing the
+last six hours of real Home Assistant Recorder history. The graph appears when
+at least two valid history points are available and does not change the tile's
+current value or more-info interaction. Set `hide_signal_graphs: true` to keep
+the metric tiles without their history lines.
+
 Repeater diagnostics are organized under a **Details** disclosure into Device,
 Network, Radio, Network Traffic, Airtime, Message Rates, Reliability, and
 Telemetry groups. Groups with no valid readings are omitted. Raw RSSI and SNR
@@ -72,6 +78,7 @@ double_tap_action:
   action: none
 hide_battery: false
 hide_metrics: false
+hide_signal_graphs: false
 hide_details: false
 details_default_open: false
 chip_layout:
