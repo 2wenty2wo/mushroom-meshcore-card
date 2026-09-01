@@ -1,0 +1,61 @@
+name: Feature request
+description: Suggest an improvement to Mushroom MeshCore Card
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Describe the user problem first so the proposed outcome can be evaluated in context.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Affected card or scope
+      options:
+        - Main card
+        - Channel card
+        - Mentions card
+        - Releases card
+        - Multiple cards or shared behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what currently makes it difficult?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed outcome
+      description: Describe the behaviour or result you would like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note any current workaround or alternative approach you considered.
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Screenshots or mockups
+      description: Drag in any visual references that help communicate the request.
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched the existing issues and did not find an equivalent request.
+          required: true
+    validations:
+      required: true

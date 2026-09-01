@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/2wenty2wo/mushroom-meshcore-card/security/advisories/new
+    about: Report suspected vulnerabilities privately to the maintainers.
+  - name: Configuration help and troubleshooting
+    url: https://2wenty2wo.github.io/mushroom-meshcore-card/troubleshooting.html
+    about: Review setup guidance and solutions to common problems.

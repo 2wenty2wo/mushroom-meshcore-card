@@ -1,0 +1,134 @@
+name: Bug report
+description: Report a reproducible problem with a Mushroom MeshCore card
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+
+        If this could be a security vulnerability, do not continue with this public form. Use [private vulnerability reporting](https://github.com/2wenty2wo/mushroom-meshcore-card/security/advisories/new) instead.
+
+  - type: dropdown
+    id: card
+    attributes:
+      label: Affected card
+      description: Select the card where the problem occurs.
+      options:
+        - Main card
+        - Channel card
+        - Mentions card
+        - Releases card
+        - Multiple cards
+    validations:
+      required: true
+
+  - type: input
+    id: card-version
+    attributes:
+      label: Mushroom MeshCore Card version
+      description: Find this in HACS or on the installed GitHub release.
+      placeholder: v0.19.0
+    validations:
+      required: true
+
+  - type: input
+    id: home-assistant-version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.8.0
+    validations:
+      required: true
+
+  - type: input
+    id: meshcore-integration-version
+    attributes:
+      label: meshcore-ha version
+      description: Find this on the MeshCore integration page in HACS.
+      placeholder: v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Chrome 140, Firefox 142, or Home Assistant Companion App 2026.8
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - HACS
+        - Manual installation
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem description
+      description: Explain what went wrong and when it started.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Give the smallest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Open ...
+        2. Configure ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: Describe what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Sanitised card configuration
+      description: Remove secrets, tokens, precise locations, and identifiers you do not want made public.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: console-output
+    attributes:
+      label: Browser console output
+      description: Paste relevant warnings or errors, if any. Remove private information first.
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag in screenshots or a short recording if they help explain the problem.
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched the existing issues and did not find a duplicate.
+          required: true
+        - label: I removed secrets and other private information from this report.
+          required: true
+        - label: This report does not describe a suspected security vulnerability.
+          required: true
+    validations:
+      required: true
