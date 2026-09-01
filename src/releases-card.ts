@@ -46,17 +46,24 @@ const RELEASES_STYLES = `
 
   .release-list-item { min-width: 0; }
 
+  .release-list-item:not(:last-child) {
+    border-bottom: 1px solid var(--mushroom-meshcore-border-color);
+  }
+
   .release-row {
     position: relative;
     display: grid;
-    min-height: 52px;
+    min-height: 56px;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: var(--mush-spacing, 10px);
-    padding: 5px 2px;
-    border-top: 1px solid var(--mushroom-meshcore-border-color);
-    color: var(--primary-text-color);
+    padding: 8px 2px;
+    color: var(--mush-card-primary-color, var(--primary-text-color, #212121));
     text-decoration: none;
+  }
+
+  a.release-row:any-link {
+    color: var(--mush-card-primary-color, var(--primary-text-color, #212121));
   }
 
   .release-row.linked {
@@ -73,10 +80,6 @@ const RELEASES_STYLES = `
     inset: 0;
   }
 
-  .release-row.linked:hover {
-    background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04);
-  }
-
   .release-row.linked:focus-visible {
     outline: 2px solid var(--primary-color, var(--mushroom-meshcore-info-color));
     outline-offset: -2px;
@@ -87,7 +90,9 @@ const RELEASES_STYLES = `
   .release-copy { min-width: 0; }
 
   .release-name {
+    display: block;
     overflow-wrap: anywhere;
+    color: var(--mush-card-primary-color, var(--primary-text-color, #212121));
     font-size: var(--mushroom-meshcore-primary-font-size);
     font-weight: var(--mushroom-meshcore-primary-font-weight);
     letter-spacing: var(--mushroom-meshcore-primary-letter-spacing);
@@ -115,8 +120,8 @@ const RELEASES_STYLES = `
     align-items: center;
     padding: 0 7px;
     border-radius: var(--ha-border-radius-pill, 999px);
-    background: rgba(var(--rgb-warning, 255, 152, 0), 0.14);
-    color: var(--warning-color, #f57c00);
+    background: rgba(var(--mush-rgb-warning, var(--rgb-warning, 255, 152, 0)), 0.14);
+    color: var(--mushroom-meshcore-warning-color);
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.2px;
@@ -461,7 +466,7 @@ export class MeshcoreReleasesCard extends HTMLElement {
         label
       )}">${contents}</div></div>`;
     }
-    return `<div class="release-list-item" role="listitem"><a class="release-row linked" href="${escapeHtml(
+    return `<div class="release-list-item" role="listitem"><a class="release-row linked clickable" href="${escapeHtml(
       view.url
     )}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(
       t("card.releases_open", { name: view.name, tag })

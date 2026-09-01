@@ -144,6 +144,34 @@ describe("MeshcoreReleasesCard", () => {
     );
   });
 
+  it("uses theme-safe flat divided release rows", () => {
+    const card = createCard();
+    const style = card.shadowRoot!.querySelector("style")!.textContent!;
+    const separatorRule =
+      style.match(/\.release-list-item:not\(:last-child\)\s*\{([^}]*)\}/)?.[1] ??
+      "";
+    const rowRule = style.match(/\.release-row\s*\{([^}]*)\}/)?.[1] ?? "";
+    const linkRule =
+      style.match(/a\.release-row:any-link\s*\{([^}]*)\}/)?.[1] ?? "";
+    const nameRule = style.match(/\.release-name\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(separatorRule).toContain(
+      "border-bottom: 1px solid var(--mushroom-meshcore-border-color)"
+    );
+    expect(rowRule).toContain("min-height: 56px");
+    expect(rowRule).toContain("padding: 8px 2px");
+    expect(rowRule).not.toContain("border-top");
+    expect(linkRule).toContain(
+      "color: var(--mush-card-primary-color, var(--primary-text-color, #212121))"
+    );
+    expect(nameRule).toContain(
+      "color: var(--mush-card-primary-color, var(--primary-text-color, #212121))"
+    );
+    expect(
+      card.shadowRoot!.querySelector("a.release-row")?.classList
+    ).toContain("clickable");
+  });
+
   it("supports configured and localized name sorting", () => {
     const sources = [
       { entity: MESHCORE, name: "Zulu" },
