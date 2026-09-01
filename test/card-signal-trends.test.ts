@@ -190,6 +190,26 @@ describe("device signal history graphs", () => {
     expect(graphPoints(card)).toEqual(freshPoints);
   });
 
+  it("ignores signal entities that change shape while history is pending", async () => {
+    const hass = createHass();
+    let resolveHistory!: (value: unknown) => void;
+    hass.callWS = vi.fn(() => new Promise((resolve) => {
+      resolveHistory = resolve;
+    })) as HomeAssistant["callWS"];
+    const card = mount(hass);
+
+    delete hass.states[SIGNAL_IDS[0]];
+    hass.states[SIGNAL_IDS[1]]!.last_changed = "invalid";
+    hass.states[SIGNAL_IDS[1]]!.last_updated = new Date(NOW - 500).toISOString();
+    hass.states[SIGNAL_IDS[2]]!.last_changed = "invalid";
+    hass.states[SIGNAL_IDS[2]]!.last_updated = "invalid";
+
+    resolveHistory({});
+    await flushPromises();
+
+    expect(card.shadowRoot!.querySelectorAll(".metric-sparkline")).toHaveLength(0);
+  });
+
   it("builds a real live-only graph after Recorder rejects", async () => {
     const hass = createHass();
     const callWS = vi.fn().mockRejectedValue(new Error("Recorder unavailable"));

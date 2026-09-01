@@ -140,6 +140,65 @@ describe("signal trends", () => {
     expect(downsampleSignalTrendPoints(points, Number.POSITIVE_INFINITY)).toEqual([]);
   });
 
+  it("selects the strongest odd-budget extreme and backfills sparse time buckets", () => {
+    const oddBudget = [
+      { timestamp: 0, value: 100 },
+      { timestamp: 1, value: 0 },
+      { timestamp: 2, value: -10 },
+      { timestamp: 3, value: 20 },
+      { timestamp: 4, value: 100 },
+    ];
+    expect(downsampleSignalTrendPoints(oddBudget, 2)).toEqual([
+      oddBudget[0],
+      oddBudget[4],
+    ]);
+    expect(downsampleSignalTrendPoints(oddBudget, 3)).toEqual([
+      oddBudget[0],
+      oddBudget[2],
+      oddBudget[4],
+    ]);
+
+    // All interior timestamps occupy the first of two time buckets. The
+    // vacant bucket leaves capacity that must be filled from the widest
+    // remaining temporal gaps without dropping the endpoints or extrema.
+    const sparse = [
+      { timestamp: 0, value: 0 },
+      { timestamp: 1, value: 5 },
+      { timestamp: 2, value: -5 },
+      { timestamp: 3, value: 4 },
+      { timestamp: 4, value: -4 },
+      { timestamp: 5, value: 3 },
+      { timestamp: 100, value: 0 },
+    ];
+    const backfilled = downsampleSignalTrendPoints(sparse, 6);
+    expect(backfilled).toHaveLength(6);
+    expect(backfilled[0]).toEqual(sparse[0]);
+    expect(backfilled[backfilled.length - 1]).toEqual(sparse[6]);
+    expect(backfilled).toContainEqual(sparse[1]);
+    expect(backfilled).toContainEqual(sparse[2]);
+  });
+
+  it("rejects defensive invalid inputs at each public boundary", () => {
+    expect(parseSignalTrendHistory(
+      { "sensor.rssi": [{ s: { value: -80 }, lu: 1 }] },
+      ["sensor.rssi", 42 as unknown as string]
+    ).get("sensor.rssi")).toEqual([]);
+    expect(mergeSignalTrendPoints(
+      [null as unknown as SignalTrendPoint],
+      []
+    )).toEqual([]);
+    expect(pruneSignalTrendPoints([], -Number.MAX_SAFE_INTEGER)).toEqual([]);
+    expect(downsampleSignalTrendPoints([
+      { timestamp: 0, value: 0 },
+      { timestamp: 1, value: 1 },
+    ], 0)).toEqual([]);
+    expect(withSignalTrendEndpoint([
+      { timestamp: 1, value: 1 },
+    ], Number.POSITIVE_INFINITY)).toEqual([
+      { timestamp: 1, value: 1 },
+    ]);
+  });
+
   it("extends a series to a current endpoint and safely overrides a collision", () => {
     expect(withSignalTrendEndpoint([
       { timestamp: 10, value: -80 },
