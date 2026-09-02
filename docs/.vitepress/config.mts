@@ -79,7 +79,8 @@ export default defineConfig({
     },
     socialLinks: [{ icon: "github", link: repository }],
     footer: {
-      message: "Released under the MIT License.",
+      message:
+        "Released under the MIT License. This project is not affiliated with Mushroom Cards, Home Assistant, or MeshCore.",
       copyright: "Mushroom MeshCore Card contributors",
     },
   },
