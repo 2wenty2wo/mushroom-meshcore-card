@@ -8,6 +8,8 @@ The Main card's chip organizer controls three ordered areas:
 
 The editor supports drag and drop plus keyboard-friendly destination and ordering controls. YAML uses the `chip_layout` object described in the [configuration reference](/configuration#chip-layout).
 
+Inside Details, chips keep their configured order and receive a new category heading whenever adjacent chips belong to different categories. Missing values and empty categories are omitted.
+
 ## Default layouts
 
 ### Node
@@ -61,8 +63,6 @@ chip_layout:
     - firmware
 ```
 
-The complete node Details order is: `route`, `path_length`, `spreading_factor`, `frequency`, `bandwidth`, `tx_power`, `relayed`, `sent_direct`, `sent_flood`, `received_direct`, `received_flood`, `tx_airtime`, `rx_airtime`, `tx_airtime_total`, `rx_airtime_total`, `tx_rate`, `rx_rate`, `sent_direct_rate`, `sent_flood_rate`, `received_direct_rate`, `received_flood_rate`, `direct_duplicates_rate`, `flood_duplicates_rate`, `receive_errors_rate`, `canceled`, `duplicate`, `direct_duplicates`, `flood_duplicates`, `queue_length`, `queue_full_events`, `receive_errors`, `request_successes`, `request_failures`, `humidity`, `illuminance`, `pressure`.
-
 For configurations without `chip_layout`, legacy `show_firmware: true` prepends `firmware` to Top, and `hide_quick_stats: true` moves all Top chips to Hidden. Once an explicit layout exists, those legacy flags no longer affect placement.
 
 ### Hub
@@ -108,9 +108,6 @@ The neighbour chip is shown only when the integration exposes neighbour data and
 | `tx_power` | TX power | `tx_power` | dBm | Details |
 
 RSSI, SNR, and noise floor are core metric tiles rather than configurable chips.
-Their faint background graphs show six hours of Home Assistant Recorder history
-when enough data is available. Use `hide_signal_graphs: true` to hide only the
-graphs, or `hide_metrics: true` to hide all three tiles.
 
 ### Network traffic
 
@@ -200,9 +197,5 @@ Subscribed repeaters can expose the diagnostics defined by the official [MeshCor
 The direct/flood counters, specialized rates, airtime totals, and poll reliability chips use their v2.9 suffixes shown above. Exact device-scoped matching prevents similarly named sensors such as `airtime` and `rx_airtime` from being confused.
 
 Not every tracked client, sensor, or repeater exposes every metric. `unknown`, `unavailable`, empty, and invalid numeric states are treated as absent. This is expected behavior, not a reason to configure every entity manually.
-
-## Ordering and categories
-
-Node chips in Details are split into Device, Network, Radio, Network Traffic, Airtime, Message Rates, Reliability, and Telemetry sections. The configured order is authoritative: a new category heading starts whenever adjacent chips belong to different categories. Empty chips and empty categories are omitted.
 
 Return to the [Main card guide](/cards/main), review all [configuration fields](/configuration), or see [Troubleshooting](/troubleshooting#metrics-or-chips-are-missing).
