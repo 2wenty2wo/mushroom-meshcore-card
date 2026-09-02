@@ -258,6 +258,6 @@ The defaults advertised to Home Assistant are:
 
 With numeric `rows`, the main card clips content that falls outside its allocated height, while Channel, Mentions, and Releases use an internal scrolling content area. Increase the row count or return to `rows: auto` if expected content is not visible.
 
-## Full examples
+## Examples
 
-Complete, copyable YAML for each card lives in the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), and [Releases card](/cards/releases) guides. See [Troubleshooting](/troubleshooting) when a target, source, or metric is not found.
+Copyable YAML examples for each card live in the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), and [Releases card](/cards/releases) guides. See [Troubleshooting](/troubleshooting) when a target, source, or metric is not found.
