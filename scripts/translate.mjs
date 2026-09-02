@@ -11,7 +11,7 @@
  * Only missing keys are translated — existing translations are preserved.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,13 +49,40 @@ function collectLeaves(obj, prefix = "") {
 function setAtPath(obj, dotPath, value) {
   const parts = dotPath.split(".");
   let cur = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (!(parts[i] in cur) || typeof cur[parts[i]] !== "object") {
-      cur[parts[i]] = {};
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (
+      part === "__proto__" ||
+      part === "constructor" ||
+      part === "prototype"
+    ) {
+      throw new Error(`Unsafe translation key: ${dotPath}`);
     }
-    cur = cur[parts[i]];
+
+    if (i === parts.length - 1) {
+      cur[part] = value;
+      return;
+    }
+
+    if (
+      !Object.hasOwn(cur, part) ||
+      cur[part] === null ||
+      typeof cur[part] !== "object"
+    ) {
+      cur[part] = {};
+    }
+    cur = cur[part];
   }
-  cur[parts[parts.length - 1]] = value;
+}
+
+/** Read an optional JSON file without a separate existence check. */
+function readJsonIfPresent(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return {};
+    throw error;
+  }
 }
 
 /**
@@ -144,7 +171,7 @@ const sourceLeaves = collectLeaves(en);
 
 for (const { code, name } of TARGETS) {
   const outPath  = resolve(SRC, `${code}.json`);
-  const existing = existsSync(outPath) ? JSON.parse(readFileSync(outPath, "utf-8")) : {};
+  const existing = readJsonIfPresent(outPath);
   const existingLeaves = collectLeaves(existing);
 
   const missing = new Map(
@@ -176,6 +203,9 @@ for (const { code, name } of TARGETS) {
   const merged = structuredClone(existing);
   let count = 0;
   for (const [k, v] of translated) {
+    if (!missing.has(k)) {
+      throw new Error(`Translation backend returned unexpected key: ${k}`);
+    }
     const source   = missing.get(k) ?? "";
     const restored = preserveTrailingSpace(source, restoreFns.get(k)?.(v) ?? v);
     setAtPath(merged, k, restored);
