@@ -1,14 +1,15 @@
 # Getting started
 
-Mushroom MeshCore Card adds four Home Assistant dashboard cards for the
+Mushroom MeshCore Card adds five Home Assistant dashboard cards and one badge for the
 [MeshCore integration](https://github.com/meshcore-dev/meshcore-ha):
 
 - [Main card](/cards/main) for one hub or remote node
 - [Channel card](/cards/channel) for one MeshCore channel conversation
 - [Mentions card](/cards/mentions) for an automation-backed mention inbox
 - [Releases card](/cards/releases) for explicitly configured software release sensors
+- [Status card and badge](/cards/status) for the health of one hub and its managed child nodes
 
-The cards follow Mushroom and Home Assistant Tile styling, but neither
+The cards and badge follow Mushroom and Home Assistant styling, but neither
 Mushroom nor Card Mod is required. They use Home Assistant theme fallbacks and
 can also be installed alongside the original `meshcore-card` because their
 custom-element names are different.
@@ -16,6 +17,8 @@ custom-element names are different.
 ## Requirements
 
 - Home Assistant 2023.x or later
+- Home Assistant 2024.8 or later when using the Status badge; the Status card
+  remains available on earlier supported versions
 - The [MeshCore integration](https://github.com/meshcore-dev/meshcore-ha),
   installed and configured
 - Home Assistant 2026.5.0 or later only when using the bundled Mentions
@@ -51,7 +54,7 @@ a hard refresh so the browser does not keep an older bundle cached. See
 ## Add your first card
 
 Add a new card in the Home Assistant dashboard editor and choose the relevant
-Mushroom MeshCore card. Device, Channel, and Mentions editors begin with their
+Mushroom MeshCore card. Device, Channel, Mentions, and Status editors begin with their
 required target; Releases begins with its explicit source list. Supporting
 device entities are discovered automatically wherever possible.
 
@@ -127,11 +130,36 @@ The frontend card does not contact GitHub or Codeberg. Follow the
 [Releases card guide](/cards/releases) for the complete REST sensor setup and
 the seven-source MeshCore ecosystem example.
 
+### Network status
+
+Choose a hub to summarize its connection and the managed nodes associated with it:
+
+```yaml
+type: custom:mushroom-meshcore-status-card
+target:
+  type: hub
+  id: 55733c
+```
+
+The companion badge uses the same hub target and health model:
+
+```yaml
+type: custom:mushroom-meshcore-status-badge
+target:
+  type: hub
+  id: 55733c
+```
+
+The card explains problems and exposes monitored-node and diagnostic disclosures.
+The badge provides a compact summary and opens the same problem details by default.
+Continue with the [Status card and badge guide](/cards/status).
+
 ## Next steps
 
 - Review every field in the [configuration reference](/configuration).
 - Arrange main-card content with the [chip reference](/chips).
 - Monitor ecosystem software with the [Releases card](/cards/releases).
+- Keep network health visible with the [Status card and badge](/cards/status).
 - Match the cards to your dashboard using [theming and Card Mod](/theming).
 - Use [Troubleshooting](/troubleshooting) for installation, discovery, and
   entity-state problems.

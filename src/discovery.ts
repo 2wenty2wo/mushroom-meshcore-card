@@ -89,7 +89,12 @@ export function discoverHubs(hass: HomeAssistant): HubInfo[] {
   for (const id of Object.keys(hass.states)) {
     const m = id.match(re);
     if (m && !hubs[m[1]]) {
-      hubs[m[1]] = { pubkey: m[1], name: m[2] || m[1], nodeCountEntity: id };
+      hubs[m[1]] = {
+        pubkey: m[1],
+        name: m[2] || m[1],
+        nodeCountEntity: id,
+        deviceId: hass.entities?.[id]?.device_id ?? null,
+      };
     }
   }
   return Object.values(hubs);

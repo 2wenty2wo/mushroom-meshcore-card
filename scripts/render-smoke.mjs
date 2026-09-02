@@ -109,6 +109,7 @@ globalThis.customElements = {
 customElements.define("ha-tile-info", class extends FakeHTMLElement {});
 globalThis.window = {
   customCards: [],
+  customBadges: [],
   setInterval: () => 1,
   clearInterval: () => {},
 };
@@ -153,6 +154,10 @@ function createHass(online = true) {
   const prefix = "sensor.meshcore_spring_";
   const suffix = "_spring_farm";
   const nodeEntities = {
+    "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm": state(
+      online ? "on" : "off",
+      { last_successful_request: Math.floor(Date.now() / 1000) - 30 },
+    ),
     [`${prefix}uptime${suffix}`]: state(online ? 1.5 : "unavailable"),
     [`${prefix}last_rssi${suffix}`]: state(-26),
     [`${prefix}last_snr${suffix}`]: state(11.25),
@@ -1674,6 +1679,68 @@ assert.match(
   /No Home Assistant to-do lists detected/,
 );
 
+const StatusCard = registry.get("mushroom-meshcore-status-card");
+assert.ok(StatusCard, "status card is registered");
+assert.ok(
+  window.customCards.some((card) => card.type === "mushroom-meshcore-status-card"),
+  "status card is registered in the card picker",
+);
+const statusHass = createHass();
+const statusCard = new StatusCard();
+statusCard.setConfig({
+  target: { type: "hub", id: "55733c" },
+  monitored_nodes_default_open: true,
+  grid_options: { columns: "full", rows: 4 },
+});
+statusCard.hass = statusHass;
+statusCard.connectedCallback();
+assert.match(statusCard.shadowRoot.innerHTML, /Test Hub/);
+assert.match(statusCard.shadowRoot.innerHTML, /Healthy · 1\/1 online/);
+assert.match(statusCard.shadowRoot.innerHTML, /No active issues/);
+assert.match(statusCard.shadowRoot.innerHTML, /data-disclosure="monitored-nodes" open/);
+assert.match(statusCard.shadowRoot.innerHTML, /status-card status-healthy grid-rows/);
+statusCard.disconnectedCallback();
+
+const lowStatusHass = createHass();
+lowStatusHass.states["sensor.meshcore_spring_battery_percentage_spring_farm"].state = "40";
+const warningStatusCard = new StatusCard();
+warningStatusCard.setConfig({ target: { type: "hub", id: "55733c" } });
+warningStatusCard.hass = lowStatusHass;
+assert.match(warningStatusCard.shadowRoot.innerHTML, /1 issue · 1\/1 online/);
+assert.match(warningStatusCard.shadowRoot.innerHTML, /data-row-id="node:node-device:battery"/);
+assert.doesNotMatch(warningStatusCard.shadowRoot.innerHTML, /issue:low_battery/);
+
+const offlineStatusHass = createHass(false);
+offlineStatusHass.states["sensor.meshcore_55733c_node_status_test_hub"].state = "offline";
+const offlineStatusCard = new StatusCard();
+offlineStatusCard.setConfig({ target: { type: "hub", id: "55733c" } });
+offlineStatusCard.hass = offlineStatusHass;
+assert.match(offlineStatusCard.shadowRoot.innerHTML, /status-card status-critical/);
+assert.match(offlineStatusCard.shadowRoot.innerHTML, /Hub offline/);
+assert.match(offlineStatusCard.shadowRoot.innerHTML, /Downstream checks paused/);
+assert.doesNotMatch(offlineStatusCard.shadowRoot.innerHTML, /monitored-nodes/);
+
+const StatusBadge = registry.get("mushroom-meshcore-status-badge");
+assert.ok(StatusBadge, "status badge is registered");
+assert.ok(
+  window.customBadges.some((badge) => badge.type === "mushroom-meshcore-status-badge"),
+  "status badge is registered in the badge picker",
+);
+const statusBadge = new StatusBadge();
+statusBadge.setConfig({ target: { type: "hub", id: "55733c" } });
+statusBadge.hass = statusHass;
+assert.match(statusBadge.shadowRoot.innerHTML, /<ha-badge label="Test Hub">/);
+assert.match(statusBadge.shadowRoot.innerHTML, />1\/1 online</);
+assert.deepEqual(StatusBadge.getStubConfig(), {});
+
+const unknownStatusHass = createHass();
+unknownStatusHass.states["sensor.meshcore_55733c_node_status_test_hub"].state = "unavailable";
+const unknownStatusBadge = new StatusBadge();
+unknownStatusBadge.setConfig({ target: { type: "hub", id: "55733c" } });
+unknownStatusBadge.hass = unknownStatusHass;
+assert.match(unknownStatusBadge.shadowRoot.innerHTML, /status-badge-button unknown/);
+assert.match(unknownStatusBadge.shadowRoot.innerHTML, />Unknown</);
+
 const ReleasesCard = registry.get("mushroom-meshcore-releases-card");
 assert.ok(ReleasesCard, "releases card is registered");
 const releasesHass = createHass();
@@ -1718,4 +1785,4 @@ assert.deepEqual(releasesCard.getGridOptions(), {
 });
 releasesCard.disconnectedCallback();
 
-console.log("Main, channel, mentions, and releases render smoke tests passed");
+console.log("Main, channel, mentions, releases, Status card, and Status badge render smoke tests passed");

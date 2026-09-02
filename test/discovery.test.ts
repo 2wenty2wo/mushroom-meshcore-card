@@ -27,6 +27,7 @@ describe("discoverHubs", () => {
         pubkey: HUB_PUBKEY,
         name: "test_hub",
         nodeCountEntity: HUB_COUNT_ENTITY,
+        deviceId: HUB_DEVICE_ID,
       },
     ]);
   });

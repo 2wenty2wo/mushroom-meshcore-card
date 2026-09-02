@@ -39,7 +39,13 @@ export function formatLastSeen(
   t: (key: string, vars?: Record<string, string | number>) => string
 ): string | null {
   if (!ts || ts === "unknown" || ts === "unavailable") return null;
-  const diff = Math.floor(Date.now() / 1000 - Number(ts));
+  const numeric = Number(ts);
+  const seconds = Number.isFinite(numeric)
+    ? numeric > 1_000_000_000_000
+      ? numeric / 1000
+      : numeric
+    : Date.parse(String(ts)) / 1000;
+  const diff = Math.floor(Date.now() / 1000 - seconds);
   if (isNaN(diff) || diff < 0) return null;
   if (diff < 60) return t("time.s_ago", { n: diff });
   if (diff < 3600) return t("time.m_ago", { n: Math.floor(diff / 60) });

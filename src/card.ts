@@ -15,7 +15,11 @@ import {
 } from "./helpers.js";
 import { handleAction, HeaderActionController } from "./actions.js";
 import { STYLES } from "./styles.js";
-import { discoverHubs, discoverNodes, findEntityByDevice } from "./discovery.js";
+import { discoverHubs, discoverNodes } from "./discovery.js";
+import {
+  findScopedEntity,
+  type EntityLookupOptions,
+} from "./entity-resolver.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
 import { effectiveChipLayout } from "./chip-layout.js";
@@ -139,12 +143,6 @@ const NODE_DETAIL_CATEGORY_BY_CHIP = {
   illuminance: "telemetry",
   pressure: "telemetry",
 } as const satisfies Record<NodeOnlyChipId, NodeDetailCategoryId>;
-
-interface EntityLookupOptions {
-  domain?: string;
-  enabledOnly?: boolean;
-  platform?: string;
-}
 
 interface NodeViewModel {
   node: NodeInfo;
@@ -581,20 +579,14 @@ export class MeshcoreCard extends HTMLElement {
     options?: EntityLookupOptions
   ): string | null {
     if (!this._hass?.entities) return null;
-    const entities = options
-      ? Object.fromEntries(
-          Object.entries(this._hass.entities).filter(([entityId, info]) => {
-            if (options.domain && !entityId.startsWith(`${options.domain}.`)) {
-              return false;
-            }
-            if (options.platform && info.platform !== options.platform) {
-              return false;
-            }
-            return !options.enabledOnly || info.disabled_by == null;
-          })
-        )
-      : this._hass.entities;
-    return findEntityByDevice(entities, deviceId, metric, ePrefix, eSuffix);
+    return findScopedEntity(
+      this._hass,
+      deviceId,
+      metric,
+      ePrefix,
+      eSuffix,
+      options
+    );
   }
 
   /**

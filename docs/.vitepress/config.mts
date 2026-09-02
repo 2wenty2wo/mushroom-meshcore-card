@@ -7,7 +7,7 @@ export default defineConfig({
   lang: "en",
   title: "Mushroom MeshCore Card",
   description:
-    "Mushroom and Tile styled Home Assistant Lovelace cards for MeshCore.",
+    "Mushroom and Tile styled Home Assistant Lovelace cards and a status badge for MeshCore.",
   base: "/mushroom-meshcore-card/",
   cleanUrls: false,
   lastUpdated: true,
@@ -40,6 +40,7 @@ export default defineConfig({
           { text: "Channel card", link: "/cards/channel" },
           { text: "Mentions card", link: "/cards/mentions" },
           { text: "Releases card", link: "/cards/releases" },
+          { text: "Status card and badge", link: "/cards/status" },
         ],
       },
       {

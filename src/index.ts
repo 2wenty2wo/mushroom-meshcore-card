@@ -3,6 +3,12 @@ import { MeshcoreCardEditor } from "./editor.js";
 import { MeshcoreChannelCard, MeshcoreChannelCardEditor } from "./channel-card.js";
 import { MeshcoreMentionsCard, MeshcoreMentionsCardEditor } from "./mentions-card.js";
 import { MeshcoreReleasesCard, MeshcoreReleasesCardEditor } from "./releases-card.js";
+import { MeshcoreStatusCard } from "./status-card.js";
+import {
+  MeshcoreStatusBadgeEditor,
+  MeshcoreStatusCardEditor,
+} from "./status-editor.js";
+import { MeshcoreStatusBadge } from "./status-badge.js";
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
@@ -73,5 +79,49 @@ if (!window.customCards.find((c) => c.type === "mushroom-meshcore-releases-card"
     preview: true,
     documentationURL:
       "https://2wenty2wo.github.io/mushroom-meshcore-card/cards/releases.html",
+  });
+}
+
+if (!customElements.get("mushroom-meshcore-status-card")) {
+  customElements.define("mushroom-meshcore-status-card", MeshcoreStatusCard);
+}
+if (!customElements.get("mushroom-meshcore-status-card-editor")) {
+  customElements.define(
+    "mushroom-meshcore-status-card-editor",
+    MeshcoreStatusCardEditor
+  );
+}
+if (!window.customCards.find((c) => c.type === "mushroom-meshcore-status-card")) {
+  window.customCards.push({
+    type: "mushroom-meshcore-status-card",
+    name: "Mushroom MeshCore Status Card",
+    description:
+      "Summarizes the health of one selected MeshCore hub and its managed nodes",
+    preview: true,
+    documentationURL:
+      "https://2wenty2wo.github.io/mushroom-meshcore-card/cards/status.html",
+  });
+}
+
+if (!customElements.get("mushroom-meshcore-status-badge")) {
+  customElements.define("mushroom-meshcore-status-badge", MeshcoreStatusBadge);
+}
+if (!customElements.get("mushroom-meshcore-status-badge-editor")) {
+  customElements.define(
+    "mushroom-meshcore-status-badge-editor",
+    MeshcoreStatusBadgeEditor
+  );
+}
+
+window.customBadges = window.customBadges || [];
+if (!window.customBadges.find((badge) => badge.type === "mushroom-meshcore-status-badge")) {
+  window.customBadges.push({
+    type: "mushroom-meshcore-status-badge",
+    name: "Mushroom MeshCore Status Badge",
+    description:
+      "Shows at-a-glance health for one selected MeshCore hub and its managed nodes",
+    preview: true,
+    documentationURL:
+      "https://2wenty2wo.github.io/mushroom-meshcore-card/cards/status.html",
   });
 }

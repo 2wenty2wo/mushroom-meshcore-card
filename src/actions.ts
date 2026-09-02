@@ -84,8 +84,25 @@ export class HeaderActionController {
     private readonly _node: HTMLElement,
     private readonly _getHass: () => HomeAssistant | undefined,
     private readonly _getConfig: () => HeaderActionConfig | undefined,
-    private readonly _getConfirmText: () => string
+    private readonly _getConfirmText: () => string,
+    /** Optional surface-specific default used only when tap_action is absent.
+     * Existing Tile headers omit it and retain the standard more-info default. */
+    private readonly _onDefaultTap?: (entityId: string | null) => void
   ) {}
+
+  private _performTap(action: ActionConfig | undefined, entityId: string | null): void {
+    if (action === undefined && this._onDefaultTap) {
+      this._onDefaultTap(entityId);
+      return;
+    }
+    handleAction(
+      this._node,
+      this._getHass(),
+      action,
+      entityId,
+      this._getConfirmText()
+    );
+  }
 
   handleClick(event: Event): boolean {
     const header = (event.target as Element).closest?.(
@@ -115,25 +132,13 @@ export class HeaderActionController {
       } else {
         this._tapTimer = setTimeout(() => {
           this._tapTimer = null;
-          handleAction(
-            this._node,
-            this._getHass(),
-            this._getConfig()?.tap_action,
-            entityId,
-            this._getConfirmText()
-          );
+          this._performTap(this._getConfig()?.tap_action, entityId);
         }, 250);
       }
       return true;
     }
 
-    handleAction(
-      this._node,
-      this._getHass(),
-      config?.tap_action,
-      entityId,
-      this._getConfirmText()
-    );
+    this._performTap(config?.tap_action, entityId);
     return true;
   }
 

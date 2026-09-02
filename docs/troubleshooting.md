@@ -12,6 +12,9 @@ Symptoms include **Custom element doesn't exist** or a missing card picker entry
    - `custom:mushroom-meshcore-card`
    - `custom:mushroom-meshcore-channel-card`
    - `custom:mushroom-meshcore-mentions-card`
+   - `custom:mushroom-meshcore-releases-card`
+   - `custom:mushroom-meshcore-status-card`
+   - `custom:mushroom-meshcore-status-badge`
 4. Reload Home Assistant's frontend and hard-refresh the browser. Clear the frontend cache only if the hard refresh does not update the resource.
 
 Do not use the upstream `meshcore-*` element names for this fork. Installation details are in [Getting started](/getting-started).
@@ -39,7 +42,7 @@ target:
   id: Spring Farm
 ```
 
-Channel entities must match `binary_sensor.meshcore_*_ch_<n>_messages`. Mentions targets must be existing `todo.*` entities. The [configuration reference](/configuration) lists each target contract.
+Channel entities must match `binary_sensor.meshcore_*_ch_<n>_messages`. Mentions targets must be existing `todo.*` entities. Status targets must be hubs, not nodes. The [configuration reference](/configuration) lists each target contract.
 
 ## Metrics or chips are missing
 
@@ -69,6 +72,52 @@ The card uses device-scoped discovery first. Set `battery_entity`, `voltage_enti
 
 For a node location override, `location_entity` must expose valid, non-zero `latitude` and `longitude` attributes. A map link is hidden if either coordinate is missing or invalid. Hub location comes from the hub's own latitude and longitude sensors.
 
+## Status shows Unknown or the wrong node count
+
+The Status card and badge count only registry-backed managed child nodes of the
+selected hub. Ordinary discovered contacts are intentionally excluded. A
+contact count elsewhere in MeshCore can therefore be higher than the Status
+denominator.
+
+- Confirm the target is the intended hub public-key identifier.
+- Open **Developer Tools → States** and inspect the hub and managed-node online
+  entities. An entity that exists but reports `unknown` or `unavailable`
+  contributes to unknown coverage.
+- Missing optional MQTT, battery, or radio diagnostic entities mean that check
+  is unsupported; they do not create an unknown result by themselves.
+- If the hub is offline or unknown, downstream node, MQTT, battery, and radio
+  checks are intentionally paused because their values may be stale.
+- Review `excluded_nodes`. Matching is trimmed and case-insensitive, but a
+  device rename can stop an old name from matching. A duplicate name excludes
+  every matching node.
+- Check an explicit `status_entity` or `battery_entity`. Overrides are
+  authoritative, so a missing or unavailable override does not silently fall
+  back to automatic discovery.
+
+The default low-battery threshold is 50%, and a reading must be strictly below
+the threshold to warn. Offline nodes are not evaluated from cached battery
+data. See [Status severity and counting](/cards/status#severity-and-counting)
+for the complete rules.
+
+## A Status radio warning does not clear
+
+MeshCore radio fault flags are latched. An asserted flag means the condition
+was recorded since the radio restarted; it does not necessarily mean the fault
+is occurring now. Restarting the radio clears the integration's latched flag.
+
+Queue-full events, receive errors, and request failures are cumulative totals.
+Their non-zero values appear only as neutral diagnostics and do not create a
+Status issue. The card does not use Recorder history to infer whether a total
+changed recently.
+
+## The Status badge is missing from a Panel view
+
+Home Assistant does not display badges in Panel view. Use the Status card in
+the main panel layout, or move the badge to a normal dashboard view. If a badge
+appears but does not open its details, remove `tap_action` to restore the
+default dialog; an explicit action replaces it, and `action: none` disables
+tap.
+
 ## MeshMapper opens the wrong map
 
 MeshMapper needs both settings:
@@ -91,7 +140,7 @@ Neighbour data covers the rolling 48-hour window and is shown only when the inte
 
 ## Content is clipped or the card is too tall
 
-A numeric `grid_options.rows` puts the card in fixed-height mode. The Main card clips content outside that allocation; Channel and Mentions make their content area scrollable.
+A numeric `grid_options.rows` puts the card in fixed-height mode. The Main card clips content outside that allocation; Channel, Mentions, Releases, and Status make their content area scrollable.
 
 Increase `rows`, use `rows: auto`, reduce visible chip content, or collapse Details. Home Assistant advertises the card-specific defaults listed under [Grid options](/configuration#grid-options).
 
@@ -138,7 +187,7 @@ Header actions apply only to the Tile header. Entity-backed metrics and chips de
 
 ## Theme or Card Mod changes do not apply
 
-- Confirm the variable is placed on the custom card's `ha-card` or inherited through a supported `--mush-*`/Home Assistant theme variable.
+- Confirm the variable is placed on the custom card's `ha-card` or inherited through a supported `--mush-*`/Home Assistant theme variable. The Status badge is not an `ha-card`, so card-specific selectors do not target it.
 - Prefer the scoped variables in [Theming and Card Mod](/theming) over internal class selectors.
 - Check spelling and include the leading `--` in CSS.
 - Hard-refresh after changing a theme or frontend resource.

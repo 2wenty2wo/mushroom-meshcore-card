@@ -236,6 +236,24 @@ describe("HeaderActionController", () => {
     expect(seen).toEqual(["sensor.primary"]);
   });
 
+  it("allows a surface-specific default only when tap_action is absent", () => {
+    const fallback = vi.fn();
+    const custom = new HeaderActionController(
+      host,
+      () => undefined,
+      () => config,
+      () => "Sure?",
+      fallback
+    );
+    config = {};
+    custom.handleClick(clickEvent());
+    expect(fallback).toHaveBeenCalledWith("sensor.primary");
+    config = { tap_action: { action: "none" } };
+    custom.handleClick(clickEvent());
+    expect(fallback).toHaveBeenCalledTimes(1);
+    custom.disconnect();
+  });
+
   it("delays tap while a double-tap could still happen", () => {
     controller.handleClick(clickEvent());
     expect(callService).not.toHaveBeenCalled();

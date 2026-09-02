@@ -1,6 +1,6 @@
 # Configuration reference
 
-All four cards have visual editors, but every setting is also available in YAML. The Main, Channel, and Mentions cards begin with their required target; the Releases card begins with its explicit source list. Start with [Getting started](/getting-started), or see the focused guides for the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), and [Releases card](/cards/releases).
+All five cards and the Status badge have visual editors, but every setting is also available in YAML. The Main, Channel, Mentions, and Status surfaces begin with their required target; the Releases card begins with its explicit source list. Start with [Getting started](/getting-started), or see the focused guides for the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), [Releases card](/cards/releases), and [Status card and badge](/cards/status).
 
 ## Main card
 
@@ -203,13 +203,82 @@ muted rows; unsafe or non-HTTPS links are never opened. Follow the
 [Releases card guide](/cards/releases) for the complete sensor contract and
 REST examples.
 
+## Status card and badge
+
+The Status card and badge each require one explicit hub target and share the
+same network-health result. Only registry-backed managed child nodes belonging
+to that hub are counted; discovered contacts are not part of the denominator.
+
+```yaml
+type: custom:mushroom-meshcore-status-card
+target:
+  type: hub
+  id: 55733c
+```
+
+Use the companion badge at the top of a normal dashboard view:
+
+```yaml
+type: custom:mushroom-meshcore-status-badge
+target:
+  type: hub
+  id: 55733c
+```
+
+### Shared Status fields
+
+| Field | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `type` | string | required | Must be `custom:mushroom-meshcore-status-card` or `custom:mushroom-meshcore-status-badge`. |
+| `target` | object | required | `{ type: hub, id: <pubkey> }`. The surface never selects another hub. |
+| `name` | string | discovered hub name | Overrides the header or badge label. |
+| `icon` | string | `mdi:access-point-network` | Overrides the header or badge icon. |
+| `icon_color` | string | semantic healthy color | Recolors only a healthy state; warning, critical, and unknown keep semantic colors. |
+| `tap_action` | action | card: `more-info`; badge: status dialog | Primary action. An explicit badge action replaces its details dialog. |
+| `hold_action` | action | `none` | Hold action. |
+| `double_tap_action` | action | `none` | Double-tap action. |
+| `low_battery_threshold` | number | `50` | Percentage from 0 to 100. A valid reading strictly below this value creates a warning; invalid YAML falls back to 50. |
+| `excluded_nodes` | string list | none | Discovered managed-node names removed from the total and health result. Matching is trimmed and case-insensitive. |
+| `status_entity` | entity ID | automatic discovery | Authoritative flat override for the selected hub's connection state. |
+| `battery_entity` | entity ID | automatic discovery | Authoritative flat override for the selected hub's battery percentage. |
+
+### Status-card-only fields
+
+| Field | Type | Default | Behavior |
+| --- | --- | --- | --- |
+| `hide_monitored_nodes` | boolean | `false` | Removes the Monitored nodes disclosure. |
+| `monitored_nodes_default_open` | boolean | `false` | Opens Monitored nodes on first render; subsequent user state is preserved. |
+| `hide_diagnostics` | boolean | `false` | Removes the neutral Diagnostics disclosure. |
+| `diagnostics_default_open` | boolean | `false` | Opens Diagnostics on first render; subsequent user state is preserved. |
+| `grid_options` | object | card defaults | Home Assistant Sections-grid sizing. The badge does not use grid options. |
+
+Changing the selected hub in either visual editor clears `excluded_nodes`,
+`status_entity`, and `battery_entity`. Appearance, interactions, threshold, and
+card disclosure preferences are preserved.
+
+The default 50% battery threshold does not warn at exactly 50%. A hub value of
+zero follows the main card's mains-powered convention; a node value of zero is
+a valid low reading. Offline nodes are not evaluated from cached battery data,
+and voltage is never converted to percentage.
+
+Exclusions use display names rather than immutable IDs. A rename can stop an
+entry from matching. One entry excludes every same-named managed node under the
+hub and produces an editor collision warning. See the
+[Status guide](/cards/status#excluding-managed-nodes) before relying on a
+long-lived exclusion list.
+
+Missing optional MQTT, battery, and diagnostic entities mean the check is not
+supported and do not count as problems. Present but unavailable checks add to
+the unknown count. When the hub is offline or unknown, downstream checks are
+paused rather than interpreted from stale data.
+
 ## Header actions
 
 The three header action fields accept this Home Assistant-compatible subset:
 
 | `action` | Additional fields | Result |
 | --- | --- | --- |
-| `more-info` | none | Opens the selected target's primary entity. This is the default tap behavior. |
+| `more-info` | none | Opens the selected target's primary entity. This is the default card tap behavior. |
 | `navigate` | `navigation_path` | Navigates within Home Assistant. |
 | `url` | `url_path` | Opens the URL. |
 | `perform-action` | `perform_action`, optionally `data` and `target` | Calls a Home Assistant action such as `light.turn_on`. |
@@ -230,7 +299,7 @@ hold_action:
 
 The hold threshold is 500 ms. Configuring a double-tap action introduces a 250 ms delay before a single tap is executed so the second tap can be detected.
 
-Header actions do not replace entity-specific controls. Metrics, battery values, and entity-backed chips open their own more-info dialogs; the neighbour-count chip opens its recent-neighbours dialog.
+Header actions do not replace entity-specific controls. Metrics, battery values, and entity-backed chips open their own more-info dialogs; the neighbour-count chip opens its recent-neighbours dialog. The Status badge is the exception to the default tap: with no explicit `tap_action`, it opens its compact health-details dialog. Any explicit action, including `none`, replaces that dialog.
 
 ### Icon colors
 
@@ -255,9 +324,10 @@ The defaults advertised to Home Assistant are:
 | Channel | `full` | 8 | 6 | 4 |
 | Mentions | `full` | `auto` | 6 | 1 |
 | Releases | `full` | `auto` | 6 | 1 |
+| Status | `full` | `auto` | 6 | 2 |
 
-With numeric `rows`, the main card clips content that falls outside its allocated height, while Channel, Mentions, and Releases use an internal scrolling content area. Increase the row count or return to `rows: auto` if expected content is not visible.
+With numeric `rows`, the main card clips content that falls outside its allocated height, while Channel, Mentions, Releases, and Status use an internal scrolling content area. Increase the row count or return to `rows: auto` if expected content is not visible.
 
 ## Examples
 
-Copyable YAML examples for each card live in the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), and [Releases card](/cards/releases) guides. See [Troubleshooting](/troubleshooting) when a target, source, or metric is not found.
+Copyable YAML examples for each surface live in the [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), [Releases card](/cards/releases), and [Status card and badge](/cards/status) guides. See [Troubleshooting](/troubleshooting) when a target, source, or metric is not found.
