@@ -1,4 +1,5 @@
 import { defineConfig } from "vitepress";
+import { footerMessage } from "./footer";
 
 const repository = "https://github.com/2wenty2wo/mushroom-meshcore-card";
 
@@ -79,7 +80,7 @@ export default defineConfig({
     },
     socialLinks: [{ icon: "github", link: repository }],
     footer: {
-      message: "Released under the MIT License.",
+      message: footerMessage,
       copyright: "Mushroom MeshCore Card contributors",
     },
   },

@@ -37,6 +37,14 @@
   border-radius: 50%;
 }
 
+.mmc-doc-footer-message {
+  margin: 0 0 24px;
+  text-align: center;
+  line-height: 20px;
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+}
+
 /* Give the product name and value proposition distinct visual roles. */
 .VPHero .name {
   max-width: 100%;
