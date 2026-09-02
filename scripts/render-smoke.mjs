@@ -1452,7 +1452,7 @@ assert.match(
   mentionsHtml,
   /&lt;script&gt;alert\(&#39;fallback&#39;\)&lt;\/script&gt;/,
 );
-assert.doesNotMatch(mentionsHtml, /<script>/);
+assert.equal(mentionsHtml.toLowerCase().includes("<script"), false);
 assert.match(mentionsHtml, /Rock on Radio/);
 assert.match(mentionsHtml, /on Ops/);
 assert.doesNotMatch(mentionsHtml, /Handled &lt;message&gt;|class="mention-section-label"/);
