@@ -346,7 +346,13 @@ abstract class MeshcoreStatusEditorBase<T extends StatusConfig> extends HTMLElem
           delete config[key];
         }
       }
-      const threshold = Number(value["low_battery_threshold"]);
+      const rawThreshold = value["low_battery_threshold"];
+      const threshold =
+        typeof rawThreshold === "number"
+          ? rawThreshold
+          : typeof rawThreshold === "string" && rawThreshold.trim()
+            ? Number(rawThreshold)
+            : Number.NaN;
       if (
         Number.isFinite(threshold) &&
         threshold >= 0 &&

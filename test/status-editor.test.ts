@@ -146,6 +146,38 @@ describe("Status visual editors", () => {
     });
   });
 
+  it("rejects cleared threshold values while preserving an explicit zero", () => {
+    const { editor, configs } = createEditor(
+      "mushroom-meshcore-status-card-editor",
+      {
+        target: { type: "hub", id: HUB_PUBKEY },
+        low_battery_threshold: 35,
+      }
+    );
+    const form = settingsForm(editor);
+
+    for (const threshold of [null, "", "   ", true, false] as const) {
+      change(form, {
+        ...form.data,
+        low_battery_threshold: threshold,
+      });
+      expect(configs[configs.length - 1]).toEqual({
+        target: { type: "hub", id: HUB_PUBKEY },
+      });
+    }
+
+    for (const threshold of [0, "0"] as const) {
+      change(form, {
+        ...form.data,
+        low_battery_threshold: threshold,
+      });
+      expect(configs[configs.length - 1]).toEqual({
+        target: { type: "hub", id: HUB_PUBKEY },
+        low_battery_threshold: 0,
+      });
+    }
+  });
+
   it("round-trips settings while omitting defaults and preserving unrelated config", () => {
     const { editor, configs } = createEditor(
       "mushroom-meshcore-status-card-editor",

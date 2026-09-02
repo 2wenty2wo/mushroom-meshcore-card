@@ -217,18 +217,34 @@ describe("buildStatusSnapshot", () => {
     expect(snapshot.issueCount).toBe(0);
   });
 
-  it("accepts a custom threshold and falls back from invalid YAML", () => {
+  it("accepts numeric thresholds and falls back from invalid YAML values", () => {
     const hass = onlineHass();
     const batteryId = `${NODE_PREFIX}battery_percentage${NODE_SUFFIX}`;
     hass.states[batteryId]!.state = "20";
-    expect(
-      buildStatusSnapshot(hass, HUB_PUBKEY, { lowBatteryThreshold: 15 })!
-        .issueCount
-    ).toBe(0);
-    expect(
-      buildStatusSnapshot(hass, HUB_PUBKEY, { lowBatteryThreshold: 500 })!
-        .lowBatteryThreshold
-    ).toBe(50);
+
+    for (const threshold of [0, "0", 15, "15"] as const) {
+      const snapshot = buildStatusSnapshot(hass, HUB_PUBKEY, {
+        lowBatteryThreshold: threshold as number,
+      })!;
+      expect(snapshot.lowBatteryThreshold).toBe(Number(threshold));
+      expect(snapshot.issueCount).toBe(0);
+    }
+
+    for (const threshold of [
+      null,
+      "",
+      "   ",
+      true,
+      false,
+      500,
+      "not-a-number",
+    ] as const) {
+      expect(
+        buildStatusSnapshot(hass, HUB_PUBKEY, {
+          lowBatteryThreshold: threshold as unknown as number,
+        })!.lowBatteryThreshold
+      ).toBe(DEFAULT_LOW_BATTERY_THRESHOLD);
+    }
   });
 
   it("ignores hub zero, but treats node zero as a valid low battery", () => {
@@ -400,6 +416,34 @@ describe("buildStatusSnapshot", () => {
         entityId: queue,
       })
     );
+  });
+
+  it("matches the complete hub diagnostic metric before its name suffix", () => {
+    const hass = onlineHass();
+    const rate = `sensor.meshcore_${HUB_PUBKEY}_recv_errors_rate_test_hub`;
+    addEntity(hass, rate, 0.25, HUB_DEVICE_ID);
+
+    let snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
+    expect(snapshot.diagnostics).toEqual([
+      expect.objectContaining({
+        metric: "recv_errors_rate",
+        entityId: rate,
+      }),
+    ]);
+
+    const cumulative = `sensor.meshcore_${HUB_PUBKEY}_recv_errors_test_hub`;
+    addEntity(hass, cumulative, 12, HUB_DEVICE_ID);
+    snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
+    expect(snapshot.diagnostics).toEqual([
+      expect.objectContaining({
+        metric: "recv_errors",
+        entityId: cumulative,
+      }),
+      expect.objectContaining({
+        metric: "recv_errors_rate",
+        entityId: rate,
+      }),
+    ]);
   });
 
   it("omits invalid numeric diagnostics for hubs and nodes", () => {

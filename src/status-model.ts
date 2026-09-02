@@ -197,12 +197,12 @@ const DIAGNOSTIC_METRICS: readonly {
 ];
 
 function normalizedThreshold(value: unknown): number {
-  let parsed: number;
-  try {
-    parsed = typeof value === "number" ? value : Number(value);
-  } catch {
-    return DEFAULT_LOW_BATTERY_THRESHOLD;
-  }
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value)
+        : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100
     ? parsed
     : DEFAULT_LOW_BATTERY_THRESHOLD;
@@ -282,24 +282,27 @@ function findHubMetric(
   domain?: string
 ): string | null {
   const prefix = `${domain ?? "sensor"}.meshcore_${hub.pubkey}_${metric}`;
+  const nodeCountPrefix = `sensor.meshcore_${hub.pubkey}_node_count`;
+  const hubSuffix = hub.nodeCountEntity.startsWith(nodeCountPrefix)
+    ? hub.nodeCountEntity.slice(nodeCountPrefix.length)
+    : "";
   const candidates = hubDeviceEntities(hass, hub)
     .map(([entityId]) => entityId)
     .filter((entityId) => !domain || entityId.startsWith(`${domain}.`));
   const exact = candidates.find((entityId) => entityId === prefix);
   if (exact) return exact;
-  const scoped = candidates.find((entityId) => entityId.startsWith(`${prefix}_`));
+  const scoped = hubSuffix
+    ? candidates.find((entityId) => entityId === `${prefix}${hubSuffix}`)
+    : undefined;
   if (scoped) return scoped;
   // Once discovery has established a registry device boundary, it is
   // authoritative. Falling back to similarly prefixed global state can bind
   // a disabled entity or the same companion prefix from another config entry.
   if (hub.deviceId) return null;
 
-  const fallback = [
-    ...(hass.states[prefix] ? [prefix] : []),
-    ...Object.keys(hass.states).filter((entityId) =>
-      entityId.startsWith(`${prefix}_`)
-    ),
-  ];
+  const fallback = [prefix, ...(hubSuffix ? [`${prefix}${hubSuffix}`] : [])].filter(
+    (entityId) => hass.states[entityId]
+  );
   return (
     fallback.find((entityId) => {
       const entry = hass.entities?.[entityId];
