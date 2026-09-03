@@ -708,12 +708,24 @@ export function parseChannel(
   };
 }
 
+/** Index of the colon that separates a sender from the body, skipping the
+ *  scheme colon of a URL. Without this, a message with no sender that opens
+ *  with a link — `see https://example.com` — splits into the sender
+ *  `see https` and the body `//example.com`, which shows a bogus sender and
+ *  leaves the URL too mangled to linkify. Returns -1 when there is none. */
+function senderSeparatorIndex(text: string): number {
+  for (let i = text.indexOf(":"); i >= 0; i = text.indexOf(":", i + 1)) {
+    if (!text.startsWith("://", i)) return i;
+  }
+  return -1;
+}
+
 /** Remove one MeshCore channel prefix and split only the first sender colon. */
 export function parseMessage(message: string): ParsedMessage | null {
   if (!message.trim()) return null;
   const withoutChannel = message.replace(/^\s*<[^>\r\n]+>\s*/, "");
   if (!withoutChannel.trim()) return null;
-  const separator = withoutChannel.indexOf(":");
+  const separator = senderSeparatorIndex(withoutChannel);
   if (separator <= 0) return { sender: null, body: withoutChannel };
   const sender = withoutChannel.slice(0, separator).trim();
   if (!sender) return { sender: null, body: withoutChannel };

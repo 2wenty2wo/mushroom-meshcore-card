@@ -72,6 +72,21 @@ describe("parseMessage", () => {
     });
   });
 
+  it("does not mistake a URL scheme colon for the sender separator", () => {
+    expect(parseMessage("<Public> see https://example.com/x")).toEqual({
+      sender: null,
+      body: "see https://example.com/x",
+    });
+    expect(parseMessage("<Public> https://example.com/x")).toEqual({
+      sender: null,
+      body: "https://example.com/x",
+    });
+    expect(parseMessage("<Public> Alice: https://example.com/x")).toEqual({
+      sender: "Alice",
+      body: "https://example.com/x",
+    });
+  });
+
   it("does not emphasise an empty or leading-colon sender", () => {
     expect(parseMessage(":starts with colon")).toEqual({
       sender: null,

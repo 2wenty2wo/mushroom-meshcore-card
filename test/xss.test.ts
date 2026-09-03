@@ -468,6 +468,21 @@ describe("hostile channel traffic", () => {
     );
   });
 
+  it("autolinks a body-only message that has no sender", async () => {
+    // The scheme colon must not be read as the sender separator, or the URL
+    // arrives split across two fields and never linkifies.
+    const card = await renderChannelMessage(
+      "<Public> see https://example.com/x for the map"
+    );
+
+    expect(card.shadowRoot!.querySelector(".message-sender")).toBeNull();
+    const body = card.shadowRoot!.querySelector(".message-body")!;
+    expect(body.textContent).toBe("see https://example.com/x for the map");
+    expect(
+      body.querySelector("a.message-link")!.getAttribute("href")
+    ).toBe("https://example.com/x");
+  });
+
   it("renders the URL as plain text when hide_links is set", async () => {
     const card = await renderChannelMessage(
       "<Public> Mallory: see https://example.com/map",

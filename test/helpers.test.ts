@@ -299,6 +299,14 @@ describe("linkifyHtml", () => {
     }
   });
 
+  it("leaves text the URL parser rejects as plain text", () => {
+    // These start with a real scheme, so the scan matches them, but the URL
+    // parser refuses them — an unparseable candidate must never become a link.
+    for (const text of ["http://[", "https://[::1", "http://%"]) {
+      expect(linkifyHtml(text), text).toBe(escapeHtml(text));
+    }
+  });
+
   it("does not let a crafted URL break out of the href attribute", () => {
     // The quote characters terminate the match, so they land in escaped text
     // rather than closing the attribute.
