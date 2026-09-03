@@ -14,6 +14,110 @@ export function escapeHtml(v: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
+// Candidate autolink matches. An explicit http(s) scheme is required: text
+// like `www.example.com` is left alone, because inventing a scheme for
+// schemeless input is exactly how an attacker gets to pick one. The class is
+// a single unbounded repetition with no nesting, so matching stays linear.
+const URL_CANDIDATE_RE = /https?:\/\/[^\s<>"']+/gi;
+
+// Drop sentence punctuation that trails a pasted link rather than belonging
+// to it, so "see https://example.com/x." links `…/x` and leaves the period as
+// text. A closing bracket is only trimmed when the match has no matching
+// opener, which keeps URLs like `…/wiki/Foo_(bar)` intact.
+function trimTrailingPunctuation(match: string): string {
+  let end = match.length;
+  while (end > 0) {
+    const ch = match[end - 1];
+    if (".,;:!?".includes(ch)) {
+      end--;
+      continue;
+    }
+    const open = ch === ")" ? "(" : ch === "]" ? "[" : ch === "}" ? "{" : null;
+    if (open) {
+      const slice = match.slice(0, end);
+      const opens = slice.split(open).length - 1;
+      const closes = slice.split(ch).length - 1;
+      if (closes > opens) {
+        end--;
+        continue;
+      }
+    }
+    break;
+  }
+  return match.slice(0, end);
+}
+
+function safeHttpUrl(candidate: string): string | null {
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/** One stretch of text that autolinking treats as a URL. `start` is inclusive
+ *  and `end` exclusive, `text` is exactly what was written, and `href` is the
+ *  parsed and normalized address. */
+export interface UrlSpan {
+  start: number;
+  end: number;
+  text: string;
+  href: string;
+}
+
+/** Locate every http(s) URL in `text`, in order and without overlaps. This is
+ *  the single definition of "a URL" shared by autolinking and by the channel
+ *  card's sender/body split, so the two cannot disagree about where a URL
+ *  begins and ends — a message like `https://example.com:8443/map` must not
+ *  have its port colon mistaken for a sender separator. Candidates the URL
+ *  parser rejects are not spans, so they stay ordinary text. */
+export function urlSpans(text: string): UrlSpan[] {
+  const spans: UrlSpan[] = [];
+  URL_CANDIDATE_RE.lastIndex = 0;
+  for (
+    let match = URL_CANDIDATE_RE.exec(text);
+    match;
+    match = URL_CANDIDATE_RE.exec(text)
+  ) {
+    const candidate = trimTrailingPunctuation(match[0]);
+    const href = safeHttpUrl(candidate);
+    // A rejected candidate is simply not a span; the scanner has already
+    // advanced past the raw match, so it resumes after it.
+    if (!href) continue;
+    const start = match.index;
+    const end = start + candidate.length;
+    spans.push({ start, end, text: candidate, href });
+    URL_CANDIDATE_RE.lastIndex = end;
+  }
+  return spans;
+}
+
+/** Autolink http(s) URLs inside attacker-authored message text. Returns HTML
+ *  that is already escaped, so it is a drop-in replacement for `escapeHtml`
+ *  at a call site — never mix the two on the same string.
+ *
+ *  The ordering is the security property. Every stretch between spans goes
+ *  through `escapeHtml`, and a span exists only once the URL parser has
+ *  confirmed an http(s) scheme. The `href` is rebuilt from the parsed
+ *  `URL.href` rather than the raw substring and escaped on top, so a scheme
+ *  this function did not explicitly allow can never reach the attribute.
+ *  Anything that fails to parse stays plain escaped text. */
+export function linkifyHtml(text: unknown): string {
+  const source = text === null || text === undefined ? "" : String(text);
+  let out = "";
+  let last = 0;
+  for (const span of urlSpans(source)) {
+    out += escapeHtml(source.slice(last, span.start));
+    out += `<a class="message-link" href="${escapeHtml(
+      span.href
+    )}" target="_blank" rel="noopener noreferrer">${escapeHtml(span.text)}</a>`;
+    last = span.end;
+  }
+  return out + escapeHtml(source.slice(last));
+}
+
 export function longestCommonPrefix(strs: string[]): string {
   if (!strs.length) return "";
   let i = 0;

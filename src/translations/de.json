@@ -259,6 +259,7 @@
     "hide_timestamps": "Zeitstempel ausblenden",
     "hide_route_details": "Routingdetails ausblenden",
     "hide_date_headers": "Datumsüberschriften ausblenden",
+    "hide_links": "Links ausblenden",
     "hours_to_show": "Anzuzeigende Stunden",
     "max_messages": "Maximale Nachrichtenanzahl",
     "section_history": "Verlauf",

@@ -7,10 +7,12 @@ import {
   formatLastSeen,
   formatUptime,
   isOnlineState,
+  linkifyHtml,
   longestCommonPrefix,
   longestCommonSuffix,
   mapLinkUrl,
   rssiClass,
+  urlSpans,
 } from "../src/helpers.js";
 
 describe("escapeHtml", () => {
@@ -219,5 +221,182 @@ describe("mapLinkUrl", () => {
     expect(mapLinkUrl({ map_metro: "syd" }, 1, 2)).toContain(
       "https://analyzer.letsmesh.net/"
     );
+  });
+});
+
+// urlSpans is shared by autolinking and by the channel card's sender/body
+// split, so both agree on where a URL begins and ends.
+describe("urlSpans", () => {
+  it("reports the exact bounds, text, and parsed href of each URL", () => {
+    expect(urlSpans("see https://example.com/x now")).toEqual([
+      {
+        start: 4,
+        end: 25,
+        text: "https://example.com/x",
+        href: "https://example.com/x",
+      },
+    ]);
+  });
+
+  it("covers colons that belong to the URL", () => {
+    const [span] = urlSpans("https://example.com:8443/a:b");
+    expect(span).toBeDefined();
+    expect(span!.start).toBe(0);
+    expect(span!.end).toBe("https://example.com:8443/a:b".length);
+  });
+
+  it("returns non-overlapping spans in order", () => {
+    const spans = urlSpans("a https://one.example/ b https://two.example/ c");
+    expect(spans.map((s) => s.text)).toEqual([
+      "https://one.example/",
+      "https://two.example/",
+    ]);
+    expect(spans[0]!.end).toBeLessThan(spans[1]!.start);
+  });
+
+  it("excludes trimmed punctuation and unparseable candidates", () => {
+    expect(urlSpans("see https://example.com/x.")[0]!.text).toBe(
+      "https://example.com/x"
+    );
+    expect(urlSpans("javascript:alert(1) www.example.com http://[")).toEqual([]);
+  });
+});
+
+// linkifyHtml replaces escapeHtml at message-body call sites, so it carries the
+// same guarantee: whatever it returns is safe to assign through innerHTML. The
+// text it processes is chosen by whoever operates a radio in range, so these
+// cases are adversarial by default.
+describe("linkifyHtml", () => {
+  const ANCHOR_RE =
+    /^<a class="message-link" href="([^"]*)" target="_blank" rel="noopener noreferrer">(.*)<\/a>$/;
+
+  it("matches escapeHtml exactly when there is no URL", () => {
+    for (const text of [
+      "",
+      "hello mesh",
+      `<img src=x onerror="alert(1)">`,
+      "Tom & Jerry's <b>node</b>",
+      "ping me at bob@example.com",
+    ]) {
+      expect(linkifyHtml(text), text).toBe(escapeHtml(text));
+    }
+  });
+
+  it("links a bare http(s) URL", () => {
+    const match = ANCHOR_RE.exec(linkifyHtml("https://example.com/path"));
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("https://example.com/path");
+    expect(match![2]).toBe("https://example.com/path");
+    expect(linkifyHtml("http://example.com/")).toContain(
+      'href="http://example.com/"'
+    );
+  });
+
+  it("keeps surrounding text escaped", () => {
+    expect(linkifyHtml(`<b>see</b> https://example.com/ & stop`)).toBe(
+      '&lt;b&gt;see&lt;/b&gt; <a class="message-link" href="https://example.com/"' +
+        ' target="_blank" rel="noopener noreferrer">https://example.com/</a>' +
+        " &amp; stop"
+    );
+  });
+
+  it("links every URL in a message", () => {
+    const html = linkifyHtml("a https://one.example/ b https://two.example/ c");
+    expect(html.match(/<a /g)).toHaveLength(2);
+    expect(html).toContain('href="https://one.example/"');
+    expect(html).toContain('href="https://two.example/"');
+  });
+
+  it("leaves trailing sentence punctuation outside the link", () => {
+    expect(linkifyHtml("see https://example.com/x.")).toBe(
+      'see <a class="message-link" href="https://example.com/x" target="_blank"' +
+        ' rel="noopener noreferrer">https://example.com/x</a>.'
+    );
+    expect(linkifyHtml("(https://example.com/x)")).toContain(
+      ">https://example.com/x</a>)"
+    );
+  });
+
+  it("keeps balanced brackets inside the link", () => {
+    // Nothing is trimmed, so the link text is always the whole URL.
+    for (const url of [
+      "https://example.com/wiki/Foo_(bar)",
+      "https://example.com/a[b]",
+      "https://example.com/a{b}",
+    ]) {
+      expect(linkifyHtml(url), url).toContain(`>${url}</a>`);
+    }
+    // The href comes from the parsed URL, so characters the parser escapes are
+    // normalized there while the visible text stays exactly as it was sent.
+    expect(linkifyHtml("https://example.com/wiki/Foo_(bar)")).toContain(
+      'href="https://example.com/wiki/Foo_(bar)"'
+    );
+    expect(linkifyHtml("https://example.com/a{b}")).toContain(
+      'href="https://example.com/a%7Bb%7D"'
+    );
+  });
+
+  it("trims an unbalanced closing bracket of any kind", () => {
+    for (const [text, href] of [
+      ["(see https://example.com/x)", "https://example.com/x"],
+      ["[see https://example.com/x]", "https://example.com/x"],
+      ["{see https://example.com/x}", "https://example.com/x"],
+    ]) {
+      expect(linkifyHtml(text), text).toContain(`href="${href}"`);
+      expect(linkifyHtml(text), text).toContain(`>${href}</a>${text.slice(-1)}`);
+    }
+  });
+
+  it("treats null and undefined as empty, like escapeHtml", () => {
+    expect(linkifyHtml(null)).toBe("");
+    expect(linkifyHtml(undefined)).toBe("");
+  });
+
+  it("never links a non-http(s) scheme", () => {
+    for (const text of [
+      "javascript:alert(1)",
+      "JavaScript:alert(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "vbscript:msgbox(1)",
+      "file:///etc/passwd",
+      "www.example.com",
+      "http://",
+    ]) {
+      expect(linkifyHtml(text), text).not.toContain("<a ");
+      expect(linkifyHtml(text), text).toBe(escapeHtml(text));
+    }
+  });
+
+  it("leaves text the URL parser rejects as plain text", () => {
+    // These start with a real scheme, so the scan matches them, but the URL
+    // parser refuses them — an unparseable candidate must never become a link.
+    for (const text of ["http://[", "https://[::1", "http://%"]) {
+      expect(linkifyHtml(text), text).toBe(escapeHtml(text));
+    }
+  });
+
+  it("does not let a crafted URL break out of the href attribute", () => {
+    // The quote characters terminate the match, so they land in escaped text
+    // rather than closing the attribute.
+    const html = linkifyHtml(`https://example.com/"onmouseover="alert(1)`);
+    expect(html).toContain('href="https://example.com/"');
+    expect(html).not.toContain('onmouseover="alert(1)"');
+    expect(html).toContain("&quot;onmouseover=&quot;alert(1)");
+  });
+
+  it("escapes a script tag wrapped around a URL", () => {
+    const html = linkifyHtml("<script>https://example.com/</script>");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).toContain('href="https://example.com/"');
+  });
+
+  it("escapes an ampersand inside the URL and stops the match at markup", () => {
+    // `&` is a legal URL character so it stays in the link, escaped in both
+    // the href and the text; `<` ends the match and is escaped outside it.
+    const html = linkifyHtml("https://example.com/?a=1&b=2<>");
+    expect(html).toContain('href="https://example.com/?a=1&amp;b=2"');
+    expect(html).toContain(">https://example.com/?a=1&amp;b=2</a>&lt;&gt;");
+    expect(html).not.toContain("<>");
   });
 });

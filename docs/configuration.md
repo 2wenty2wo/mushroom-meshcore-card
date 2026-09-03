@@ -141,6 +141,7 @@ entity: binary_sensor.meshcore_edfaf6_ch_0_messages
 | `hide_timestamps` | boolean | `false` | Hides the time on each message without changing grouping or order. |
 | `hide_date_headers` | boolean | `false` | Hides Today, Yesterday, and dated group headings. |
 | `hide_route_details` | boolean | `false` | Hides live hop, path, and scope enrichment. Routing events continue to populate the per-user cache. |
+| `hide_links` | boolean | `false` | Renders `http(s)` URLs as plain text instead of links. |
 | `hours_to_show` | number | `24` | Positive number of Logbook history hours to request. Invalid values fall back to 24. |
 | `max_messages` | number | `200` | Positive maximum retained rows, floored to an integer. Invalid values fall back to 200. |
 | `grid_options` | object | card defaults | Home Assistant Sections-grid sizing. |
@@ -169,6 +170,7 @@ entity: todo.meshcore_mentions
 | `hide_completed` | boolean | `true` | Hides handled items. Set to `false` to show and reopen them. |
 | `hide_timestamps` | boolean | `false` | Hides item times without changing date grouping or order. |
 | `hide_date_headers` | boolean | `false` | Hides date headings, including Earlier mentions. |
+| `hide_links` | boolean | `false` | Renders `http(s)` URLs as plain text instead of links. |
 | `grid_options` | object | card defaults | Home Assistant Sections-grid sizing. |
 
 Card installation and blueprint import are separate. Follow the [Mentions card guide](/cards/mentions) and [MeshCore Mentions blueprint](/mentions-blueprint) before selecting the To-do entity.

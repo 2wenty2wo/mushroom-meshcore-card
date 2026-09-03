@@ -204,6 +204,7 @@ export interface MeshcoreChannelCardConfig {
   hide_timestamps?: boolean;
   hide_date_headers?: boolean;
   hide_route_details?: boolean;
+  hide_links?: boolean;
   hours_to_show?: number;
   max_messages?: number;
   grid_options?: GridOptions;
@@ -222,6 +223,7 @@ export interface MeshcoreMentionsCardConfig {
   hide_completed?: boolean;
   hide_timestamps?: boolean;
   hide_date_headers?: boolean;
+  hide_links?: boolean;
   grid_options?: GridOptions;
 }
 

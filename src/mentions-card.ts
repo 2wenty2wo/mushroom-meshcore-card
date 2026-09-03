@@ -1,6 +1,6 @@
 import { HeaderActionController } from "./actions.js";
 import { dateKey, dateLabel, timeLabel } from "./date-time.js";
-import { escapeHtml } from "./helpers.js";
+import { escapeHtml, linkifyHtml } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
@@ -180,6 +180,17 @@ const MENTIONS_STYLES = `
   }
 
   .mention-meta .mention-fallback { margin-top: 0; }
+
+  .message-link {
+    color: var(--mushroom-meshcore-info-color);
+    overflow-wrap: anywhere;
+    text-decoration: underline;
+  }
+
+  .message-link:focus-visible {
+    outline: 2px solid var(--primary-color, var(--mushroom-meshcore-info-color));
+    outline-offset: 2px;
+  }
 
   .mention-description {
     margin-top: 4px;
@@ -630,13 +641,14 @@ export class MeshcoreMentionsCard extends HTMLElement {
             receivedAt.toISOString()
           )}">${escapeHtml(timeLabel(this._hass, receivedAt))}</time>`
         : "";
+    const renderText = this._config?.hide_links ? escapeHtml : linkifyHtml;
     const summary = parsed
       ? `<div class="mention-meta"><div class="mention-identity"><strong class="mention-sender">${escapeHtml(
           parsed.sender
         )}</strong><span class="mention-channel">${escapeHtml(
           t("card.mentions_channel", { channel: parsed.channel })
-        )}</span></div>${time}</div><div class="mention-message">${escapeHtml(parsed.message)}</div>`
-      : `<div class="mention-meta"><div class="mention-fallback">${escapeHtml(
+        )}</span></div>${time}</div><div class="mention-message">${renderText(parsed.message)}</div>`
+      : `<div class="mention-meta"><div class="mention-fallback">${renderText(
           item.summary
         )}</div>${time}</div>`;
     const description = !receivedAt && item.description?.trim()
@@ -840,7 +852,11 @@ const ACTION_SETTING_KEYS = [
   "hold_action",
   "double_tap_action",
 ] as const;
-const BOOLEAN_SETTING_KEYS = ["hide_timestamps", "hide_date_headers"] as const;
+const BOOLEAN_SETTING_KEYS = [
+  "hide_timestamps",
+  "hide_date_headers",
+  "hide_links",
+] as const;
 
 export class MeshcoreMentionsCardEditor extends HTMLElement {
   private _hass?: HomeAssistant;
@@ -965,6 +981,11 @@ export class MeshcoreMentionsCardEditor extends HTMLElement {
         label: t("editor.hide_date_headers"),
         selector: { boolean: {} },
       },
+      {
+        name: "hide_links",
+        label: t("editor.hide_links"),
+        selector: { boolean: {} },
+      },
     ];
     const section = (
       title: string,
@@ -1001,6 +1022,7 @@ export class MeshcoreMentionsCardEditor extends HTMLElement {
       hide_completed: this._config?.hide_completed !== false,
       hide_timestamps: this._config?.hide_timestamps === true,
       hide_date_headers: this._config?.hide_date_headers === true,
+      hide_links: this._config?.hide_links === true,
     };
     form.addEventListener("value-changed", (event: Event) => {
       const value = (

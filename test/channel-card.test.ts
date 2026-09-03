@@ -72,6 +72,48 @@ describe("parseMessage", () => {
     });
   });
 
+  it("does not mistake a colon inside a URL for the sender separator", () => {
+    // Scheme, port, and path colons all sit inside the URL, so a body-only
+    // message that carries a link must stay whole.
+    for (const body of [
+      "see https://example.com/x",
+      "https://example.com/x",
+      "https://example.com:8443/map",
+      "see https://example.com:8443/map",
+      "https://example.com/a:b",
+      "http://user:pw@example.com/x",
+    ]) {
+      expect(parseMessage(`<Public> ${body}`), body).toEqual({
+        sender: null,
+        body,
+      });
+    }
+  });
+
+  it("still splits a real sender that precedes a URL", () => {
+    expect(parseMessage("<Public> Alice: https://example.com:8443/map")).toEqual({
+      sender: "Alice",
+      body: "https://example.com:8443/map",
+    });
+  });
+
+  it("does not treat a colon that follows a URL as a sender separator", () => {
+    // A sender name never contains a URL.
+    expect(parseMessage("<Public> https://example.com/x: neat")).toEqual({
+      sender: null,
+      body: "https://example.com/x: neat",
+    });
+  });
+
+  it("keeps the first-colon rule when no URL is involved", () => {
+    // Unchanged long-standing behaviour: MeshCore has no sender delimiter
+    // other than the first colon, so a leading time still reads as a sender.
+    expect(parseMessage("<Public> meet at 10:30 sharp")).toEqual({
+      sender: "meet at 10",
+      body: "30 sharp",
+    });
+  });
+
   it("does not emphasise an empty or leading-colon sender", () => {
     expect(parseMessage(":starts with colon")).toEqual({
       sender: null,

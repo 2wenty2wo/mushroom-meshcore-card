@@ -50,6 +50,19 @@ const PAYLOADS = [
   `<iframe src="javascript:alert(1)"></iframe>`,
 ];
 
+/** Message text that autolinking has to refuse or defuse. Each one tries to
+ *  turn the anchor the cards now emit into an injection point: a scheme that
+ *  executes, a quote that closes the href, or markup wrapped around a URL
+ *  that is otherwise perfectly valid. */
+const LINK_PAYLOADS = [
+  `javascript:alert(1)`,
+  `data:text/html,<script>alert(1)</script>`,
+  `https://evil.example/"><script>alert(1)</script>`,
+  `https://evil.example/' onmouseover='alert(1)`,
+  `<script>https://evil.example/</script>`,
+  `https://evil.example/<img src=x onerror=alert(1)>`,
+];
+
 const INJECTED_SELECTOR = "script, img, iframe, object, embed, link, base";
 const EVENT_ATTRS = ["onerror", "onload", "onclick", "onmouseover", "onfocus", "ontoggle"];
 
@@ -112,6 +125,18 @@ function expectNoInjection(root: ShadowRoot | null): void {
 /** The payload must still be *visible* — escaping, not silent stripping. */
 function expectRenderedAsText(root: ShadowRoot | null, payload: string): void {
   expect(root!.querySelector("ha-card")!.textContent ?? "").toContain(payload);
+}
+
+/** Autolinked message text is the one place a card builds an anchor out of
+ *  attacker-chosen bytes. Whatever ends up in the DOM must be an http(s) link
+ *  that cannot reach back through `window.opener`. */
+function expectSafeLinks(root: ShadowRoot | null): void {
+  for (const anchor of Array.from(root!.querySelectorAll("a[href]"))) {
+    const href = anchor.getAttribute("href") ?? "";
+    expect(/^https?:\/\//i.test(href), href).toBe(true);
+    expect(anchor.getAttribute("target")).toBe("_blank");
+    expect(anchor.getAttribute("rel") ?? "").toContain("noopener");
+  }
 }
 
 function expectNoInjectionWithin(root: ShadowRoot | null): void {
@@ -364,7 +389,10 @@ describe("hostile channel traffic", () => {
     vi.useRealTimers();
   });
 
-  it.each(PAYLOADS)("escapes a crafted sender and body: %s", async (payload) => {
+  async function renderChannelMessage(
+    message: string,
+    config: Partial<MeshcoreChannelCardConfig> = {}
+  ): Promise<MeshcoreChannelCard> {
     const callbacks: Array<(message: unknown) => void> = [];
     const connection = {
       subscribeMessage: vi.fn((callback: (message: unknown) => void) => {
@@ -381,23 +409,31 @@ describe("hostile channel traffic", () => {
     const card = document.createElement(
       "mushroom-meshcore-channel-card"
     ) as MeshcoreChannelCard;
-    card.setConfig({ entity: CHANNEL_ENTITY } as MeshcoreChannelCardConfig);
+    card.setConfig({
+      entity: CHANNEL_ENTITY,
+      ...config,
+    } as MeshcoreChannelCardConfig);
     card.hass = hass;
     document.body.appendChild(card);
     await vi.advanceTimersByTimeAsync(0);
 
-    // Both halves of the wire format are attacker-chosen.
     callbacks[0]!({
       events: [
         {
           when: Math.floor(Date.now() / 1000),
           name: "Channel",
           entity_id: CHANNEL_ENTITY,
-          message: `<Public> ${payload}: ${payload}`,
+          message,
         },
       ],
     });
     await vi.advanceTimersByTimeAsync(300);
+    return card;
+  }
+
+  it.each(PAYLOADS)("escapes a crafted sender and body: %s", async (payload) => {
+    // Both halves of the wire format are attacker-chosen.
+    const card = await renderChannelMessage(`<Public> ${payload}: ${payload}`);
 
     expectNoInjection(card.shadowRoot);
     // `parseMessage` splits sender from body on the first colon, which some
@@ -407,6 +443,60 @@ describe("hostile channel traffic", () => {
     expectRenderedAsText(card.shadowRoot, payload);
   });
 
+  it.each(LINK_PAYLOADS)("never autolinks a hostile URL: %s", async (payload) => {
+    const card = await renderChannelMessage(`<Public> Mallory: ${payload}`);
+
+    expectNoInjection(card.shadowRoot);
+    expectSafeLinks(card.shadowRoot);
+    expectRenderedAsText(card.shadowRoot, payload);
+  });
+
+  it("autolinks an ordinary URL without altering the visible text", async () => {
+    const card = await renderChannelMessage(
+      "<Public> Mallory: repeater map at https://example.com/map?a=1&b=2 today"
+    );
+
+    const link = card.shadowRoot!.querySelector<HTMLAnchorElement>(
+      ".message-body a.message-link"
+    );
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("https://example.com/map?a=1&b=2");
+    expect(link!.textContent).toBe("https://example.com/map?a=1&b=2");
+    expect(link!.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(card.shadowRoot!.querySelector(".message-body")!.textContent).toBe(
+      "repeater map at https://example.com/map?a=1&b=2 today"
+    );
+  });
+
+  it.each([
+    ["see https://example.com/x for the map", "https://example.com/x"],
+    ["https://example.com:8443/map", "https://example.com:8443/map"],
+    ["see https://example.com:8443/a:b now", "https://example.com:8443/a:b"],
+    ["https://example.com/x: neat", "https://example.com/x"],
+  ])("autolinks a body-only message: %s", async (body, href) => {
+    // No colon inside a URL — scheme, port, or path — may be read as the
+    // sender separator, or the URL arrives split across two fields and never
+    // linkifies.
+    const card = await renderChannelMessage(`<Public> ${body}`);
+
+    expect(card.shadowRoot!.querySelector(".message-sender")).toBeNull();
+    const rendered = card.shadowRoot!.querySelector(".message-body")!;
+    expect(rendered.textContent).toBe(body);
+    expect(
+      rendered.querySelector("a.message-link")!.getAttribute("href")
+    ).toBe(href);
+  });
+
+  it("renders the URL as plain text when hide_links is set", async () => {
+    const card = await renderChannelMessage(
+      "<Public> Mallory: see https://example.com/map",
+      { hide_links: true }
+    );
+
+    const body = card.shadowRoot!.querySelector(".message-body")!;
+    expect(body.querySelector("a")).toBeNull();
+    expect(body.textContent).toBe("see https://example.com/map");
+  });
 });
 
 describe("hostile mention text", () => {
@@ -419,7 +509,10 @@ describe("hostile mention text", () => {
     vi.useRealTimers();
   });
 
-  it.each(PAYLOADS)("escapes a crafted summary and description: %s", async (payload) => {
+  async function renderMention(
+    item: Record<string, unknown>,
+    config: Partial<MeshcoreMentionsCardConfig> = {}
+  ): Promise<MeshcoreMentionsCard> {
     const callbacks: Array<(message: { items: unknown[] }) => void> = [];
     const connection = {
       subscribeMessage: vi.fn((callback: (message: { items: unknown[] }) => void) => {
@@ -440,29 +533,82 @@ describe("hostile mention text", () => {
     const card = document.createElement(
       "mushroom-meshcore-mentions-card"
     ) as MeshcoreMentionsCard;
-    card.setConfig({ entity: TODO_ENTITY } as MeshcoreMentionsCardConfig);
+    card.setConfig({
+      entity: TODO_ENTITY,
+      ...config,
+    } as MeshcoreMentionsCardConfig);
     card.hass = hass;
     document.body.appendChild(card);
     await vi.advanceTimersByTimeAsync(0);
 
+    callbacks[0]!({ items: [{ status: "needs_action", ...item }] });
+    await vi.advanceTimersByTimeAsync(0);
+    return card;
+  }
+
+  it.each(PAYLOADS)("escapes a crafted summary and description: %s", async (payload) => {
     // The to-do item is built by the integration from a mesh message, so the
     // sender, the channel, and the body are all attacker-chosen.
-    callbacks[0]!({
-      items: [
-        {
-          uid: "mention-a",
-          summary: `${payload} on ${payload}: ${payload}`,
-          status: "needs_action",
-          description: payload,
-        },
-      ],
+    const card = await renderMention({
+      uid: "mention-a",
+      summary: `${payload} on ${payload}: ${payload}`,
+      description: payload,
     });
-    await vi.advanceTimersByTimeAsync(0);
 
     expectNoInjection(card.shadowRoot);
     expectRenderedAsText(card.shadowRoot, payload);
     expect(
       card.shadowRoot!.querySelector(".mention-description")!.textContent
     ).toBe(payload);
+  });
+
+  it.each(LINK_PAYLOADS)("never autolinks a hostile URL: %s", async (payload) => {
+    const card = await renderMention({
+      uid: "mention-a",
+      summary: `Mallory on Public: ${payload}`,
+    });
+
+    expectNoInjection(card.shadowRoot);
+    expectSafeLinks(card.shadowRoot);
+    expectRenderedAsText(card.shadowRoot, payload);
+  });
+
+  it("autolinks an ordinary URL in the mention message", async () => {
+    const card = await renderMention({
+      uid: "mention-a",
+      summary: "Mallory on Public: ping https://example.com/x now",
+    });
+
+    const link = card.shadowRoot!.querySelector<HTMLAnchorElement>(
+      ".mention-message a.message-link"
+    );
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("https://example.com/x");
+    expect(link!.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(card.shadowRoot!.querySelector(".mention-message")!.textContent).toBe(
+      "ping https://example.com/x now"
+    );
+  });
+
+  it("autolinks an unparsed summary too", async () => {
+    const card = await renderMention({
+      uid: "mention-a",
+      summary: "no sender here https://example.com/x",
+    });
+
+    const fallback = card.shadowRoot!.querySelector(".mention-fallback")!;
+    expect(fallback.querySelector("a.message-link")).not.toBeNull();
+    expectSafeLinks(card.shadowRoot);
+  });
+
+  it("renders the URL as plain text when hide_links is set", async () => {
+    const card = await renderMention(
+      { uid: "mention-a", summary: "Mallory on Public: see https://example.com/x" },
+      { hide_links: true }
+    );
+
+    const message = card.shadowRoot!.querySelector(".mention-message")!;
+    expect(message.querySelector("a")).toBeNull();
+    expect(message.textContent).toBe("see https://example.com/x");
   });
 });
