@@ -94,6 +94,11 @@ export type MeshcoreCardTarget =
   | { type: "hub"; id: string }
   | { type: "node"; id: string };
 
+export interface MeshcoreHubTarget {
+  type: "hub";
+  id: string;
+}
+
 export type MeshcoreChipId =
   | "hardware"
   | "firmware"
@@ -238,12 +243,42 @@ export interface MeshcoreReleasesCardConfig {
   grid_options?: GridOptions;
 }
 
+/** Shared configuration for the hub-scoped Status card and badge. */
+export interface MeshcoreStatusConfigBase {
+  type?: string;
+  target?: MeshcoreHubTarget;
+  name?: string;
+  icon?: string;
+  icon_color?: string;
+  tap_action?: ActionConfig;
+  hold_action?: ActionConfig;
+  double_tap_action?: ActionConfig;
+  /** Percentage below which an available battery is reported as low. */
+  low_battery_threshold?: number;
+  /** Human-readable managed-node names excluded from this hub's status. */
+  excluded_nodes?: string[];
+  /** Optional flat overrides for the selected hub. */
+  status_entity?: string;
+  battery_entity?: string;
+}
+
+export interface MeshcoreStatusCardConfig extends MeshcoreStatusConfigBase {
+  hide_monitored_nodes?: boolean;
+  monitored_nodes_default_open?: boolean;
+  hide_diagnostics?: boolean;
+  diagnostics_default_open?: boolean;
+  grid_options?: GridOptions;
+}
+
+export interface MeshcoreStatusBadgeConfig extends MeshcoreStatusConfigBase {}
+
 // ── Discovery result types ────────────────────────────────────────────────────
 
 export interface HubInfo {
   pubkey: string;
   name: string;
   nodeCountEntity: string;
+  deviceId: string | null;
 }
 
 export interface NodeInfo {
@@ -278,6 +313,7 @@ export interface HaFormSelector {
   ui_action?: { default_action?: string };
   select?: {
     mode?: "dropdown" | "list";
+    multiple?: boolean;
     options: { value: string; label: string }[];
   };
   number?: {
@@ -331,8 +367,17 @@ export interface CustomCardEntry {
   documentationURL?: string;
 }
 
+export interface CustomBadgeEntry {
+  type: string;
+  name: string;
+  description: string;
+  preview?: boolean;
+  documentationURL?: string;
+}
+
 declare global {
   interface Window {
     customCards: CustomCardEntry[];
+    customBadges: CustomBadgeEntry[];
   }
 }

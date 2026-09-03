@@ -103,6 +103,14 @@ describe("formatLastSeen", () => {
     mockNow();
     expect(formatLastSeen(String(NOW_SECONDS - 45), t)).toBe("time.s_ago:45");
   });
+
+  it("accepts millisecond and ISO timestamps from Home Assistant attributes", () => {
+    mockNow();
+    expect(formatLastSeen((NOW_SECONDS - 30) * 1000, t)).toBe("time.s_ago:30");
+    expect(
+      formatLastSeen(new Date((NOW_SECONDS - 90) * 1000).toISOString(), t)
+    ).toBe("time.m_ago:1");
+  });
 });
 
 describe("battery helpers", () => {

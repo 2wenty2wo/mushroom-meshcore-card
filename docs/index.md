@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Mushroom MeshCore Card
   text: MeshCore dashboards that feel at home in Home Assistant
-  tagline: Mushroom and Tile styled Lovelace cards for hubs, nodes, channels, and mentions.
+  tagline: Mushroom and Tile styled Lovelace cards and a network-status badge for MeshCore.
   image:
     src: /logo.svg
     alt: Mushroom MeshCore Card logo
@@ -25,5 +25,5 @@ features:
   - title: Automatic discovery
     details: Select a MeshCore target and let device-scoped discovery resolve its supporting entities, with optional overrides when needed.
   - title: Focused cards
-    details: Build views for individual hubs or nodes, channel messaging, and automation-backed mentions.
+    details: Build views for individual hubs or nodes, network health, channel messaging, mentions, and software releases.
 ---

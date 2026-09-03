@@ -15,7 +15,7 @@ This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve
 
 ## Architecture
 
-- `src/index.ts` registers the four cards and their card-picker metadata.
+- `src/index.ts` registers the five cards, the status badge, and their picker metadata.
 - `src/discovery.ts` contains registry-based MeshCore hub, node, contact, channel, and entity discovery. Treat this as stable backend logic; do not rewrite it for presentation work.
 - `src/card.ts` owns the single-target hub/node card, configuration, throttled rendering, and more-info interactions.
 - `src/styles.ts` contains shared card styling and Mushroom/HA theme-token mappings.
@@ -23,6 +23,7 @@ This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve
 - `src/channel-card.ts` provides the channel card.
 - `src/mentions-card.ts` provides the automation-backed mentions card.
 - `src/releases-card.ts` provides the sensor-backed software releases card.
+- `src/status-card.ts`, `src/status-badge.ts`, and the shared status model provide the hub-scoped network-health surfaces.
 - `src/helpers.ts`, `src/types.ts`, `src/localize.ts`, and `src/translations/` provide shared helpers, types, and localisation.
 - `docs/` contains the public VitePress documentation. `docs/releasing.md` is maintainer-only and excluded from the generated site.
 
@@ -30,12 +31,14 @@ Keep data/entity resolution separate from rendering. Prefer small presentation h
 
 ## Public naming and coexistence
 
-The fork must be installable alongside upstream. Register only these public card elements:
+The fork must be installable alongside upstream. Register only these public card and badge elements:
 
 - `mushroom-meshcore-card`
 - `mushroom-meshcore-channel-card`
 - `mushroom-meshcore-mentions-card`
 - `mushroom-meshcore-releases-card`
+- `mushroom-meshcore-status-card`
+- `mushroom-meshcore-status-badge`
 - Their matching `*-editor` elements
 
 Use `mushroom-meshcore-card` consistently for package, HACS, resource, bundle, workflow, and documentation naming. The distributable filename is `mushroom-meshcore-card.js`.

@@ -2,7 +2,7 @@
 
 Mushroom and Card Mod are optional. The cards use Home Assistant's native Tile header primitives, mirror Mushroom's published geometry and typography variables when present, and fall back to standard Home Assistant theme variables.
 
-The [Main card](/cards/main), [Channel card](/cards/channel), and [Mentions card](/cards/mentions) therefore work in light and dark themes without either dependency.
+The [Main card](/cards/main), [Channel card](/cards/channel), [Mentions card](/cards/mentions), [Releases card](/cards/releases), and [Status card and badge](/cards/status) therefore work in light and dark themes without either dependency.
 
 ## Theme inheritance
 
@@ -48,6 +48,12 @@ Internally, the shared styles expose scoped values for targeted customization:
 | `--mushroom-meshcore-badge-*` | Badge size and radius. |
 
 For theme files, prefer the inherited `--mush-*` and Home Assistant variables above. Scoped variables are most useful when a Card Mod rule targets one card or a small dashboard area.
+
+The Status badge uses Home Assistant's native badge surface rather than an
+`ha-card`. Theme-wide Mushroom and Home Assistant semantic variables still
+apply, but Card Mod rules written specifically for `ha-card` do not target the
+badge. Status color remains semantic even when `icon_color` is configured:
+custom color applies only while the result is healthy.
 
 ## Card Mod example
 
