@@ -57,37 +57,63 @@ function safeHttpUrl(candidate: string): string | null {
   }
 }
 
+/** One stretch of text that autolinking treats as a URL. `start` is inclusive
+ *  and `end` exclusive, `text` is exactly what was written, and `href` is the
+ *  parsed and normalized address. */
+export interface UrlSpan {
+  start: number;
+  end: number;
+  text: string;
+  href: string;
+}
+
+/** Locate every http(s) URL in `text`, in order and without overlaps. This is
+ *  the single definition of "a URL" shared by autolinking and by the channel
+ *  card's sender/body split, so the two cannot disagree about where a URL
+ *  begins and ends — a message like `https://example.com:8443/map` must not
+ *  have its port colon mistaken for a sender separator. Candidates the URL
+ *  parser rejects are not spans, so they stay ordinary text. */
+export function urlSpans(text: string): UrlSpan[] {
+  const spans: UrlSpan[] = [];
+  URL_CANDIDATE_RE.lastIndex = 0;
+  for (
+    let match = URL_CANDIDATE_RE.exec(text);
+    match;
+    match = URL_CANDIDATE_RE.exec(text)
+  ) {
+    const candidate = trimTrailingPunctuation(match[0]);
+    const href = safeHttpUrl(candidate);
+    // A rejected candidate is simply not a span; the scanner has already
+    // advanced past the raw match, so it resumes after it.
+    if (!href) continue;
+    const start = match.index;
+    const end = start + candidate.length;
+    spans.push({ start, end, text: candidate, href });
+    URL_CANDIDATE_RE.lastIndex = end;
+  }
+  return spans;
+}
+
 /** Autolink http(s) URLs inside attacker-authored message text. Returns HTML
  *  that is already escaped, so it is a drop-in replacement for `escapeHtml`
  *  at a call site — never mix the two on the same string.
  *
- *  The ordering is the security property. Every span between matches goes
- *  through `escapeHtml`, and a match only becomes an anchor after the URL
- *  parser confirms an http(s) scheme. The `href` is then rebuilt from the
- *  parsed `URL.href` rather than the raw substring and escaped on top, so a
- *  scheme this function did not explicitly allow can never reach the
- *  attribute. Anything that fails to parse stays plain escaped text. */
+ *  The ordering is the security property. Every stretch between spans goes
+ *  through `escapeHtml`, and a span exists only once the URL parser has
+ *  confirmed an http(s) scheme. The `href` is rebuilt from the parsed
+ *  `URL.href` rather than the raw substring and escaped on top, so a scheme
+ *  this function did not explicitly allow can never reach the attribute.
+ *  Anything that fails to parse stays plain escaped text. */
 export function linkifyHtml(text: unknown): string {
   const source = text === null || text === undefined ? "" : String(text);
   let out = "";
   let last = 0;
-  URL_CANDIDATE_RE.lastIndex = 0;
-  for (
-    let match = URL_CANDIDATE_RE.exec(source);
-    match;
-    match = URL_CANDIDATE_RE.exec(source)
-  ) {
-    const candidate = trimTrailingPunctuation(match[0]);
-    const href = safeHttpUrl(candidate);
-    // A rejected candidate is not emitted here; the next escaped span covers
-    // it, because `last` stays put while the scanner moves on.
-    if (!href) continue;
-    out += escapeHtml(source.slice(last, match.index));
+  for (const span of urlSpans(source)) {
+    out += escapeHtml(source.slice(last, span.start));
     out += `<a class="message-link" href="${escapeHtml(
-      href
-    )}" target="_blank" rel="noopener noreferrer">${escapeHtml(candidate)}</a>`;
-    last = match.index + candidate.length;
-    URL_CANDIDATE_RE.lastIndex = last;
+      span.href
+    )}" target="_blank" rel="noopener noreferrer">${escapeHtml(span.text)}</a>`;
+    last = span.end;
   }
   return out + escapeHtml(source.slice(last));
 }

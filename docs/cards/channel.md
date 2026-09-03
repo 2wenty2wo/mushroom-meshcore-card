@@ -61,8 +61,10 @@ The channel name is derived from the selected entity and its friendly name.
 Each Logbook message is then formatted without changing its content:
 
 - One leading MeshCore channel prefix such as `<Public>` is removed.
-- Text before the first colon is emphasized as the sender. The `://` of a URL
-  does not count, so a message that opens with a link keeps its whole text.
+- Text before the first colon is emphasized as the sender. Colons inside a
+  link do not count — including a port, as in `https://example.com:8443/map` —
+  and a sender is never taken from text that already contains a link, so a
+  message that opens with a URL keeps its whole text.
 - Later colons and line breaks remain part of the message body.
 - Messages without a sender colon are displayed as body-only entries.
 - Empty messages and bare channel prefixes are omitted.

@@ -10,7 +10,7 @@ import type {
 import { HeaderActionController } from "./actions.js";
 import { dateKey, dateLabel, timeLabel } from "./date-time.js";
 import { isDeviceOnHub } from "./discovery.js";
-import { escapeHtml, linkifyHtml } from "./helpers.js";
+import { escapeHtml, linkifyHtml, urlSpans } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
@@ -708,14 +708,22 @@ export function parseChannel(
   };
 }
 
-/** Index of the colon that separates a sender from the body, skipping the
- *  scheme colon of a URL. Without this, a message with no sender that opens
- *  with a link — `see https://example.com` — splits into the sender
- *  `see https` and the body `//example.com`, which shows a bogus sender and
- *  leaves the URL too mangled to linkify. Returns -1 when there is none. */
+/** Index of the colon that separates a sender from the body, ignoring every
+ *  colon inside a URL. A message with no sender that opens with a link would
+ *  otherwise split mid-address: `see https://example.com` into the sender
+ *  `see https`, and `https://example.com:8443/map` into the sender
+ *  `https://example.com`. Both show a bogus sender and leave the URL too
+ *  mangled to linkify. `urlSpans` is the same scan autolinking uses, so the
+ *  split and the link always agree on where a URL ends. Returns -1 when there
+ *  is no separator. */
 function senderSeparatorIndex(text: string): number {
+  const spans = urlSpans(text);
   for (let i = text.indexOf(":"); i >= 0; i = text.indexOf(":", i + 1)) {
-    if (!text.startsWith("://", i)) return i;
+    if (spans.some((span) => i >= span.start && i < span.end)) continue;
+    // A sender name never contains a URL, so a colon that merely follows one
+    // — `https://example.com/x: neat` — belongs to the message, not to a
+    // sender. Anything else keeps the documented first-colon rule.
+    return spans.some((span) => span.start < i) ? -1 : i;
   }
   return -1;
 }

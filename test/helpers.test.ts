@@ -12,6 +12,7 @@ import {
   longestCommonSuffix,
   mapLinkUrl,
   rssiClass,
+  urlSpans,
 } from "../src/helpers.js";
 
 describe("escapeHtml", () => {
@@ -220,6 +221,44 @@ describe("mapLinkUrl", () => {
     expect(mapLinkUrl({ map_metro: "syd" }, 1, 2)).toContain(
       "https://analyzer.letsmesh.net/"
     );
+  });
+});
+
+// urlSpans is shared by autolinking and by the channel card's sender/body
+// split, so both agree on where a URL begins and ends.
+describe("urlSpans", () => {
+  it("reports the exact bounds, text, and parsed href of each URL", () => {
+    expect(urlSpans("see https://example.com/x now")).toEqual([
+      {
+        start: 4,
+        end: 25,
+        text: "https://example.com/x",
+        href: "https://example.com/x",
+      },
+    ]);
+  });
+
+  it("covers colons that belong to the URL", () => {
+    const [span] = urlSpans("https://example.com:8443/a:b");
+    expect(span).toBeDefined();
+    expect(span!.start).toBe(0);
+    expect(span!.end).toBe("https://example.com:8443/a:b".length);
+  });
+
+  it("returns non-overlapping spans in order", () => {
+    const spans = urlSpans("a https://one.example/ b https://two.example/ c");
+    expect(spans.map((s) => s.text)).toEqual([
+      "https://one.example/",
+      "https://two.example/",
+    ]);
+    expect(spans[0]!.end).toBeLessThan(spans[1]!.start);
+  });
+
+  it("excludes trimmed punctuation and unparseable candidates", () => {
+    expect(urlSpans("see https://example.com/x.")[0]!.text).toBe(
+      "https://example.com/x"
+    );
+    expect(urlSpans("javascript:alert(1) www.example.com http://[")).toEqual([]);
   });
 });
 
