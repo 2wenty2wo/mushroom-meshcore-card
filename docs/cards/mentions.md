@@ -53,6 +53,7 @@ double_tap_action:
 hide_completed: true
 hide_timestamps: false
 hide_date_headers: false
+hide_links: false
 grid_options:
   columns: full
   rows: 6
@@ -90,6 +91,13 @@ Dates and timestamps are visible by default:
   mentions**.
 - `hide_completed` defaults to `true`. Set it to `false` to show separate
   pending and handled sections.
+
+`http://` and `https://` URLs in the mention message become links that open in
+a new tab. Only those two schemes are ever linked, the visible text is left
+unchanged, and mention text originates from unauthenticated mesh traffic — so
+treat a link as you would one from a stranger. Set `hide_links: true` to render
+URLs as plain text instead. See the
+[channel card](/cards/channel#links) for the full description.
 
 ## Handle and reopen mentions
 

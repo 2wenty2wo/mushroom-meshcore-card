@@ -259,6 +259,7 @@
     "hide_timestamps": "Masquer les heures",
     "hide_route_details": "Masquer les détails de routage",
     "hide_date_headers": "Masquer les en-têtes de date",
+    "hide_links": "Masquer les liens",
     "hours_to_show": "Heures à afficher",
     "max_messages": "Nombre maximal de messages",
     "section_history": "Historique",

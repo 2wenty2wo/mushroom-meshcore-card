@@ -219,16 +219,19 @@ describe("MeshcoreMentionsCardEditor", () => {
       hide_completed: true,
       hide_timestamps: false,
       hide_date_headers: false,
+      hide_links: false,
     });
     expect(schema[2]!.schema.map((field) => field.name)).toEqual([
       "hide_completed",
       "hide_timestamps",
       "hide_date_headers",
+      "hide_links",
     ]);
     expect(schema[2]!.schema.map((field) => field.label)).toEqual([
       t("editor.hide_completed_mentions"),
       t("editor.hide_timestamps"),
       t("editor.hide_date_headers"),
+      t("editor.hide_links"),
     ]);
   });
 
@@ -249,6 +252,7 @@ describe("MeshcoreMentionsCardEditor", () => {
       hide_completed: false,
       hide_timestamps: true,
       hide_date_headers: false,
+      hide_links: true,
     });
     expect(configs[configs.length - 1]).toEqual({
       entity: TODO_ENTITY,
@@ -258,6 +262,7 @@ describe("MeshcoreMentionsCardEditor", () => {
       double_tap_action: { action: "url", url_path: "https://example.com" },
       hide_completed: false,
       hide_timestamps: true,
+      hide_links: true,
       grid_options: { columns: "full", rows: 5 },
     });
   });
@@ -274,6 +279,7 @@ describe("MeshcoreMentionsCardEditor", () => {
       hide_completed: false,
       hide_timestamps: true,
       hide_date_headers: true,
+      hide_links: true,
     });
     changeValue(forms(editor)[1]!, {
       name: null,
@@ -285,6 +291,7 @@ describe("MeshcoreMentionsCardEditor", () => {
       hide_completed: true,
       hide_timestamps: false,
       hide_date_headers: false,
+      hide_links: false,
     });
     expect(configs[configs.length - 1]).toEqual({ entity: TODO_ENTITY });
   });

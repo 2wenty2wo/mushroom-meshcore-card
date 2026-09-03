@@ -14,6 +14,84 @@ export function escapeHtml(v: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
+// Candidate autolink matches. An explicit http(s) scheme is required: text
+// like `www.example.com` is left alone, because inventing a scheme for
+// schemeless input is exactly how an attacker gets to pick one. The class is
+// a single unbounded repetition with no nesting, so matching stays linear.
+const URL_CANDIDATE_RE = /https?:\/\/[^\s<>"']+/gi;
+
+// Drop sentence punctuation that trails a pasted link rather than belonging
+// to it, so "see https://example.com/x." links `…/x` and leaves the period as
+// text. A closing bracket is only trimmed when the match has no matching
+// opener, which keeps URLs like `…/wiki/Foo_(bar)` intact.
+function trimTrailingPunctuation(match: string): string {
+  let end = match.length;
+  while (end > 0) {
+    const ch = match[end - 1];
+    if (".,;:!?".includes(ch)) {
+      end--;
+      continue;
+    }
+    const open = ch === ")" ? "(" : ch === "]" ? "[" : ch === "}" ? "{" : null;
+    if (open) {
+      const slice = match.slice(0, end);
+      const opens = slice.split(open).length - 1;
+      const closes = slice.split(ch).length - 1;
+      if (closes > opens) {
+        end--;
+        continue;
+      }
+    }
+    break;
+  }
+  return match.slice(0, end);
+}
+
+function safeHttpUrl(candidate: string): string | null {
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/** Autolink http(s) URLs inside attacker-authored message text. Returns HTML
+ *  that is already escaped, so it is a drop-in replacement for `escapeHtml`
+ *  at a call site — never mix the two on the same string.
+ *
+ *  The ordering is the security property. Every span between matches goes
+ *  through `escapeHtml`, and a match only becomes an anchor after the URL
+ *  parser confirms an http(s) scheme. The `href` is then rebuilt from the
+ *  parsed `URL.href` rather than the raw substring and escaped on top, so a
+ *  scheme this function did not explicitly allow can never reach the
+ *  attribute. Anything that fails to parse stays plain escaped text. */
+export function linkifyHtml(text: unknown): string {
+  const source = text === null || text === undefined ? "" : String(text);
+  let out = "";
+  let last = 0;
+  URL_CANDIDATE_RE.lastIndex = 0;
+  for (
+    let match = URL_CANDIDATE_RE.exec(source);
+    match;
+    match = URL_CANDIDATE_RE.exec(source)
+  ) {
+    const candidate = trimTrailingPunctuation(match[0]);
+    const href = safeHttpUrl(candidate);
+    // A rejected candidate is not emitted here; the next escaped span covers
+    // it, because `last` stays put while the scanner moves on.
+    if (!href) continue;
+    out += escapeHtml(source.slice(last, match.index));
+    out += `<a class="message-link" href="${escapeHtml(
+      href
+    )}" target="_blank" rel="noopener noreferrer">${escapeHtml(candidate)}</a>`;
+    last = match.index + candidate.length;
+    URL_CANDIDATE_RE.lastIndex = last;
+  }
+  return out + escapeHtml(source.slice(last));
+}
+
 export function longestCommonPrefix(strs: string[]): string {
   if (!strs.length) return "";
   let i = 0;

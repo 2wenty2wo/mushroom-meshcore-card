@@ -10,7 +10,7 @@ import type {
 import { HeaderActionController } from "./actions.js";
 import { dateKey, dateLabel, timeLabel } from "./date-time.js";
 import { isDeviceOnHub } from "./discovery.js";
-import { escapeHtml } from "./helpers.js";
+import { escapeHtml, linkifyHtml } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
@@ -143,6 +143,17 @@ const CHANNEL_STYLES = `
   }
 
   .message-meta + .message-body { margin-top: 2px; }
+
+  .message-link {
+    color: var(--mushroom-meshcore-info-color);
+    overflow-wrap: anywhere;
+    text-decoration: underline;
+  }
+
+  .message-link:focus-visible {
+    outline: 2px solid var(--primary-color, var(--mushroom-meshcore-info-color));
+    outline-offset: 2px;
+  }
 
   .message-route-details {
     display: flex;
@@ -2102,8 +2113,9 @@ export class MeshcoreChannelCard extends HTMLElement {
     const meta = sender || time
       ? `<div class="message-meta">${sender}${time}</div>`
       : "";
+    const renderText = this._config?.hide_links ? escapeHtml : linkifyHtml;
     const body = parsed.body
-      ? `<div class="message-body">${escapeHtml(parsed.body)}</div>`
+      ? `<div class="message-body">${renderText(parsed.body)}</div>`
       : "";
     const routeDetails = this._renderRouteDetails(entry);
     return `<article class="message-row">${meta}${body}${routeDetails}</article>`;
@@ -2382,6 +2394,7 @@ const BOOLEAN_SETTING_KEYS = [
   "hide_timestamps",
   "hide_date_headers",
   "hide_route_details",
+  "hide_links",
 ] as const;
 const ACTION_SETTING_KEYS = [
   "tap_action",
@@ -2494,6 +2507,11 @@ export class MeshcoreChannelCardEditor extends HTMLElement {
         label: t("editor.hide_route_details"),
         selector: { boolean: {} },
       },
+      {
+        name: "hide_links",
+        label: t("editor.hide_links"),
+        selector: { boolean: {} },
+      },
     ];
     const interactions: HaFormFieldSchema[] = [
       {
@@ -2559,6 +2577,7 @@ export class MeshcoreChannelCardEditor extends HTMLElement {
       hide_timestamps: this._config?.hide_timestamps === true,
       hide_date_headers: this._config?.hide_date_headers === true,
       hide_route_details: this._config?.hide_route_details === true,
+      hide_links: this._config?.hide_links === true,
       hours_to_show: normalizedPositiveNumber(
         this._config?.hours_to_show,
         DEFAULT_HOURS_TO_SHOW

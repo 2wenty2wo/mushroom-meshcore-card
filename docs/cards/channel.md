@@ -41,6 +41,7 @@ double_tap_action:
 hide_timestamps: false
 hide_date_headers: false
 hide_route_details: false
+hide_links: false
 hours_to_show: 24
 max_messages: 200
 grid_options:
@@ -64,10 +65,24 @@ Each Logbook message is then formatted without changing its content:
 - Later colons and line breaks remain part of the message body.
 - Messages without a sender colon are displayed as body-only entries.
 - Empty messages and bare channel prefixes are omitted.
+- `http://` and `https://` URLs become links that open in a new tab.
 
 Dates and times follow the active Home Assistant locale, time zone, and clock
 settings. The header action targets the selected channel entity; individual
 route pills have their own behavior.
+
+### Links
+
+Only URLs written with an explicit `http://` or `https://` scheme are made
+clickable. Text such as `www.example.com` stays plain, and any other scheme —
+`javascript:`, `data:`, `file:` and the rest — is never turned into a link. The
+visible text is unchanged, so you can always read the address you are about to
+open. Links open in a new tab with `rel="noopener noreferrer"`.
+
+Channel messages are unauthenticated: anyone within radio range chooses the
+text, and therefore the address behind a link. Treat a mesh link exactly as you
+would an unsolicited link from a stranger. Set `hide_links: true` to render
+URLs as plain text instead.
 
 ## Live route details
 

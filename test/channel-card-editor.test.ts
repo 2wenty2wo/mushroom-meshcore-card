@@ -207,10 +207,14 @@ describe("MeshcoreChannelCardEditor", () => {
     expect(settings.data["max_messages"]).toBe(200);
     expect(settings.data["hide_timestamps"]).toBe(false);
     expect(settings.data["hide_route_details"]).toBe(false);
+    expect(settings.data["hide_links"]).toBe(false);
     const appearance = schema[0]!.schema;
     expect(
       appearance.find((field) => field.name === "hide_route_details")?.label
     ).toBe(t("editor.hide_route_details"));
+    expect(
+      appearance.find((field) => field.name === "hide_links")?.label
+    ).toBe(t("editor.hide_links"));
   });
 
   it("normalizes settings edits into a minimal config", () => {
@@ -222,6 +226,7 @@ describe("MeshcoreChannelCardEditor", () => {
       hide_timestamps: true,
       hide_route_details: true,
       hide_date_headers: false,
+      hide_links: true,
       tap_action: { action: "url", url_path: "https://example.com" },
       hold_action: "invalid",
       hours_to_show: 48,
@@ -235,6 +240,7 @@ describe("MeshcoreChannelCardEditor", () => {
     expect(config.hide_timestamps).toBe(true);
     expect(config.hide_route_details).toBe(true);
     expect(config.hide_date_headers).toBeUndefined();
+    expect(config.hide_links).toBe(true);
     expect(config.tap_action).toEqual({
       action: "url",
       url_path: "https://example.com",
