@@ -278,10 +278,39 @@ describe("linkifyHtml", () => {
     );
   });
 
-  it("keeps balanced parentheses inside the link", () => {
+  it("keeps balanced brackets inside the link", () => {
+    // Nothing is trimmed, so the link text is always the whole URL.
+    for (const url of [
+      "https://example.com/wiki/Foo_(bar)",
+      "https://example.com/a[b]",
+      "https://example.com/a{b}",
+    ]) {
+      expect(linkifyHtml(url), url).toContain(`>${url}</a>`);
+    }
+    // The href comes from the parsed URL, so characters the parser escapes are
+    // normalized there while the visible text stays exactly as it was sent.
     expect(linkifyHtml("https://example.com/wiki/Foo_(bar)")).toContain(
       'href="https://example.com/wiki/Foo_(bar)"'
     );
+    expect(linkifyHtml("https://example.com/a{b}")).toContain(
+      'href="https://example.com/a%7Bb%7D"'
+    );
+  });
+
+  it("trims an unbalanced closing bracket of any kind", () => {
+    for (const [text, href] of [
+      ["(see https://example.com/x)", "https://example.com/x"],
+      ["[see https://example.com/x]", "https://example.com/x"],
+      ["{see https://example.com/x}", "https://example.com/x"],
+    ]) {
+      expect(linkifyHtml(text), text).toContain(`href="${href}"`);
+      expect(linkifyHtml(text), text).toContain(`>${href}</a>${text.slice(-1)}`);
+    }
+  });
+
+  it("treats null and undefined as empty, like escapeHtml", () => {
+    expect(linkifyHtml(null)).toBe("");
+    expect(linkifyHtml(undefined)).toBe("");
   });
 
   it("never links a non-http(s) scheme", () => {
