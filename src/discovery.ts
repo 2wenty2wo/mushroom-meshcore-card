@@ -6,10 +6,133 @@ import type {
   NodeInfo,
 } from "./types.js";
 import {
+  asRecord,
   longestCommonPrefix,
   longestCommonSuffix,
   slugifyName,
 } from "./helpers.js";
+
+/** A contact advert reduced to the identity fields the cards match on. */
+export interface ContactIdentity {
+  /** Uppercase hex, even length. Full public key when the advert carried one. */
+  publicKey: string;
+  name: string;
+  /** True when the key came from a prefix rather than a complete public key. */
+  keyIsPrefix?: boolean;
+}
+
+/** A contact identity plus the entity that published it, so a card can open it. */
+export interface DiscoveredContact extends ContactIdentity {
+  entityId: string;
+}
+
+const MAX_CONTACT_KEY_CHARACTERS = 128;
+const MAX_CONTACT_NAME_CHARACTERS = 512;
+const MAX_DISCOVERED_CONTACTS = 1_000;
+/** Control characters plus the bidi overrides that can visually reorder a name
+ *  around the markup it sits in. Advert names are chosen by whoever operates a
+ *  radio in range, so they are stripped before the name reaches any template. */
+const CONTROL_AND_BIDI =
+  /[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+
+export function normalizedContactName(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > MAX_CONTACT_NAME_CHARACTERS) {
+    return undefined;
+  }
+  const name = value.replace(CONTROL_AND_BIDI, " ").replace(/\s+/g, " ").trim();
+  return name || undefined;
+}
+
+export function normalizedContactKey(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > MAX_CONTACT_KEY_CHARACTERS) {
+    return undefined;
+  }
+  const key = value.trim().toUpperCase();
+  return key.length >= 2 && key.length % 2 === 0 && /^[0-9A-F]+$/.test(key)
+    ? key
+    : undefined;
+}
+
+/** Whether a contact's type field describes a repeater.
+ *
+ *  An absent type counts as one: this integration publishes no type field at
+ *  all, so requiring it would discard every contact. */
+export function isRepeaterContact(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  if (value === 2) return true;
+  return typeof value === "string" &&
+    (value.trim() === "2" || value.trim().toLowerCase() === "repeater");
+}
+
+/** Reduce one contact advert — an entity's attributes, or a `get_contacts`
+ *  response item — to the identity fields, or null when it carries neither a
+ *  usable key nor a usable name. */
+export function normalizeContactRecord(value: unknown): ContactIdentity | null {
+  const contact = asRecord(value);
+  if (!contact) return null;
+  if (
+    !isRepeaterContact(
+      contact["type"] ?? contact["contact_type"] ?? contact["node_type"]
+    )
+  ) {
+    return null;
+  }
+  const completePublicKey = normalizedContactKey(contact["public_key"]);
+  const publicKey = completePublicKey ?? normalizedContactKey(
+    contact["pubkey_prefix"] ?? contact["adv_id"]
+  );
+  const name = normalizedContactName(
+    contact["adv_name"] ?? contact["name"] ?? contact["display_name"]
+  );
+  return publicKey && name
+    ? {
+      publicKey,
+      name,
+      ...(!completePublicKey ? { keyIsPrefix: true } : {}),
+    }
+    : null;
+}
+
+/** Dedupe key. Two prefix-keyed contacts sharing a prefix are different
+ *  repeaters, so the name has to take part; a full key stands alone. */
+export function contactIdentityKey(contact: ContactIdentity): string {
+  return contact.keyIsPrefix
+    ? `${contact.publicKey}\u0000${contact.name}`
+    : contact.publicKey;
+}
+
+/** Every contact advert published beneath one hub.
+ *
+ *  Route data is hub-relative, so a card resolving a path must only consider
+ *  the hub it is looking through — `isDeviceOnHub` covers the hub device itself
+ *  and anything filed beneath it. */
+export function hubContacts(
+  hass: Pick<HomeAssistant, "states" | "entities" | "devices">,
+  hubDeviceId: string | null | undefined
+): DiscoveredContact[] {
+  if (!hubDeviceId) return [];
+  const contacts: DiscoveredContact[] = [];
+  const seen = new Set<string>();
+  for (const [entityId, registryEntry] of Object.entries(hass.entities ?? {})) {
+    if (
+      !isDeviceOnHub(hass, registryEntry.device_id, hubDeviceId) ||
+      registryEntry.platform !== "meshcore" ||
+      !entityId.startsWith("binary_sensor.")
+    ) {
+      continue;
+    }
+    const state = hass.states?.[entityId];
+    if (!state) continue;
+    const contact = normalizeContactRecord(state.attributes);
+    if (!contact) continue;
+    const identity = contactIdentityKey(contact);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    contacts.push({ entityId, ...contact });
+    if (contacts.length >= MAX_DISCOVERED_CONTACTS) break;
+  }
+  return contacts;
+}
 
 /** Whether a registry device is the selected hub or one of its direct children. */
 export function isDeviceOnHub(

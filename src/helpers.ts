@@ -287,3 +287,14 @@ export function mapLinkUrl(cfg: MapLinkConfig, lat: unknown, lon: unknown): stri
   }
   return `https://analyzer.letsmesh.net/map?lat=${latF}&long=${lonF}&zoom=10`;
 }
+
+/** Narrow an unknown value to a plain object, excluding arrays and null.
+ *
+ *  Integration payloads reach the cards as `unknown` from websocket responses,
+ *  event envelopes and entity attributes; this is the one guard they all pass
+ *  through before any field is read. */
+export function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
