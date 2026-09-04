@@ -3,7 +3,9 @@ import {
   discoverHubs,
   discoverNodes,
   findEntityByDevice,
+  findNodeContact,
   isDeviceOnHub,
+  nodePubkey,
   nodeSuffixCandidates,
 } from "../src/discovery.js";
 import type { HassEntityRegistryEntry, HomeAssistant } from "../src/types.js";
@@ -16,6 +18,7 @@ import {
   NODE_PREFIX,
   NODE_SUFFIX,
   createHass,
+  device,
   registryEntry,
   state,
 } from "./fixtures.js";
@@ -374,5 +377,151 @@ describe("renamed devices", () => {
     expect(
       findEntityByDevice(scoped, NODE_DEVICE_ID, "battery_percentage", node.ePrefix, node.eSuffixes)
     ).toBe(`${NODE_PREFIX}battery_percentage${NODE_SUFFIX}`);
+  });
+});
+
+// Node identity resolution. These used to live as private methods on the card
+// and could only be exercised through a rendered card, which is how several
+// bugs hid: a test could pass because the name path was unreachable rather than
+// because the rule under test held. Driven directly, each rule is its own case.
+describe("nodePubkey", () => {
+  const withEntities = (ids: string[]): HomeAssistant => {
+    const hass = createHass();
+    for (const id of ids) {
+      const entry = registryEntry(NODE_DEVICE_ID);
+      entry.entity_id = id;
+      hass.entities[id] = entry;
+    }
+    return hass;
+  };
+
+  it("reads the token at every width integrations publish", () => {
+    for (const [id, expected] of [
+      ["binary_sensor.meshcore_e963_online_x", "e963"],
+      ["binary_sensor.meshcore_b2c3d4_online_x", "b2c3d4"],
+      ["binary_sensor.meshcore_a1b2c3d4e5_online_x", "a1b2c3d4e5"],
+      ["sensor.meshcore_d476090a4924_bat_x", "d476090a4924"],
+    ] as const) {
+      expect(nodePubkey(withEntities([id]), NODE_DEVICE_ID), id).toBe(expected);
+    }
+  });
+
+  it("ignores entities belonging to another device", () => {
+    const hass = withEntities(["binary_sensor.meshcore_e963_online_x"]);
+    hass.entities["binary_sensor.meshcore_e963_online_x"]!.device_id = "somewhere-else";
+    expect(nodePubkey(hass, NODE_DEVICE_ID)).toBeNull();
+  });
+
+  it("returns null when no entity ID carries a hex token", () => {
+    // The `spring` prefix in the shared fixture is the common real shape for
+    // integrations that name entities after the node rather than its pubkey.
+    expect(nodePubkey(createHass(), NODE_DEVICE_ID)).toBeNull();
+    expect(nodePubkey(withEntities(["sensor.meshcore_abc_bat_x"]), NODE_DEVICE_ID)).toBeNull();
+  });
+});
+
+describe("findNodeContact", () => {
+  const CONTACT = "binary_sensor.meshcore_slug_a1b2c3d4e5f6_contact";
+
+  /** A node on the hub, plus whatever contacts the case needs. */
+  function withContacts(
+    contacts: Array<{ id: string; attrs: Record<string, unknown>; device?: string }>,
+    options: { nodePubkeyEntity?: string | null; hubless?: boolean } = {}
+  ): HomeAssistant {
+    const hass = createHass();
+    if (options.hubless) hass.devices[NODE_DEVICE_ID]!.via_device_id = null;
+    const pubkeyEntity =
+      options.nodePubkeyEntity === undefined
+        ? "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm"
+        : options.nodePubkeyEntity;
+    if (pubkeyEntity) {
+      const entry = registryEntry(NODE_DEVICE_ID);
+      entry.entity_id = pubkeyEntity;
+      hass.entities[pubkeyEntity] = entry;
+    }
+    for (const { id, attrs, device } of contacts) {
+      const st = state("fresh", attrs);
+      st.entity_id = id;
+      hass.states[id] = st;
+      const entry = registryEntry(device ?? HUB_DEVICE_ID);
+      entry.entity_id = id;
+      hass.entities[id] = entry;
+    }
+    return hass;
+  }
+
+  it("matches on the pubkey shared with the contact's advert", () => {
+    const hass = withContacts([
+      { id: CONTACT, attrs: { adv_name: "anything else", pubkey_prefix: "a1b2c3d4e5f6" } },
+    ]);
+    expect(findNodeContact(hass, "a name that matches nothing", NODE_DEVICE_ID)).toBe(CONTACT);
+  });
+
+  it("refuses an ambiguous pubkey rather than guessing", () => {
+    const rival = "binary_sensor.meshcore_other_a1b2c3d4e5ff_contact";
+    const hass = withContacts([
+      { id: rival, attrs: { adv_name: "Elsewhere", pubkey_prefix: "a1b2c3d4e5ff" } },
+      { id: CONTACT, attrs: { adv_name: "Elsewhere too", pubkey_prefix: "a1b2c3d4e5f6" } },
+    ], { nodePubkeyEntity: "binary_sensor.meshcore_a1b2_online_spring_farm" });
+    expect(findNodeContact(hass, "no name match", NODE_DEVICE_ID)).toBeNull();
+  });
+
+  it("falls back to the advertised name when no pubkey is derivable", () => {
+    const hass = withContacts(
+      [{ id: CONTACT, attrs: { adv_name: NODE_NAME } }],
+      { nodePubkeyEntity: null }
+    );
+    expect(findNodeContact(hass, NODE_NAME, NODE_DEVICE_ID)).toBe(CONTACT);
+  });
+
+  it("refuses an ambiguous name too", () => {
+    // Two hubs publishing one radio share an adv_name, and route data is
+    // hub-relative, so either answer would be a guess.
+    const rival = "binary_sensor.meshcore_otherhub_ffff_contact";
+    const hass = withContacts(
+      [
+        { id: rival, attrs: { adv_name: NODE_NAME } },
+        { id: CONTACT, attrs: { adv_name: NODE_NAME } },
+      ],
+      { nodePubkeyEntity: null, hubless: true }
+    );
+    expect(findNodeContact(hass, NODE_NAME, NODE_DEVICE_ID)).toBeNull();
+  });
+
+  it("accepts a contact filed anywhere beneath the node's hub", () => {
+    const hass = withContacts([
+      { id: CONTACT, attrs: { adv_name: NODE_NAME, pubkey_prefix: "a1b2c3d4e5f6" }, device: "contact-own-device" },
+    ]);
+    hass.devices["contact-own-device"] = device("contact-own-device", {
+      name: "Contact",
+      via_device_id: HUB_DEVICE_ID,
+    });
+    expect(findNodeContact(hass, NODE_NAME, NODE_DEVICE_ID)).toBe(CONTACT);
+  });
+
+  it("rejects a contact belonging to a different hub", () => {
+    const hass = withContacts([
+      { id: CONTACT, attrs: { adv_name: NODE_NAME, pubkey_prefix: "a1b2c3d4e5f6" }, device: "other-hub" },
+    ]);
+    hass.devices["other-hub"] = device("other-hub", {
+      name: "Other Hub",
+      model: "Hub",
+    });
+    expect(findNodeContact(hass, NODE_NAME, NODE_DEVICE_ID)).toBeNull();
+  });
+
+  it("resolves a hubless node when exactly one contact answers", () => {
+    const hass = withContacts(
+      [{ id: CONTACT, attrs: { adv_name: NODE_NAME, pubkey_prefix: "a1b2c3d4e5f6" } }],
+      { hubless: true }
+    );
+    expect(findNodeContact(hass, NODE_NAME, NODE_DEVICE_ID)).toBe(CONTACT);
+  });
+
+  it("returns null without a device id, having no identity to match on", () => {
+    const hass = withContacts([
+      { id: CONTACT, attrs: { adv_name: "Somebody", pubkey_prefix: "a1b2c3d4e5f6" } },
+    ]);
+    expect(findNodeContact(hass, "no such name")).toBeNull();
   });
 });

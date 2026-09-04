@@ -16,7 +16,7 @@ import {
 } from "./helpers.js";
 import { handleAction, HeaderActionController } from "./actions.js";
 import { STYLES } from "./styles.js";
-import { discoverHubs, discoverNodes, isDeviceOnHub } from "./discovery.js";
+import { discoverHubs, discoverNodes, findNodeContact } from "./discovery.js";
 import {
   findScopedEntity,
   isUnavailableState,
@@ -366,13 +366,13 @@ export class MeshcoreCard extends HTMLElement {
     // register here on its own. Fold it in for the target node's contact only:
     // doing it for every contact would rebuild the fingerprint on each of the
     // hundreds a busy mesh carries and defeat the render throttle.
-    // Resolved through `_contactEntity` rather than re-derived, so the entity
+    // Resolved through `findNodeContact` rather than re-derived, so the entity
     // watched here is by construction the one the renderer reads. Matching it
     // by name here instead would go stale on exactly the renamed devices the
     // pubkey lookup exists for.
     const targetContactId =
       target?.type === "node" && targetDevices[0]
-        ? this._contactEntity(target.id, targetDevices[0].id)
+        ? findNodeContact(hass, target.id, targetDevices[0].id)
         : null;
     const stateFp = Object.entries(hass.states)
       .filter(([id]) => id.includes("meshcore") || overrides.has(id))
@@ -651,89 +651,6 @@ export class MeshcoreCard extends HTMLElement {
     const exact = `sensor.meshcore_${pubkey}_${metric}_${hubName}`;
     if (this._hass.states[exact]) return exact;
     return this._find(`sensor.meshcore_${pubkey}_${metric}`);
-  }
-
-  /** The node's pubkey prefix, read back out of its own entity IDs.
-   *
-   *  Device names drift away from the advertised name in normal use: the
-   *  integration prefixes them ("MeshCore Repeater: …"), appends the pubkey
-   *  ("… (d47609)"), and a UI rename replaces the lot. The pubkey embedded in
-   *  the entity IDs survives all of that, so it is the identity worth matching
-   *  a contact on. */
-  private _nodePubkey(deviceId: string): string | null {
-    if (!this._hass) return null;
-    for (const [entityId, info] of Object.entries(this._hass.entities)) {
-      if (info.device_id !== deviceId) continue;
-      // Integrations publish this token at several widths — four hex is the
-      // shortest seen. Narrowness is not enforced here: `_contactEntity`
-      // requires the match to be unique instead, which is what actually makes a
-      // short token safe.
-      const match = entityId.match(/^[a-z_]+\.meshcore_([0-9a-f]{4,})_/);
-      if (match) return match[1]!;
-    }
-    return null;
-  }
-
-  /** Find the contact binary_sensor for a node.
-   *
-   *  Matches on the pubkey shared by the node's entity IDs and the contact's
-   *  `pubkey_prefix`. Comparing the advertised name is kept as a fallback for
-   *  integrations that publish no pubkey, but it only lands when the device
-   *  name happens to equal `adv_name` — which it does not once the device has
-   *  been renamed or carries the integration's own prefix and suffix. */
-  private _contactEntity(nodeName: string, deviceId?: string): string | null {
-    if (!this._hass) return null;
-    const pubkey = deviceId ? this._nodePubkey(deviceId) : null;
-    // `out_path` and `out_path_len` are hub-relative: one radio visible through
-    // two hubs has a contact per hub carrying different routes under the same
-    // pubkey. Only this node's own hub can answer for it, so exclude contacts
-    // published by any other. `isDeviceOnHub` is the shared notion of hub
-    // membership — the channel card scopes its own contacts with it — and it
-    // covers the hub itself as well as anything filed beneath it, including the
-    // node device and a contact given a device of its own.
-    const hubDeviceId = deviceId
-      ? this._hass.devices[deviceId]?.via_device_id ?? null
-      : null;
-    let byName: string | null = null;
-    let nameMatches = 0;
-    let byPubkey: string | null = null;
-    let pubkeyMatches = 0;
-    for (const [id, state] of Object.entries(this._hass.states)) {
-      if (!/^binary_sensor\.meshcore_.*_contact$/.test(id)) continue;
-      if (
-        hubDeviceId &&
-        !isDeviceOnHub(this._hass, this._hass.entities[id]?.device_id, hubDeviceId)
-      ) {
-        continue;
-      }
-      if (pubkey) {
-        const prefix = String(state.attributes["pubkey_prefix"] ?? "").toLowerCase();
-        // Either side may be the shorter form, so compare on the overlap.
-        if (
-          prefix.length >= 4 &&
-          (prefix.startsWith(pubkey) || pubkey.startsWith(prefix))
-        ) {
-          byPubkey = id;
-          pubkeyMatches++;
-        }
-      }
-      if (String(state.attributes["adv_name"] ?? "") === nodeName) {
-        if (byName === null) byName = id;
-        nameMatches++;
-      }
-    }
-    // A short token can land on more than one contact — four hex has only 65k
-    // values, against the hundreds of contacts a busy mesh carries. Claiming
-    // the first would show another node's route as this one's, so an ambiguous
-    // pubkey resolves to nothing and leaves the name comparison to answer.
-    //
-    // The name comparison needs the same rule. A node with no `via_device_id`
-    // — which `discoverNodes` keeps — cannot be hub-scoped, so if two hubs both
-    // publish the same radio their contacts share pubkey *and* advertised name,
-    // and either answer would be a guess at which hub's route to show.
-    if (pubkeyMatches === 1) return byPubkey;
-    if (nameMatches === 1) return byName;
-    return null;
   }
 
   // ── Rendering helpers ──────────────────────────────────────────────────────
@@ -1305,7 +1222,9 @@ export class MeshcoreCard extends HTMLElement {
     const locEntityId = this._config?.location_entity ?? null;
     // Routing reads the contact entity even when a location override is set,
     // so resolve it once and let only the location branch honour the override.
-    const nodeContactId = this._contactEntity(name, deviceId);
+    const nodeContactId = this._hass
+      ? findNodeContact(this._hass, name, deviceId)
+      : null;
     const contactId   = locEntityId ? null : nodeContactId;
     const latId       = locEntityId ? null : p("latitude");
     const lonId       = locEntityId ? null : p("longitude");
