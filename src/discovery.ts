@@ -57,10 +57,12 @@ function majoritySuffix(strs: string[]): string {
  *  not reliably the right one either. Trying them all lets a correct candidate
  *  win without having to rank them.
  *
- *  Returns empty when nothing matches, leaving such entities to the legacy
- *  raw-ID pass exactly as before. The length guard keeps a core from being
- *  stripped away entirely on devices small enough for `majoritySuffix` to
- *  return a whole entity ID. */
+ *  With no discovered suffix, the prefix-stripped base remains the only core,
+ *  preserving exact-before-compatibility matching for suffix-less legacy IDs.
+ *  Otherwise, returns empty when nothing matches and leaves such entities to
+ *  the legacy raw-ID pass. The length guard keeps a core from being stripped
+ *  away entirely on devices small enough for `majoritySuffix` to return a whole
+ *  entity ID. */
 function metricCores(
   entityId: string,
   ePrefix: string,
@@ -70,6 +72,7 @@ function metricCores(
     ePrefix && entityId.startsWith(ePrefix)
       ? entityId.slice(ePrefix.length)
       : entityId;
+  if (eSuffixes.length === 0) return [base];
   return eSuffixes
     .filter((suffix) => base.endsWith(suffix) && base.length > suffix.length)
     .map((suffix) => base.slice(0, -suffix.length));

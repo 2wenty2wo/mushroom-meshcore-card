@@ -172,6 +172,22 @@ describe("findEntityByDevice", () => {
     ).toBe(`${NODE_PREFIX}airtime${NODE_SUFFIX}`);
   });
 
+  it("prefers a prefix-only exact metric when no suffix is discovered", () => {
+    const suffixless: Record<string, HassEntityRegistryEntry> = {
+      "sensor.node_rx_airtime": registryEntry("legacy-device"),
+      "sensor.node_airtime": registryEntry("legacy-device"),
+    };
+    expect(
+      findEntityByDevice(
+        suffixless,
+        "legacy-device",
+        "airtime",
+        "sensor.node_",
+        []
+      )
+    ).toBe("sensor.node_airtime");
+  });
+
   it("never matches part of a longer metric name", () => {
     // `battery` must not resolve to `battery_percentage`.
     expect(find("battery")).toBeNull();
