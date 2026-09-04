@@ -21,7 +21,10 @@ import {
   discoverNodes,
   findNodeContact,
   hubContacts,
+  isDeviceOnHub,
   nodeNeighborIds,
+  normalizedContactKey,
+  normalizedContactName,
 } from "./discovery.js";
 import { ROUTE_STYLES, renderRouteHops, resolveRouteHops, type RouteHop } from "./routing.js";
 import { splitRoutePath } from "./channel-card.js";
@@ -952,6 +955,36 @@ export class MeshcoreCard extends HTMLElement {
       }
     }
 
+    // Indexed once, outside the loop. This previously ran a full scan of every
+    // entity in Home Assistant per neighbour, matching on an `adv_id` attribute
+    // that current integrations no longer publish and otherwise falling back to
+    // a substring test on the entity ID — which could reach a contact whose
+    // pubkey merely contained the neighbour's rather than starting with it.
+    //
+    // Deliberately not `hubContacts`: that drops a contact carrying no advert
+    // name, which is right when naming a hop but wrong here, where a nameless
+    // contact still links the neighbour to the entity that opens it.
+    const hubDeviceId = this._hass.devices[deviceId]?.via_device_id ?? null;
+    const contactIndex: Array<{ key: string; entityId: string; name?: string }> = [];
+    for (const [entityId, info] of Object.entries(this._hass.entities || {})) {
+      if (!/^binary_sensor\.meshcore_.*_contact$/.test(entityId)) continue;
+      if (hubDeviceId && !isDeviceOnHub(this._hass, info.device_id, hubDeviceId)) {
+        continue;
+      }
+      const attrs = this._hass.states[entityId]?.attributes;
+      if (!attrs) continue;
+      // Some contacts publish no key at all and are identified only by the hex
+      // segment in their own entity ID. Read that segment rather than testing
+      // the whole ID for the neighbour's hex, which would also match a contact
+      // that merely contains it.
+      const key = normalizedContactKey(
+        attrs["pubkey_prefix"] ?? attrs["adv_id"] ?? attrs["public_key"]
+      ) ?? normalizedContactKey(entityId.match(/_([0-9a-f]+)_contact$/)?.[1]);
+      if (!key) continue;
+      const name = normalizedContactName(attrs["adv_name"]);
+      contactIndex.push(name ? { key, entityId, name } : { key, entityId });
+    }
+
     const neighbors: NeighborInfo[] = [];
     for (const [neighborId, data] of neighborMap) {
       const recent = data.secondsAgo !== undefined
@@ -960,18 +993,12 @@ export class MeshcoreCard extends HTMLElement {
       if (!recent || data.snr === undefined || !data.snrId) continue;
 
       let neighborName = data.resolvedName ?? neighborId.substring(0, 8);
-      let contactEntityId: string | null = null;
-      for (const [entityId, state] of Object.entries(this._hass.states)) {
-        if (!/^binary_sensor\.meshcore_.*_contact$/.test(entityId)) continue;
-        const advId = state.attributes["adv_id"];
-        if ((advId && String(advId) === neighborId) || entityId.includes(neighborId)) {
-          if (!data.resolvedName) {
-            neighborName = String(state.attributes["adv_name"] || neighborName);
-          }
-          contactEntityId = entityId;
-          break;
-        }
-      }
+      const token = neighborId.toUpperCase();
+      const match = contactIndex.find(
+        (contact) => contact.key.startsWith(token) || token.startsWith(contact.key)
+      );
+      const contactEntityId = match?.entityId ?? null;
+      if (match?.name && !data.resolvedName) neighborName = match.name;
 
       neighbors.push({
         id: neighborId,
