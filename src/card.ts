@@ -16,7 +16,7 @@ import {
 } from "./helpers.js";
 import { handleAction, HeaderActionController } from "./actions.js";
 import { STYLES } from "./styles.js";
-import { discoverHubs, discoverNodes } from "./discovery.js";
+import { discoverHubs, discoverNodes, isDeviceOnHub } from "./discovery.js";
 import {
   findScopedEntity,
   isUnavailableState,
@@ -683,17 +683,21 @@ export class MeshcoreCard extends HTMLElement {
     // `out_path` and `out_path_len` are hub-relative: one radio visible through
     // two hubs has a contact per hub carrying different routes under the same
     // pubkey. Only this node's own hub can answer for it, so exclude contacts
-    // published by any other. A contact filed against the node itself is still
-    // this node's own view, so it stays eligible.
+    // published by any other. `isDeviceOnHub` is the shared notion of hub
+    // membership — the channel card scopes its own contacts with it — and it
+    // covers the hub itself as well as anything filed beneath it, including the
+    // node device and a contact given a device of its own.
     const hubDeviceId = deviceId
       ? this._hass.devices[deviceId]?.via_device_id ?? null
       : null;
     let byName: string | null = null;
     for (const [id, state] of Object.entries(this._hass.states)) {
       if (!/^binary_sensor\.meshcore_.*_contact$/.test(id)) continue;
-      if (hubDeviceId) {
-        const owner = this._hass.entities[id]?.device_id;
-        if (owner !== hubDeviceId && owner !== deviceId) continue;
+      if (
+        hubDeviceId &&
+        !isDeviceOnHub(this._hass, this._hass.entities[id]?.device_id, hubDeviceId)
+      ) {
+        continue;
       }
       if (pubkey) {
         const prefix = String(state.attributes["pubkey_prefix"] ?? "").toLowerCase();

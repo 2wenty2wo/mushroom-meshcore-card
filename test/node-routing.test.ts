@@ -6,6 +6,7 @@ import { MeshcoreCard } from "../src/card.js";
 import { makeLocalize } from "../src/localize.js";
 import type { HomeAssistant, MeshcoreCardConfig } from "../src/types.js";
 import {
+  HUB_DEVICE_ID,
   NODE_CONTACT_ENTITY,
   NODE_NAME,
   NODE_PREFIX,
@@ -18,6 +19,7 @@ import {
   createRoutingContactHass,
   createV29RepeaterHass,
   defineOnce,
+  device,
   shadowBody,
   state,
 } from "./fixtures.js";
@@ -179,6 +181,36 @@ describe("node routing state", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("accepts a contact filed on its own device beneath the node's hub", () => {
+    // meshcore-ha may register a contact against a device of its own rather
+    // than the hub directly. That is still hub-scoped, and `isDeviceOnHub` is
+    // the shared predicate that says so.
+    const hass = createRenamedNodeHass({ out_path_len: -1 });
+    const contactDeviceId = "contact-own-device";
+    hass.entities[NODE_CONTACT_ENTITY]!.device_id = contactDeviceId;
+    hass.devices[contactDeviceId] = device(contactDeviceId, {
+      name: "Spring Farm contact",
+      via_device_id: HUB_DEVICE_ID,
+    });
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
+    expect(badge(card)?.textContent).toContain(t("card.path_flood"));
+    expect(badge(card)?.dataset["entity"]).toBe(NODE_CONTACT_ENTITY);
+  });
+
+  it("still rejects a contact filed beneath a different hub", () => {
+    const hass = createRenamedNodeHass({ out_path_len: -1 });
+    const strayDeviceId = "stray-device";
+    hass.entities[NODE_CONTACT_ENTITY]!.device_id = strayDeviceId;
+    hass.devices[strayDeviceId] = device(strayDeviceId, {
+      name: "Other hub's child",
+      via_device_id: "some-other-hub",
+    });
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
+    expect(badge(card)).toBeNull();
   });
 
   it("reads routing from the node's own hub, not another that hears it", () => {
