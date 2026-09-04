@@ -366,13 +366,19 @@ export class MeshcoreCard extends HTMLElement {
     // register here on its own. Fold it in for the target node's contact only:
     // doing it for every contact would rebuild the fingerprint on each of the
     // hundreds a busy mesh carries and defeat the render throttle.
-    const targetNodeName = target?.type === "node" ? target.id : null;
+    // Resolved through `_contactEntity` rather than re-derived, so the entity
+    // watched here is by construction the one the renderer reads. Matching it
+    // by name here instead would go stale on exactly the renamed devices the
+    // pubkey lookup exists for.
+    const targetContactId =
+      target?.type === "node" && targetDevices[0]
+        ? this._contactEntity(target.id, targetDevices[0].id)
+        : null;
     const stateFp = Object.entries(hass.states)
       .filter(([id]) => id.includes("meshcore") || overrides.has(id))
       .map(([id, s]) => {
         const routing =
-          targetNodeName &&
-          String(s.attributes["adv_name"] ?? "") === targetNodeName
+          id === targetContactId
             ? `#${String(s.attributes["out_path"] ?? "")}/${String(
                 s.attributes["out_path_len"] ?? ""
               )}`
@@ -674,9 +680,21 @@ export class MeshcoreCard extends HTMLElement {
   private _contactEntity(nodeName: string, deviceId?: string): string | null {
     if (!this._hass) return null;
     const pubkey = deviceId ? this._nodePubkey(deviceId) : null;
+    // `out_path` and `out_path_len` are hub-relative: one radio visible through
+    // two hubs has a contact per hub carrying different routes under the same
+    // pubkey. Only this node's own hub can answer for it, so exclude contacts
+    // published by any other. A contact filed against the node itself is still
+    // this node's own view, so it stays eligible.
+    const hubDeviceId = deviceId
+      ? this._hass.devices[deviceId]?.via_device_id ?? null
+      : null;
     let byName: string | null = null;
     for (const [id, state] of Object.entries(this._hass.states)) {
       if (!/^binary_sensor\.meshcore_.*_contact$/.test(id)) continue;
+      if (hubDeviceId) {
+        const owner = this._hass.entities[id]?.device_id;
+        if (owner !== hubDeviceId && owner !== deviceId) continue;
+      }
       if (pubkey) {
         const prefix = String(state.attributes["pubkey_prefix"] ?? "").toLowerCase();
         // Either may be the shorter form; 8 hex is narrow enough to identify a

@@ -232,6 +232,35 @@ export function createRenamedNodeHass(
   return hass;
 }
 
+export const OTHER_HUB_DEVICE_ID = "other-hub-device";
+export const OTHER_HUB_CONTACT_ENTITY =
+  "binary_sensor.meshcore_otherhub_spring_farm_a1b2c3d4e5f6_contact";
+
+/** The same radio seen through a second hub. Both hubs publish a contact for
+ *  the one pubkey, but `out_path` and `out_path_len` describe the route from
+ *  *that* hub, so the values differ and only the node's own hub can answer for
+ *  it. The rival is inserted ahead of the real contact, so a scan that ignores
+ *  hub scope reaches the wrong one first. */
+export function createMultiHubContactHass(): HomeAssistant {
+  const hass = createRenamedNodeHass({ out_path: "", out_path_len: -1 });
+  const rival = state("fresh", {
+    adv_name: NODE_NAME,
+    pubkey_prefix: NODE_PUBKEY_PREFIX,
+    out_path: "aabb",
+    out_path_len: 3,
+  });
+  rival.entity_id = OTHER_HUB_CONTACT_ENTITY;
+  const rivalEntry = registryEntry(OTHER_HUB_DEVICE_ID);
+  rivalEntry.entity_id = OTHER_HUB_CONTACT_ENTITY;
+  hass.entities[OTHER_HUB_CONTACT_ENTITY] = rivalEntry;
+  hass.devices[OTHER_HUB_DEVICE_ID] = device(OTHER_HUB_DEVICE_ID, {
+    name: "Other Hub",
+    model: "Hub",
+  });
+  hass.states = { [OTHER_HUB_CONTACT_ENTITY]: rival, ...hass.states };
+  return hass;
+}
+
 /** createHass plus one channel messages binary_sensor on the hub device. */
 export function createChannelHass(options: { channelState?: string } = {}): HomeAssistant {
   const hass = createHass();

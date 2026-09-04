@@ -10,8 +10,10 @@ import {
   NODE_NAME,
   NODE_PREFIX,
   NODE_SUFFIX,
+  OTHER_HUB_CONTACT_ENTITY,
   RENAMED_NODE_NAME,
   createHass,
+  createMultiHubContactHass,
   createRenamedNodeHass,
   createRoutingContactHass,
   createV29RepeaterHass,
@@ -158,19 +160,36 @@ describe("node routing state", () => {
     // attribute, so this fails if the fingerprint ignores it. An attribute-only
     // change moves last_updated but not last_changed, which is why the
     // fingerprint has to account for it explicitly.
+    // Uses the renamed fixture deliberately: the fingerprint has to resolve the
+    // contact the same way the renderer does, so matching it by name here would
+    // go stale on exactly the devices the pubkey lookup was added for.
     vi.useFakeTimers();
     try {
-      const hass = createRoutingContactHass({ out_path_len: -1 }, { sensors: false });
-      const { card } = renderCard(NODE_TARGET, hass);
+      const hass = createRenamedNodeHass({ out_path_len: -1 });
+      setSensor(hass, PATH_SENSOR, "unknown");
+      const target = { target: { type: "node", id: RENAMED_NODE_NAME } };
+      const { card } = renderCard(target, hass);
       expect(badge(card)?.textContent).toContain(t("card.path_flood"));
 
-      const next = createRoutingContactHass({ out_path_len: 1 }, { sensors: false });
+      const next = createRenamedNodeHass({ out_path_len: 1 });
+      setSensor(next, PATH_SENSOR, "unknown");
       card.hass = next;
       vi.advanceTimersByTime(10_000); // clear the render throttle
       expect(badge(card)?.textContent).toContain(t("card.path_hop_one"));
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("reads routing from the node's own hub, not another that hears it", () => {
+    // out_path is hub-relative, so the rival contact carries a different route
+    // under the same pubkey.
+    const hass = createMultiHubContactHass();
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
+    expect(badge(card)?.textContent).toContain(t("card.path_flood"));
+    expect(badge(card)?.dataset["entity"]).toBe(NODE_CONTACT_ENTITY);
+    expect(badge(card)?.dataset["entity"]).not.toBe(OTHER_HUB_CONTACT_ENTITY);
   });
 
   it("leaves a node with no contact and no path sensor unbadged", () => {
