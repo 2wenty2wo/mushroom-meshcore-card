@@ -9,8 +9,13 @@ import type {
 } from "./types.js";
 import { HeaderActionController } from "./actions.js";
 import { dateKey, dateLabel, timeLabel } from "./date-time.js";
-import { isDeviceOnHub } from "./discovery.js";
-import { escapeHtml, linkifyHtml, urlSpans } from "./helpers.js";
+import {
+  contactIdentityKey,
+  hubContacts,
+  isDeviceOnHub,
+  normalizeContactRecord,
+} from "./discovery.js";
+import { asRecord, escapeHtml, linkifyHtml, urlSpans } from "./helpers.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
 import { STYLES } from "./styles.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
@@ -50,8 +55,6 @@ const MAX_ROUTE_HEX_CHARACTERS = 128;
 const MAX_RX_LOG_ROUTES = 64;
 const CONTACT_CACHE_TTL_MS = 60_000;
 const MAX_CONTACT_RESPONSE_ITEMS = 1_000;
-const MAX_CONTACT_KEY_CHARACTERS = 128;
-const MAX_CONTACT_NAME_CHARACTERS = 512;
 
 const CHANNEL_STYLES = `
   :host { display: block; height: 100%; }
@@ -355,12 +358,6 @@ type RoutingEventType =
   | "meshcore_delivery_update"
   | "meshcore_message_sent";
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function nonEmptyString(value: unknown, maximum = 4096): string | null {
   if (typeof value !== "string" || value.length > maximum || !value.trim()) {
     return null;
@@ -412,69 +409,6 @@ function normalizedScope(value: unknown): string | undefined {
   return scope && scope !== "#" && scope.length <= 256 ? scope : undefined;
 }
 
-function normalizedContactName(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length > MAX_CONTACT_NAME_CHARACTERS) {
-    return undefined;
-  }
-  const name = value
-    .replace(
-      /[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
-      " "
-    )
-    .replace(/\s+/g, " ")
-    .trim();
-  return name || undefined;
-}
-
-function normalizedContactKey(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length > MAX_CONTACT_KEY_CHARACTERS) {
-    return undefined;
-  }
-  const key = value.trim().toUpperCase();
-  return key.length >= 2 && key.length % 2 === 0 && /^[0-9A-F]+$/.test(key)
-    ? key
-    : undefined;
-}
-
-function isRepeaterContact(value: unknown): boolean {
-  if (value === undefined || value === null || value === "") return true;
-  if (value === 2) return true;
-  return typeof value === "string" &&
-    (value.trim() === "2" || value.trim().toLowerCase() === "repeater");
-}
-
-function normalizeRouteContact(value: unknown): ChannelPathContact | null {
-  const contact = asRecord(value);
-  if (!contact) return null;
-  if (
-    !isRepeaterContact(
-      contact["type"] ?? contact["contact_type"] ?? contact["node_type"]
-    )
-  ) {
-    return null;
-  }
-  const completePublicKey = normalizedContactKey(contact["public_key"]);
-  const publicKey = completePublicKey ?? normalizedContactKey(
-    contact["pubkey_prefix"] ?? contact["adv_id"]
-  );
-  const name = normalizedContactName(
-    contact["adv_name"] ?? contact["name"] ?? contact["display_name"]
-  );
-  return publicKey && name
-    ? {
-      publicKey,
-      name,
-      ...(!completePublicKey ? { keyIsPrefix: true } : {}),
-    }
-    : null;
-}
-
-function routeContactIdentity(contact: ChannelPathContact): string {
-  return contact.keyIsPrefix
-    ? `${contact.publicKey}\u0000${contact.name}`
-    : contact.publicKey;
-}
-
 function normalizeContactResponse(value: unknown): ChannelPathContact[] | null {
   const root = asRecord(value);
   const response = asRecord(root?.["response"]) ?? root;
@@ -485,9 +419,9 @@ function normalizeContactResponse(value: unknown): ChannelPathContact[] | null {
   const seen = new Set<string>();
   const limit = Math.min(rawContacts.length, MAX_CONTACT_RESPONSE_ITEMS);
   for (let index = 0; index < limit; index += 1) {
-    const contact = normalizeRouteContact(rawContacts[index]);
+    const contact = normalizeContactRecord(rawContacts[index]);
     if (!contact) continue;
-    const identity = routeContactIdentity(contact);
+    const identity = contactIdentityKey(contact);
     if (seen.has(identity)) continue;
     seen.add(identity);
     contacts.push(contact);
@@ -1480,27 +1414,9 @@ export class MeshcoreChannelCard extends HTMLElement {
     const entityId = this._config?.entity;
     const hubDeviceId = entityId ? hass?.entities[entityId]?.device_id : null;
     if (!hass || !hubDeviceId) return [];
-    const contacts: ChannelPathContact[] = [];
-    const seen = new Set<string>();
-    for (const [candidateId, registryEntry] of Object.entries(hass.entities)) {
-      if (
-        !isDeviceOnHub(hass, registryEntry.device_id, hubDeviceId) ||
-        registryEntry.platform !== "meshcore" ||
-        !candidateId.startsWith("binary_sensor.")
-      ) {
-        continue;
-      }
-      const state = hass.states[candidateId];
-      if (!state) continue;
-      const contact = normalizeRouteContact(state.attributes);
-      if (!contact) continue;
-      const identity = routeContactIdentity(contact);
-      if (seen.has(identity)) continue;
-      seen.add(identity);
-      contacts.push(contact);
-      if (contacts.length >= MAX_CONTACT_RESPONSE_ITEMS) break;
-    }
-    return contacts;
+    // The dialog identifies a hop by key alone, so the publishing entity that
+    // `hubContacts` also reports is dropped here.
+    return hubContacts(hass, hubDeviceId).map(({ entityId: _ignored, ...contact }) => contact);
   }
 
   private _serviceRouteContacts(
