@@ -8,7 +8,9 @@ import type { HomeAssistant, MeshcoreCardConfig } from "../src/types.js";
 import {
   HUB_DEVICE_ID,
   NODE_CONTACT_ENTITY,
+  NODE_DEVICE_ID,
   NODE_NAME,
+  NODE_ONLINE_ENTITY,
   NODE_PREFIX,
   NODE_SUFFIX,
   OTHER_HUB_CONTACT_ENTITY,
@@ -20,6 +22,7 @@ import {
   createV29RepeaterHass,
   defineOnce,
   device,
+  registryEntry,
   shadowBody,
   state,
 } from "./fixtures.js";
@@ -181,6 +184,57 @@ describe("node routing state", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("resolves a node whose entity IDs carry a short pubkey token", () => {
+    // Integrations publish this token at several widths; four hex is the
+    // shortest the repo exercises.
+    const hass = createRenamedNodeHass({ out_path_len: -1 });
+    delete hass.states[NODE_ONLINE_ENTITY];
+    delete hass.entities[NODE_ONLINE_ENTITY];
+    const shortId = "binary_sensor.meshcore_a1b2_online_spring_farm";
+    const onlineState = state("on");
+    onlineState.entity_id = shortId;
+    hass.states[shortId] = onlineState;
+    const onlineEntry = registryEntry(NODE_DEVICE_ID);
+    onlineEntry.entity_id = shortId;
+    hass.entities[shortId] = onlineEntry;
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
+    expect(badge(card)?.textContent).toContain(t("card.path_flood"));
+    expect(badge(card)?.dataset["entity"]).toBe(NODE_CONTACT_ENTITY);
+  });
+
+  it("refuses to guess when a short pubkey matches more than one contact", () => {
+    // Showing another node's route as this one's is worse than showing none.
+    const hass = createRenamedNodeHass({ out_path_len: -1 });
+    delete hass.states[NODE_ONLINE_ENTITY];
+    delete hass.entities[NODE_ONLINE_ENTITY];
+    const shortId = "binary_sensor.meshcore_a1b2_online_spring_farm";
+    const onlineState = state("on");
+    onlineState.entity_id = shortId;
+    hass.states[shortId] = onlineState;
+    const onlineEntry = registryEntry(NODE_DEVICE_ID);
+    onlineEntry.entity_id = shortId;
+    hass.entities[shortId] = onlineEntry;
+
+    // A different node whose pubkey happens to share the same four hex, placed
+    // ahead of the real contact so taking the first match would take this one.
+    const rival = "binary_sensor.meshcore_other_a1b2ffffffff_contact";
+    const rivalState = state("fresh", {
+      adv_name: "Somewhere Else",
+      pubkey_prefix: "a1b2ffffffff",
+      out_path_len: 4,
+    });
+    rivalState.entity_id = rival;
+    const rivalEntry = registryEntry(HUB_DEVICE_ID);
+    rivalEntry.entity_id = rival;
+    hass.entities[rival] = rivalEntry;
+    hass.states = { [rival]: rivalState, ...hass.states };
+
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
+    expect(badge(card)).toBeNull();
   });
 
   it("accepts a contact filed on its own device beneath the node's hub", () => {

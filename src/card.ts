@@ -664,7 +664,11 @@ export class MeshcoreCard extends HTMLElement {
     if (!this._hass) return null;
     for (const [entityId, info] of Object.entries(this._hass.entities)) {
       if (info.device_id !== deviceId) continue;
-      const match = entityId.match(/^[a-z_]+\.meshcore_([0-9a-f]{8,})_/);
+      // Integrations publish this token at several widths — four hex is the
+      // shortest seen. Narrowness is not enforced here: `_contactEntity`
+      // requires the match to be unique instead, which is what actually makes a
+      // short token safe.
+      const match = entityId.match(/^[a-z_]+\.meshcore_([0-9a-f]{4,})_/);
       if (match) return match[1]!;
     }
     return null;
@@ -691,6 +695,8 @@ export class MeshcoreCard extends HTMLElement {
       ? this._hass.devices[deviceId]?.via_device_id ?? null
       : null;
     let byName: string | null = null;
+    let byPubkey: string | null = null;
+    let pubkeyMatches = 0;
     for (const [id, state] of Object.entries(this._hass.states)) {
       if (!/^binary_sensor\.meshcore_.*_contact$/.test(id)) continue;
       if (
@@ -701,19 +707,24 @@ export class MeshcoreCard extends HTMLElement {
       }
       if (pubkey) {
         const prefix = String(state.attributes["pubkey_prefix"] ?? "").toLowerCase();
-        // Either may be the shorter form; 8 hex is narrow enough to identify a
-        // contact among the hundreds a busy mesh carries.
+        // Either side may be the shorter form, so compare on the overlap.
         if (
-          prefix.length >= 8 &&
+          prefix.length >= 4 &&
           (prefix.startsWith(pubkey) || pubkey.startsWith(prefix))
         ) {
-          return id;
+          byPubkey = id;
+          pubkeyMatches++;
         }
       }
       if (byName === null && String(state.attributes["adv_name"] ?? "") === nodeName) {
         byName = id;
       }
     }
+    // A short token can land on more than one contact — four hex has only 65k
+    // values, against the hundreds of contacts a busy mesh carries. Claiming
+    // the first would show another node's route as this one's, so an ambiguous
+    // pubkey resolves to nothing and leaves the name comparison to answer.
+    if (pubkeyMatches === 1) return byPubkey;
     return byName;
   }
 
