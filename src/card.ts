@@ -647,14 +647,52 @@ export class MeshcoreCard extends HTMLElement {
     return this._find(`sensor.meshcore_${pubkey}_${metric}`);
   }
 
-  /** Find the contact binary_sensor for a node (matched by adv_name attribute). */
-  private _contactEntity(nodeName: string): string | null {
+  /** The node's pubkey prefix, read back out of its own entity IDs.
+   *
+   *  Device names drift away from the advertised name in normal use: the
+   *  integration prefixes them ("MeshCore Repeater: …"), appends the pubkey
+   *  ("… (d47609)"), and a UI rename replaces the lot. The pubkey embedded in
+   *  the entity IDs survives all of that, so it is the identity worth matching
+   *  a contact on. */
+  private _nodePubkey(deviceId: string): string | null {
     if (!this._hass) return null;
-    for (const [id, state] of Object.entries(this._hass.states)) {
-      if (!/^binary_sensor\.meshcore_.*_contact$/.test(id)) continue;
-      if (String(state.attributes["adv_name"] ?? "") === nodeName) return id;
+    for (const [entityId, info] of Object.entries(this._hass.entities)) {
+      if (info.device_id !== deviceId) continue;
+      const match = entityId.match(/^[a-z_]+\.meshcore_([0-9a-f]{8,})_/);
+      if (match) return match[1]!;
     }
     return null;
+  }
+
+  /** Find the contact binary_sensor for a node.
+   *
+   *  Matches on the pubkey shared by the node's entity IDs and the contact's
+   *  `pubkey_prefix`. Comparing the advertised name is kept as a fallback for
+   *  integrations that publish no pubkey, but it only lands when the device
+   *  name happens to equal `adv_name` — which it does not once the device has
+   *  been renamed or carries the integration's own prefix and suffix. */
+  private _contactEntity(nodeName: string, deviceId?: string): string | null {
+    if (!this._hass) return null;
+    const pubkey = deviceId ? this._nodePubkey(deviceId) : null;
+    let byName: string | null = null;
+    for (const [id, state] of Object.entries(this._hass.states)) {
+      if (!/^binary_sensor\.meshcore_.*_contact$/.test(id)) continue;
+      if (pubkey) {
+        const prefix = String(state.attributes["pubkey_prefix"] ?? "").toLowerCase();
+        // Either may be the shorter form; 8 hex is narrow enough to identify a
+        // contact among the hundreds a busy mesh carries.
+        if (
+          prefix.length >= 8 &&
+          (prefix.startsWith(pubkey) || pubkey.startsWith(prefix))
+        ) {
+          return id;
+        }
+      }
+      if (byName === null && String(state.attributes["adv_name"] ?? "") === nodeName) {
+        byName = id;
+      }
+    }
+    return byName;
   }
 
   // ── Rendering helpers ──────────────────────────────────────────────────────
@@ -1226,7 +1264,7 @@ export class MeshcoreCard extends HTMLElement {
     const locEntityId = this._config?.location_entity ?? null;
     // Routing reads the contact entity even when a location override is set,
     // so resolve it once and let only the location branch honour the override.
-    const nodeContactId = this._contactEntity(name);
+    const nodeContactId = this._contactEntity(name, deviceId);
     const contactId   = locEntityId ? null : nodeContactId;
     const latId       = locEntityId ? null : p("latitude");
     const lonId       = locEntityId ? null : p("longitude");
@@ -1393,13 +1431,23 @@ export class MeshcoreCard extends HTMLElement {
     // so routing state rides in the header's trailing slot instead. `_chip`
     // yields "" without a value, which is what hides the badge on a node whose
     // path we could not read.
-    const routingBadge = this._chip(
-      vm.pathLength.id,
-      "",
-      vm.pathLength.value,
-      "routing-badge",
-      [t("card.path_length"), vm.pathLength.value ?? ""].join(" ")
-    );
+    //
+    // Hiding `path_length` in the chip layout means "do not show me this
+    // reading", so it has to silence the badge too — otherwise the same value
+    // reappears in a place the layout cannot reach.
+    const hiddenChips = effectiveChipLayout(
+      { type: "node", id: vm.node.name },
+      this._config!
+    ).hidden;
+    const routingBadge = hiddenChips.includes("path_length")
+      ? ""
+      : this._chip(
+          vm.pathLength.id,
+          "",
+          vm.pathLength.value,
+          "routing-badge",
+          [t("card.path_length"), vm.pathLength.value ?? ""].join(" ")
+        );
     return this._renderDeviceHeader(
       vm.displayName,
       secondary,

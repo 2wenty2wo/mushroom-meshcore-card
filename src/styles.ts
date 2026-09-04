@@ -511,8 +511,10 @@ export const STYLES: string = `
   @media (max-width: 420px) {
     .device-header-row { align-items: flex-start; }
     .device-header { padding-top: 10px; padding-bottom: 10px; }
-    .device-header-row > .count-badge,
-    .device-header-row > .routing-badge { height: 32px; padding: 0 7px; margin-top: 10px; }
+    .device-header-row > .count-badge { height: 32px; padding: 0 7px; margin-top: 10px; }
+    /* Aligns with the top-aligned header without overriding the Mushroom
+       36px chip height, which .routing-badge inherits from .chip. */
+    .device-header-row > .routing-badge { margin-top: 10px; }
     .metrics-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .node-metric { padding: 7px; }
   }

@@ -10,7 +10,9 @@ import {
   NODE_NAME,
   NODE_PREFIX,
   NODE_SUFFIX,
+  RENAMED_NODE_NAME,
   createHass,
+  createRenamedNodeHass,
   createRoutingContactHass,
   createV29RepeaterHass,
   defineOnce,
@@ -174,5 +176,48 @@ describe("node routing state", () => {
   it("leaves a node with no contact and no path sensor unbadged", () => {
     const { card } = renderCard(NODE_TARGET, createHass());
     expect(badge(card)).toBeNull();
+  });
+
+  it("matches the contact by pubkey when the device name is not the advert name", () => {
+    // meshcore-ha names devices "MeshCore Repeater: <adv_name> (<pubkey>)", so
+    // comparing the device name to adv_name never matches on real hardware and
+    // the fallback would silently never fire.
+    const hass = createRenamedNodeHass({ out_path_len: -1 });
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
+    expect(badge(card)?.textContent).toContain(t("card.path_flood"));
+    expect(badge(card)?.dataset["entity"]).toBe(NODE_CONTACT_ENTITY);
+  });
+
+  it("does not match a contact whose pubkey belongs to another node", () => {
+    const hass = createRenamedNodeHass({
+      out_path_len: -1,
+      pubkey_prefix: "ffffffffffff",
+    });
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
+    expect(badge(card)).toBeNull();
+  });
+
+  it("honours a chip layout that hides path_length", () => {
+    // Hidden means "do not show me this reading"; the badge is another place
+    // the same value would otherwise surface.
+    const hass = createV29RepeaterHass();
+    setSensor(hass, PATH_SENSOR, -1);
+    const { card } = renderCard(
+      { ...NODE_TARGET, chip_layout: { top: [], details: [], hidden: ["path_length"] } },
+      hass
+    );
+    expect(badge(card)).toBeNull();
+  });
+
+  it("keeps the badge when path_length is merely moved, not hidden", () => {
+    const hass = createV29RepeaterHass();
+    setSensor(hass, PATH_SENSOR, -1);
+    const { card } = renderCard(
+      { ...NODE_TARGET, chip_layout: { top: ["path_length"], details: [], hidden: [] } },
+      hass
+    );
+    expect(badge(card)?.textContent).toContain(t("card.path_flood"));
   });
 });

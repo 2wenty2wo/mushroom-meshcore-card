@@ -51,6 +51,13 @@ export const V29_REPEATER_METRICS = {
 export const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
 export const NODE_CONTACT_ENTITY =
   "binary_sensor.meshcore_spring_farm_a1b2c3d4e5f6_contact";
+/** The contact's advertised pubkey, whose first 10 hex are what
+ *  `NODE_ONLINE_ENTITY` carries — the overlap a contact is matched on. */
+export const NODE_PUBKEY_PREFIX = "a1b2c3d4e5f6";
+/** The device name as meshcore-ha actually publishes it: an integration prefix
+ *  and a pubkey suffix around the advertised name, so it never equals
+ *  `adv_name`. */
+export const RENAMED_NODE_NAME = `MeshCore Repeater: ${NODE_NAME} (a1b2c3)`;
 
 export function state(
   value: unknown,
@@ -191,12 +198,37 @@ export function createRoutingContactHass(
   options: { sensors?: boolean } = {}
 ): HomeAssistant {
   const hass = options.sensors === false ? createHass() : createV29RepeaterHass();
-  const contactState = state("fresh", { adv_name: NODE_NAME, ...attributes });
+  const contactState = state("fresh", {
+    adv_name: NODE_NAME,
+    pubkey_prefix: NODE_PUBKEY_PREFIX,
+    ...attributes,
+  });
   contactState.entity_id = NODE_CONTACT_ENTITY;
   hass.states[NODE_CONTACT_ENTITY] = contactState;
   const contactEntry = registryEntry(HUB_DEVICE_ID);
   contactEntry.entity_id = NODE_CONTACT_ENTITY;
   hass.entities[NODE_CONTACT_ENTITY] = contactEntry;
+  return hass;
+}
+
+/** The node as meshcore-ha really presents it: the device name carries the
+ *  integration's prefix and a pubkey suffix, so it never equals the contact's
+ *  `adv_name`. Matching a contact by name cannot work here — the pubkey shared
+ *  between the node's entity IDs and the contact's `pubkey_prefix` is what has
+ *  to carry it. Target this hass with `RENAMED_NODE_NAME`. */
+export function createRenamedNodeHass(
+  attributes: Record<string, unknown> = { out_path: "", out_path_len: -1 }
+): HomeAssistant {
+  const hass = createRoutingContactHass(attributes);
+  hass.devices[NODE_DEVICE_ID].name_by_user = RENAMED_NODE_NAME;
+  // The hex-bearing entity ID is where the node's pubkey is read from; the
+  // other fixture entities use a non-hex `spring` prefix.
+  const onlineState = state("on");
+  onlineState.entity_id = NODE_ONLINE_ENTITY;
+  hass.states[NODE_ONLINE_ENTITY] = onlineState;
+  const onlineEntry = registryEntry(NODE_DEVICE_ID);
+  onlineEntry.entity_id = NODE_ONLINE_ENTITY;
+  hass.entities[NODE_ONLINE_ENTITY] = onlineEntry;
   return hass;
 }
 
