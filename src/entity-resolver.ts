@@ -137,8 +137,11 @@ export function resolveNodeConnectivity(
   }
 
   const successId = scoped("request_successes");
-  const successes = successId ? Number(hass.states[successId]?.state) : Number.NaN;
-  if (Number.isFinite(successes)) {
+  const successState = successId ? hass.states[successId]?.state : undefined;
+  const successes = isUnavailableState(successState)
+    ? Number.NaN
+    : Number(successState);
+  if (Number.isFinite(successes) && successes >= 0) {
     return {
       ...base,
       state: successes > 0 ? "online" : "offline",

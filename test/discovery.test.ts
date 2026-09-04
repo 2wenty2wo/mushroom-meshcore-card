@@ -282,6 +282,44 @@ describe("nodeSuffixCandidates", () => {
     expect(candidates).toContain("_mount_annan_2");
   });
 
+  it("recovers an intermediate slug retained by exactly two entities", () => {
+    // The device has since moved from its original name to its current name,
+    // so neither registry name can predict the intermediate slug. Both leftover
+    // entities carry `online`, making `_online_middle_ridge` another plausible
+    // boundary in their strict common tail ahead of the true node slug.
+    const binaryOnline =
+      "binary_sensor.meshcore_e963_online_middle_ridge";
+    const legacyOnline = "sensor.meshcore_e963_online_middle_ridge";
+    const ids = [
+      "sensor.meshcore_e963_uptime_original_ridge",
+      "sensor.meshcore_e963_last_rssi_original_ridge",
+      "sensor.meshcore_e963_last_snr_original_ridge",
+      "sensor.meshcore_e963_battery_percentage_original_ridge",
+      binaryOnline,
+      legacyOnline,
+    ];
+    const candidates = nodeSuffixCandidates(
+      { name: "MeshCore Original Ridge", name_by_user: "Current Ridge" },
+      ids
+    );
+    // The connectivity resolver domain-filters before calling this shared
+    // lookup, so exercise the same binary-only registry slice here.
+    const entities: Record<string, HassEntityRegistryEntry> = {
+      [binaryOnline]: registryEntry("multi-rename-device"),
+    };
+
+    expect(candidates).toContain("_middle_ridge");
+    expect(
+      findEntityByDevice(
+        entities,
+        "multi-rename-device",
+        "online",
+        "",
+        candidates
+      )
+    ).toBe(binaryOnline);
+  });
+
   it("still resolves metrics on a device too small for a clean majority", () => {
     // majoritySuffix returns a whole entity ID for one or two entities. The
     // per-entity length guard has to stop that candidate swallowing an entity.

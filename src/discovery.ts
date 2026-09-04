@@ -95,12 +95,32 @@ function plausibleSlugSuffix(
   );
 }
 
+/** Every underscore-aligned suffix of the strict shared tail.
+ *
+ *  Two entities can share domain or metric fragments before the node slug, so
+ *  their raw common suffix may be `_online_<node_slug>` rather than just
+ *  `_<node_slug>`. Offering every delimiter boundary lets metric matching find
+ *  the true slug without discovery having to guess which segment belongs to
+ *  the metric. */
+function commonDelimitedSuffixes(pool: readonly string[]): string[] {
+  const common = longestCommonSuffix([...pool]);
+  const suffixes: string[] = [];
+  for (
+    let delimiter = common.indexOf("_");
+    delimiter >= 0;
+    delimiter = common.indexOf("_", delimiter + 1)
+  ) {
+    suffixes.push(common.slice(delimiter));
+  }
+  return suffixes;
+}
+
 /** Entity-ID suffix candidates for one device, longest first and de-duplicated.
  *
  *  Home Assistant never rewrites existing entity IDs when a device is renamed,
- *  so a renamed device ends up with entities from two eras: the ones created
- *  before the rename keep the old slug, anything created after carries the new
- *  one. Matching on a single suffix silently loses one of those groups. */
+ *  so a renamed device can end up with entities from multiple eras: existing
+ *  entities keep their old slug while later entities carry newer ones. Matching
+ *  on a single suffix silently loses all but one of those groups. */
 export function nodeSuffixCandidates(
   device: Pick<HassDeviceRegistryEntry, "name" | "name_by_user">,
   suffixSource: readonly string[]
@@ -129,12 +149,20 @@ export function nodeSuffixCandidates(
     }
   }
 
-  // Whatever the majority vote left behind is the other era's slug.
+  // Whatever the majority vote left behind may carry another era's slug.
   const leftovers = suffixSource.filter((id) => !id.endsWith(majority));
   if (leftovers.length >= 2) {
-    const secondary = majoritySuffix(leftovers);
-    if (secondary && plausibleSlugSuffix(secondary, leftovers, 2)) {
-      candidates.push(secondary);
+    // A two-item pool cannot produce a meaningful 50% vote: one entity alone
+    // satisfies it. Offer every delimiter boundary of both entities' strict
+    // common tail there; larger pools retain the outlier-tolerant majority.
+    const secondaryCandidates =
+      leftovers.length === 2
+        ? commonDelimitedSuffixes(leftovers)
+        : [majoritySuffix(leftovers)];
+    for (const secondary of secondaryCandidates) {
+      if (secondary && plausibleSlugSuffix(secondary, leftovers, 2)) {
+        candidates.push(secondary);
+      }
     }
   }
 

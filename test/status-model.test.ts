@@ -191,6 +191,58 @@ describe("buildStatusSnapshot", () => {
     });
   });
 
+  it.each([
+    ["empty", ""],
+    ["whitespace-only", "   "],
+    ["negative", "-1"],
+  ])("ignores an %s request-success state", (_description, successState) => {
+    const hass = createHass();
+    const uptime = `${NODE_PREFIX}uptime${NODE_SUFFIX}`;
+    const successes = `${NODE_PREFIX}request_successes${NODE_SUFFIX}`;
+    removeEntity(hass, uptime);
+    addEntity(hass, successes, successState, NODE_DEVICE_ID);
+
+    expect(resolveNodeConnectivity(hass, discoverNodes(hass)[0]!)).toMatchObject({
+      state: "unknown",
+      entityId: null,
+      source: "none",
+    });
+
+    const snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
+    expect(snapshot).toMatchObject({
+      issueCount: 0,
+      offlineCount: 0,
+      nodeUnknownCount: 1,
+    });
+    expect(snapshot.nodes.items[0]).toMatchObject({
+      state: "unknown",
+      entityId: null,
+    });
+    expect(snapshot.unknownChecks).toContainEqual(
+      expect.objectContaining({
+        kind: "node_status",
+        entityId: null,
+      })
+    );
+  });
+
+  it.each([
+    [0, "offline"],
+    [5, "online"],
+  ])("uses a valid request-success count of %s as %s", (value, expectedState) => {
+    const hass = createHass();
+    const uptime = `${NODE_PREFIX}uptime${NODE_SUFFIX}`;
+    const successes = `${NODE_PREFIX}request_successes${NODE_SUFFIX}`;
+    removeEntity(hass, uptime);
+    addEntity(hass, successes, value, NODE_DEVICE_ID);
+
+    expect(resolveNodeConnectivity(hass, discoverNodes(hass)[0]!)).toMatchObject({
+      state: expectedState,
+      entityId: successes,
+      source: "request_successes",
+    });
+  });
+
   it("suppresses cached downstream failures while the hub is offline", () => {
     const hass = onlineHass();
     hass.states[HUB_STATUS_ENTITY]!.state = "offline";
@@ -641,6 +693,28 @@ describe("renamed node devices", () => {
     expect(snapshot.onlineCount).toBe(1);
     expect(snapshot.nodeUnknownCount).toBe(0);
     expect(snapshot.unknownChecks).toEqual([]);
+  });
+
+  it("resolves connectivity retained under an intermediate rename", () => {
+    const hass = createHass();
+    const binaryOnline =
+      "binary_sensor.meshcore_a1b2c3d4e5_online_middle_ridge";
+    const legacyOnline = "sensor.meshcore_spring_online_middle_ridge";
+    addEntity(hass, binaryOnline, "on", NODE_DEVICE_ID);
+    addEntity(hass, legacyOnline, "offline", NODE_DEVICE_ID);
+    hass.devices[NODE_DEVICE_ID]!.name_by_user = "Current Ridge";
+
+    const snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
+    expect(snapshot.nodes.items[0]).toMatchObject({
+      name: "Current Ridge",
+      state: "online",
+      entityId: binaryOnline,
+    });
+    expect(snapshot.onlineCount).toBe(1);
+    expect(snapshot.nodeUnknownCount).toBe(0);
+    expect(snapshot.unknownChecks).not.toContainEqual(
+      expect.objectContaining({ kind: "node_status" })
+    );
   });
 
   it("still reads the pre-rename battery entity", () => {
