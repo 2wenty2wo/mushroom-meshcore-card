@@ -1240,6 +1240,28 @@ describe("node neighbors list", () => {
     expect(name?.dataset["entity"]).not.toBe("binary_sensor.meshcore_55733c_ffaaaa01_contact");
   });
 
+  it("claims no contact when two share the neighbour's prefix", async () => {
+    // Taking the first would put another repeater's name on the row and open
+    // its more-info dialog.
+    const hass = createHass();
+    addEntity(hass, "sensor.meshcore_spring_neighbor_aaaa01", state(8.5, { secs_ago: 15 }));
+    for (const [id, name] of [
+      ["binary_sensor.meshcore_55733c_aaaa01bb_contact", "First Match"],
+      ["binary_sensor.meshcore_55733c_aaaa01cc_contact", "Second Match"],
+    ] as const) {
+      addEntity(hass, id, state("on", { adv_name: name }), HUB_DEVICE_ID);
+    }
+    const { card } = renderCard({ ...NODE_TARGET, details_default_open: true }, hass);
+    const dialog = await instantiateDialog(clickForDialog(
+      card,
+      card.shadowRoot!.querySelector("[data-neighbors-dialog]")!
+    ));
+    const name = dialog.shadowRoot!.querySelector<HTMLElement>(".neighbor-name");
+    expect(name?.textContent).toBe("aaaa01");
+    expect(name?.dataset["entity"]).not.toContain("aaaa01bb");
+    expect(name?.dataset["entity"]).not.toContain("aaaa01cc");
+  });
+
   it("does not link a neighbour to a contact published by another hub", async () => {
     const hass = createHass();
     addEntity(hass, "sensor.meshcore_spring_neighbor_aaaa01", state(8.5, { secs_ago: 15 }));

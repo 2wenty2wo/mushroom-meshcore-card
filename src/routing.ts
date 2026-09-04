@@ -128,7 +128,7 @@ export const ROUTE_STYLES = `
   .route-hop::before {
     content: counter(route-hop) ".";
     color: var(--secondary-text-color, #727272);
-    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-size: var(--mushroom-meshcore-secondary-font-size, 12px);
     font-variant-numeric: tabular-nums;
   }
   .route-hop-name {
@@ -136,24 +136,48 @@ export const ROUTE_STYLES = `
     overflow-wrap: anywhere;
     text-align: left;
   }
+  /* Self-contained on purpose. This markup also renders inside the dialog's own
+     shadow root, which sees neither the card's chip rules nor the custom
+     properties they read, so every token here carries a literal fallback. */
+  button.route-hop-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--mushroom-meshcore-chip-height, 36px);
+    padding: 0 9px;
+    border: var(--mushroom-meshcore-chip-border-width, 0px) solid
+      var(--mushroom-meshcore-chip-border-color, transparent);
+    border-radius: var(--mushroom-meshcore-chip-radius, 19px);
+    background: var(--mushroom-meshcore-chip-background,
+      var(--ha-card-background, var(--card-background-color, rgba(0, 0, 0, 0.05))));
+    color: var(--primary-text-color, #212121);
+    font-family: inherit;
+    font-size: var(--mushroom-meshcore-secondary-font-size, 12px);
+    font-weight: 700;
+    letter-spacing: var(--mushroom-meshcore-secondary-letter-spacing, 0.4px);
+    cursor: pointer;
+  }
+  button.route-hop-link:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
   .route-hop-hash {
     direction: ltr;
     unicode-bidi: isolate;
     color: var(--secondary-text-color, #727272);
     font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
-    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-size: var(--mushroom-meshcore-secondary-font-size, 12px);
     font-variant-numeric: tabular-nums;
   }
   .route-hop-unresolved {
     color: var(--secondary-text-color, #727272);
-    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-size: var(--mushroom-meshcore-secondary-font-size, 12px);
   }
   .route-hop-candidates {
     grid-column: 2 / -1;
     margin: 2px 0 0;
     padding-inline-start: 18px;
     color: var(--secondary-text-color, #727272);
-    font-size: var(--mushroom-meshcore-secondary-font-size);
+    font-size: var(--mushroom-meshcore-secondary-font-size, 12px);
   }
 `;
 
@@ -173,7 +197,7 @@ export function renderRouteHops(
     if (hop.kind === "resolved") {
       const name = `<bdi>${escapeHtml(hop.name)}</bdi>`;
       const body = hop.entityId
-        ? `<button type="button" class="route-hop-name chip clickable" data-entity="${escapeHtml(
+        ? `<button type="button" class="route-hop-name route-hop-link" data-entity="${escapeHtml(
           hop.entityId
         )}" aria-label="${escapeHtml(hop.name)}">${name}</button>`
         : `<span class="route-hop-name">${name}</span>`;

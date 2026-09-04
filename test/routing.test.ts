@@ -3,7 +3,7 @@
 // lists the wrong repeater first so take-first is caught, and the interior-hop
 // case would pass if neighbours were consulted everywhere.
 import { describe, expect, it } from "vitest";
-import { resolveRouteHops } from "../src/routing.js";
+import { ROUTE_STYLES, renderRouteHops, resolveRouteHops } from "../src/routing.js";
 import type { DiscoveredContact } from "../src/discovery.js";
 
 const contact = (
@@ -129,5 +129,28 @@ describe("resolveRouteHops", () => {
 
   it("returns nothing for a direct or flood route", () => {
     expect(resolveRouteHops([], THREE_WAY, ["28c222"])).toEqual([]);
+  });
+});
+
+describe("renderRouteHops styling", () => {
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    vars?.["n"] === undefined ? key : `${key}:${vars["n"]}`;
+
+  it("styles the hop link itself rather than borrowing the card's chip rules", () => {
+    // The same markup renders inside the dialog's shadow root, which sees
+    // neither `.chip` nor the custom properties it reads.
+    const html = renderRouteHops(
+      [{ token: "28", kind: "resolved", name: "Mount Annan Rpt", entityId: "binary_sensor.x" }],
+      t
+    );
+    expect(html).toContain("route-hop-link");
+    expect(html).not.toMatch(/class="[^"]*\bchip\b/);
+    expect(ROUTE_STYLES).toContain("button.route-hop-link");
+  });
+
+  it("gives every custom property a literal fallback", () => {
+    // A token with no fallback resolves to nothing outside the card.
+    const withoutFallback = ROUTE_STYLES.match(/var\(--[a-z-]+\)/g) ?? [];
+    expect(withoutFallback).toEqual([]);
   });
 });

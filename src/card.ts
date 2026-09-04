@@ -993,10 +993,15 @@ export class MeshcoreCard extends HTMLElement {
       if (!recent || data.snr === undefined || !data.snrId) continue;
 
       let neighborName = data.resolvedName ?? neighborId.substring(0, 8);
+      // Only an unambiguous match may claim the neighbour. Two contacts can
+      // share its prefix, and a legacy contact exposing a short key can prefix
+      // several neighbours at once — taking the first would put another
+      // repeater's name on the row and open its more-info dialog.
       const token = neighborId.toUpperCase();
-      const match = contactIndex.find(
+      const matches = contactIndex.filter(
         (contact) => contact.key.startsWith(token) || token.startsWith(contact.key)
       );
+      const match = matches.length === 1 ? matches[0] : undefined;
       const contactEntityId = match?.entityId ?? null;
       if (match?.name && !data.resolvedName) neighborName = match.name;
 
