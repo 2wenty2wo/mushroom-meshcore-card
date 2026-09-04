@@ -10,6 +10,7 @@ import {
   type StatusSnapshot,
   type StatusUnknownCheck,
 } from "./status-model.js";
+import { statusBadgeSummary } from "./status-summary.js";
 import {
   STATUS_DIALOG_TAG,
   statusDialogImport,
@@ -93,39 +94,7 @@ const BADGE_STYLES = `
   }
 `;
 
-function issueLabel(t: LocalizeFunc, count: number): string {
-  return count === 1
-    ? t("card.status_issue_one")
-    : t("card.status_issue_count", { n: count });
-}
-
-function unknownLabel(t: LocalizeFunc, count: number): string {
-  return count === 1
-    ? t("card.status_unknown_one")
-    : t("card.status_unknown_count", { n: count });
-}
-
-/** Factual, compact badge state shared by its visual and accessible labels. */
-export function statusBadgeSummary(
-  snapshot: StatusSnapshot,
-  t: LocalizeFunc
-): string {
-  if (snapshot.hub.state === "offline") return t("card.status_hub_offline");
-  if (snapshot.issueCount > 0) {
-    const issues = issueLabel(t, snapshot.issueCount);
-    return snapshot.unknownCount > 0
-      ? `${issues} · ${unknownLabel(t, snapshot.unknownCount)}`
-      : issues;
-  }
-  if (snapshot.severity === "unknown") return t("card.status_unknown");
-  if (snapshot.monitoredCount > 0) {
-    return t("card.status_online_count", {
-      online: snapshot.onlineCount,
-      total: snapshot.monitoredCount,
-    });
-  }
-  return t("card.status_hub_online");
-}
+export { statusBadgeSummary };
 
 /** Add category counts for assistive technology without crowding the badge. */
 export function statusBadgeAccessibleSummary(

@@ -490,11 +490,15 @@ describe("node rendering details", () => {
     expect(body).toContain(">Online");
   });
 
-  it("does not treat a non-binary online sensor as authoritative", () => {
+  it("treats a legacy online sensor as explicit when no binary sensor exists", () => {
+    // An integration-reported state beats the uptime freshness heuristic: a
+    // node's `last_updated` also moves on a Home Assistant restart, so
+    // freshness is the weaker signal even though it is more recent.
     const hass = createHass();
     addEntity(hass, nodeEntity("online"), state("off"));
     const { body } = renderCard(NODE_TARGET, hass);
-    expect(body).toContain(">Online");
+    expect(body).toContain(">Offline");
+    expect(body).not.toContain('class="metrics-grid');
   });
 
   it("uses a legacy online sensor when stronger fallback signals are absent", () => {

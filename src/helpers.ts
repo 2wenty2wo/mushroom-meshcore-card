@@ -130,6 +130,21 @@ export function longestCommonSuffix(strs: string[]): string {
   return [...longestCommonPrefix(rev)].reverse().join("");
 }
 
+/** Approximate Home Assistant's `slugify` for a device/entity display name.
+ *  NFD decomposition splits an accented letter into an ASCII base plus a
+ *  combining mark, so dropping every non-ASCII code point transliterates
+ *  rather than mangles: "Café" becomes `cafe`, not `caf_`. Used to predict
+ *  the entity-ID slug a device carries. */
+export function slugifyName(value: unknown): string {
+  const ascii = [...String(value ?? "").normalize("NFD")]
+    .filter((ch) => ch.codePointAt(0)! < 128)
+    .join("");
+  return ascii
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 export function isOnlineState(v: unknown): boolean {
   // "on" covers binary_sensor connectivity entities (e.g. *_online_*),
   // which the meshcore-ha integration uses for repeater status.

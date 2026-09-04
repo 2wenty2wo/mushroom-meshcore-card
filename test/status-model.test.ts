@@ -118,7 +118,8 @@ describe("buildStatusSnapshot", () => {
     const hass = onlineHass();
     hass.states[NODE_ONLINE_ENTITY]!.state = "unknown";
     const snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
-    expect(snapshot.severity).toBe("unknown");
+    // An unreadable check is a gap in telemetry, not a sick hub.
+    expect(snapshot.severity).toBe("healthy");
     expect(snapshot.issueCount).toBe(0);
     expect(snapshot.unknownCount).toBe(1);
     expect(snapshot.unknownChecks[0]).toMatchObject({ kind: "node_status" });
@@ -550,5 +551,46 @@ describe("buildStatusSnapshot", () => {
     const snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
     expect(snapshot.severity).toBe("healthy");
     expect(snapshot.monitoredCount).toBe(0);
+  });
+});
+
+describe("renamed node devices", () => {
+  // Regression for the original report: Home Assistant never rewrites existing
+  // entity IDs when a device is renamed, so the connectivity sensor created
+  // after the rename carried a slug no other entity shared. The single
+  // majority suffix could not strip it, the lookup returned null, and the node
+  // card (which had an uptime fallback) said Online while the status card
+  // (which had none) said Unknown for the very same node.
+  function renamedHass(): HomeAssistant {
+    const hass = createHass();
+    const onlineId = "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm_2";
+    addEntity(hass, onlineId, "on", NODE_DEVICE_ID, {
+      last_successful_request: 1_700_000_000,
+    });
+    hass.devices[NODE_DEVICE_ID]!.name_by_user = "Spring Farm 2";
+    return hass;
+  }
+
+  it("resolves connectivity from the post-rename entity", () => {
+    const node = buildStatusSnapshot(renamedHass(), HUB_PUBKEY)!.nodes.items[0]!;
+    expect(node.state).toBe("online");
+    expect(node.entityId).toBe(
+      "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm_2"
+    );
+  });
+
+  it("counts the node as online rather than as an unknown check", () => {
+    const snapshot = buildStatusSnapshot(renamedHass(), HUB_PUBKEY)!;
+    expect(snapshot.onlineCount).toBe(1);
+    expect(snapshot.nodeUnknownCount).toBe(0);
+    expect(snapshot.unknownChecks).toEqual([]);
+  });
+
+  it("still reads the pre-rename battery entity", () => {
+    const node = buildStatusSnapshot(renamedHass(), HUB_PUBKEY)!.nodes.items[0]!;
+    expect(node.batteryEntityId).toBe(
+      `${NODE_PREFIX}battery_percentage${NODE_SUFFIX}`
+    );
+    expect(node.batteryPercent).toBe(90.33);
   });
 });

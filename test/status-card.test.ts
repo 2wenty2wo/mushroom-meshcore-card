@@ -148,12 +148,12 @@ describe("MeshcoreStatusCard", () => {
 
   it("keeps unknown checks separate while retaining the online denominator", () => {
     const card = createCard({ target }, statusHass("unknown"));
-    expect(shadowBody(card)).toContain("1 unknown · 0/1 online");
+    expect(shadowBody(card)).toContain("0/1 online · 1 node unknown");
     expect(
       card.shadowRoot!.querySelector('[data-row-id="node:node-device:status"]')
     ).not.toBeNull();
     expect(card.shadowRoot!.querySelector("ha-card")?.className).toContain(
-      "status-unknown"
+      "status-healthy"
     );
   });
 

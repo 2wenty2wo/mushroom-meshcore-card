@@ -18,6 +18,7 @@ import { STYLES } from "./styles.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
 import {
   findScopedEntity,
+  resolveNodeConnectivity,
   type EntityLookupOptions,
 } from "./entity-resolver.js";
 import { makeLocalize, type LocalizeFunc } from "./localize.js";
@@ -575,7 +576,7 @@ export class MeshcoreCard extends HTMLElement {
     deviceId: string,
     metric: string,
     ePrefix: string,
-    eSuffix: string,
+    eSuffixes: readonly string[],
     options?: EntityLookupOptions
   ): string | null {
     if (!this._hass?.entities) return null;
@@ -584,7 +585,7 @@ export class MeshcoreCard extends HTMLElement {
       deviceId,
       metric,
       ePrefix,
-      eSuffix,
+      eSuffixes,
       options
     );
   }
@@ -601,10 +602,10 @@ export class MeshcoreCard extends HTMLElement {
     deviceId: string,
     metrics: readonly string[],
     ePrefix: string,
-    eSuffix: string
+    eSuffixes: readonly string[]
   ): string | null {
     for (const metric of metrics) {
-      const entityId = this._findEntityByDevice(deviceId, metric, ePrefix, eSuffix);
+      const entityId = this._findEntityByDevice(deviceId, metric, ePrefix, eSuffixes);
       if (entityId && this._hass?.states[entityId]) return entityId;
     }
     return null;
@@ -1138,27 +1139,17 @@ export class MeshcoreCard extends HTMLElement {
   // ── Node rendering ─────────────────────────────────────────────────────────
 
   private _buildNodeViewModel(node: NodeInfo, t: LocalizeFunc): NodeViewModel {
-    const { name, deviceId, ePrefix, eSuffix } = node;
-    const p = (m: string) => this._findEntityByDevice(deviceId, m, ePrefix, eSuffix);
+    const { name, deviceId, ePrefix, eSuffixes } = node;
+    const p = (m: string) => this._findEntityByDevice(deviceId, m, ePrefix, eSuffixes);
     const pAliases = (...metrics: string[]) =>
-      this._findStateBackedEntityByDevice(deviceId, metrics, ePrefix, eSuffix);
+      this._findStateBackedEntityByDevice(deviceId, metrics, ePrefix, eSuffixes);
 
-    // Common entities
-    const authoritativeOnlineId = this._findEntityByDevice(
-      deviceId,
-      "online",
-      ePrefix,
-      eSuffix,
-      { domain: "binary_sensor", enabledOnly: true, platform: "meshcore" }
-    );
-    const legacyOnlineStatusId = this._findEntityByDevice(
-      deviceId,
-      "online",
-      ePrefix,
-      eSuffix,
-      { domain: "sensor", enabledOnly: true, platform: "meshcore" }
-    );
-    const statusId  = legacyOnlineStatusId ?? p("status");
+    // Common entities. Connectivity is resolved by the shared helper so this
+    // card and the status model cannot disagree about the same node.
+    const conn = this._hass
+      ? resolveNodeConnectivity(this._hass, node)
+      : null;
+    const statusId  = conn?.statusEntityId ?? null;
     const successId = p("request_successes");
     const rssiId    = p("last_rssi");
     const snrId     = p("last_snr");
@@ -1208,7 +1199,6 @@ export class MeshcoreCard extends HTMLElement {
     const illumId     = this._config?.illuminance_entity ?? p("illuminance");
     const pressId     = this._config?.pressure_entity ?? p("pressure");
 
-    const status  = this._val(statusId);
     const lastAdv = this._val(advertId);
     const rawLat  = locEntityId ? this._attr(locEntityId, "latitude")
                   : contactId  ? this._attr(contactId, "adv_lat") ?? this._attr(contactId, "latitude")
@@ -1222,7 +1212,6 @@ export class MeshcoreCard extends HTMLElement {
     const lon     = rawLon != null && Number.isFinite(lonNumber) && lonNumber !== 0 ? rawLon : null;
     const locId   = locEntityId ?? contactId ?? latId;
 
-    const successes = this._val(successId);
     const lastSeen  = formatLastSeen(lastAdv, t);
 
     // Repeater signals: airtime / rx_airtime / noise_floor entities
@@ -1239,38 +1228,7 @@ export class MeshcoreCard extends HTMLElement {
     })();
     const isSensor = !isRepeater && !!(p("temperature") || p("humidity") || p("illuminance"));
 
-    // meshcore-ha's enabled, device-scoped connectivity binary sensor is the
-    // authority when present. Its unknown state intentionally means the node
-    // has not yet been polled successfully during this integration session.
-    let connectivity: NodeConnectivityState;
-    if (authoritativeOnlineId) {
-      const onlineState = this._hass?.states[authoritativeOnlineId]?.state
-        .trim()
-        .toLowerCase();
-      connectivity = onlineState === "on"
-        ? "online"
-        : onlineState === "off"
-          ? "offline"
-          : "unknown";
-    } else {
-      // Compatibility fallback for older integrations, or when users have
-      // explicitly disabled the dedicated online entity.
-      const uptimeState = uptimeId ? this._hass?.states[uptimeId] : null;
-      let legacyOnline: boolean;
-      if (uptimeState) {
-        if (["unavailable", "unknown"].includes(uptimeState.state)) {
-          legacyOnline = false;
-        } else {
-          const ts = new Date(uptimeState.last_updated).getTime();
-          legacyOnline = !isNaN(ts) && (Date.now() - ts) < 6 * 3600 * 1000;
-        }
-      } else {
-        legacyOnline = successes !== null
-          ? Number(successes) > 0
-          : isOnlineState(status);
-      }
-      connectivity = legacyOnline ? "online" : "offline";
-    }
+    const connectivity: NodeConnectivityState = conn?.state ?? "unknown";
 
     // RF settings are retained in the collapsed detail area.
     const sfEntity = p("spreading_factor");
@@ -1321,7 +1279,8 @@ export class MeshcoreCard extends HTMLElement {
       isSensor,
       icon: isRepeater ? "mdi:radio-tower" : isSensor ? "mdi:access-point" : "mdi:radio-handheld",
       firmwareVersion: this._firmwareVersion(deviceId),
-      primaryEntityId: authoritativeOnlineId ?? contactId ?? statusId ?? uptimeId ?? rssiId,
+      primaryEntityId:
+        conn?.binaryEntityId ?? contactId ?? statusId ?? uptimeId ?? rssiId,
       lastSeen,
       rssi: this._reading(rssiId, true),
       snr: this._reading(snrId, true),

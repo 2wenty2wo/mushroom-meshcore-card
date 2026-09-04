@@ -4,6 +4,7 @@ import {
   discoverNodes,
   findEntityByDevice,
   isDeviceOnHub,
+  nodeSuffixCandidates,
 } from "../src/discovery.js";
 import type { HassEntityRegistryEntry, HomeAssistant } from "../src/types.js";
 import {
@@ -63,7 +64,7 @@ describe("discoverNodes", () => {
     expect(node.name).toBe(NODE_NAME);
     expect(node.deviceId).toBe(NODE_DEVICE_ID);
     expect(node.ePrefix).toBe(NODE_PREFIX);
-    expect(node.eSuffix).toBe(NODE_SUFFIX);
+    expect(node.eSuffixes).toEqual([NODE_SUFFIX]);
   });
 
   it("does not report the hub device as a node", () => {
@@ -105,7 +106,7 @@ describe("discoverNodes", () => {
       hass.entities[entityId] = registryEntry(NODE_DEVICE_ID);
     }
     const node = discoverNodes(hass)[0]!;
-    expect(node.eSuffix).toBe(NODE_SUFFIX);
+    expect(node.eSuffixes).toEqual([NODE_SUFFIX]);
     expect(node.ePrefix).toBe(NODE_PREFIX);
   });
 
@@ -143,7 +144,7 @@ describe("findEntityByDevice", () => {
     "sensor.other_device_battery_percentage": registryEntry("other-device"),
   };
   const find = (metric: string) =>
-    findEntityByDevice(entities, NODE_DEVICE_ID, metric, NODE_PREFIX, NODE_SUFFIX);
+    findEntityByDevice(entities, NODE_DEVICE_ID, metric, NODE_PREFIX, [NODE_SUFFIX]);
 
   it("matches a metric after stripping the discovered prefix/suffix", () => {
     expect(find("battery_percentage")).toBe(
@@ -166,7 +167,7 @@ describe("findEntityByDevice", () => {
         NODE_DEVICE_ID,
         "airtime",
         NODE_PREFIX,
-        NODE_SUFFIX
+        [NODE_SUFFIX]
       )
     ).toBe(`${NODE_PREFIX}airtime${NODE_SUFFIX}`);
   });
@@ -178,20 +179,146 @@ describe("findEntityByDevice", () => {
 
   it("only considers entities of the requested device", () => {
     expect(
-      findEntityByDevice(entities, "other-device", "rssi", "", "")
+      findEntityByDevice(entities, "other-device", "rssi", "", [])
     ).toBeNull();
-    expect(findEntityByDevice(entities, "", "rssi", NODE_PREFIX, NODE_SUFFIX)).toBeNull();
+    expect(
+      findEntityByDevice(entities, "", "rssi", NODE_PREFIX, [NODE_SUFFIX])
+    ).toBeNull();
   });
 
-  it("falls back to a plain _metric ending for legacy entity IDs", () => {
-    // The discovered suffix fits most entities but not this outlier, so the
-    // first (prefix/suffix-stripping) pass misses and the fallback must hit.
+  it("resolves an entity that carries none of the discovered suffixes", () => {
+    // No candidate matches this outlier, so its core keeps the full tail and
+    // the exact pass still recognises it once the prefix is stripped.
     const legacy: Record<string, HassEntityRegistryEntry> = {
       "sensor.node_temperature_home": registryEntry("legacy-device"),
       "sensor.node_battery": registryEntry("legacy-device"),
     };
     expect(
-      findEntityByDevice(legacy, "legacy-device", "battery", "sensor.node_", "_home")
+      findEntityByDevice(legacy, "legacy-device", "battery", "sensor.node_", [
+        "_home",
+      ])
     ).toBe("sensor.node_battery");
+  });
+
+  it("falls back to a plain _metric ending when a suffix swallows the metric", () => {
+    // Stripping `_seen` leaves the core as `last`, so both suffix-aware passes
+    // miss and only the legacy raw-ID pass can still resolve the entity.
+    const swallowed: Record<string, HassEntityRegistryEntry> = {
+      "sensor.node_last_seen": registryEntry("legacy-device"),
+    };
+    expect(
+      findEntityByDevice(swallowed, "legacy-device", "seen", "sensor.node_", [
+        "_seen",
+      ])
+    ).toBe("sensor.node_last_seen");
+  });
+});
+
+describe("nodeSuffixCandidates", () => {
+  const device = { name: "MeshCore Spring Farm", name_by_user: null };
+
+  it("offers the majority suffix first and the device slug alongside it", () => {
+    const ids = [
+      `${NODE_PREFIX}uptime${NODE_SUFFIX}`,
+      `${NODE_PREFIX}last_rssi${NODE_SUFFIX}`,
+      `${NODE_PREFIX}last_snr${NODE_SUFFIX}`,
+    ];
+    expect(nodeSuffixCandidates(device, ids)).toEqual([NODE_SUFFIX]);
+  });
+
+  it("keeps the majority suffix when the device name no longer matches it", () => {
+    const ids = [
+      `${NODE_PREFIX}uptime${NODE_SUFFIX}`,
+      `${NODE_PREFIX}last_rssi${NODE_SUFFIX}`,
+    ];
+    const renamed = { name: "MeshCore Spring Farm", name_by_user: "Renamed" };
+    expect(nodeSuffixCandidates(renamed, ids)).toEqual([NODE_SUFFIX]);
+  });
+
+  it("recovers both slugs of a device renamed after some entities existed", () => {
+    const ids = [
+      "sensor.meshcore_e963_uptime_mount_annan_mid",
+      "sensor.meshcore_e963_last_rssi_mount_annan_mid",
+      "sensor.meshcore_e963_battery_percentage_mount_annan_mid",
+      "binary_sensor.meshcore_e963_online_mount_annan_2",
+    ];
+    const renamed = { name: "MeshCore Mount Annan Mid", name_by_user: "Mount Annan 2" };
+    const candidates = nodeSuffixCandidates(renamed, ids);
+    expect(candidates).toContain("_mount_annan_mid");
+    expect(candidates).toContain("_mount_annan_2");
+  });
+
+  it("recovers the pre-rename slug from the entities alone", () => {
+    // The device carries only the new name, so the old slug has to come from
+    // the majority vote rather than from either name source.
+    const ids = [
+      "sensor.meshcore_e963_uptime_mount_annan_mid",
+      "sensor.meshcore_e963_last_rssi_mount_annan_mid",
+      "sensor.meshcore_e963_last_snr_mount_annan_mid",
+      "sensor.meshcore_e963_noise_floor_mount_annan_mid",
+      "binary_sensor.meshcore_e963_online_mount_annan_2",
+    ];
+    const candidates = nodeSuffixCandidates(
+      { name: null, name_by_user: "Mount Annan 2" },
+      ids
+    );
+    expect(candidates).toContain("_mount_annan_mid");
+    expect(candidates).toContain("_mount_annan_2");
+  });
+
+  it("still resolves metrics on a device too small for a clean majority", () => {
+    // majoritySuffix returns a whole entity ID for one or two entities. The
+    // per-entity length guard has to stop that candidate swallowing an entity.
+    const uptime = "sensor.meshcore_e963_uptime_solo";
+    const online = "binary_sensor.meshcore_e963_online_solo";
+    const device = { name: "Solo", name_by_user: null };
+    const entities: Record<string, HassEntityRegistryEntry> = {
+      [uptime]: registryEntry("solo-device"),
+      [online]: registryEntry("solo-device"),
+    };
+    const suffixes = nodeSuffixCandidates(device, [uptime, online]);
+    expect(
+      findEntityByDevice(entities, "solo-device", "uptime", "", suffixes)
+    ).toBe(uptime);
+    expect(
+      findEntityByDevice(entities, "solo-device", "online", "", suffixes)
+    ).toBe(online);
+  });
+});
+
+describe("renamed devices", () => {
+  // Regression: Home Assistant never rewrites existing entity IDs on a device
+  // rename, so entities created afterwards carry a different slug. Matching on
+  // a single majority suffix silently lost them.
+  function renamedHass(): HomeAssistant {
+    const hass = createHass();
+    const onlineId = "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm_2";
+    hass.states[onlineId] = state("on");
+    hass.entities[onlineId] = registryEntry(NODE_DEVICE_ID);
+    hass.entities[onlineId]!.entity_id = onlineId;
+    hass.devices[NODE_DEVICE_ID]!.name_by_user = "Spring Farm 2";
+    return hass;
+  }
+
+  it("resolves an entity created after the rename", () => {
+    const node = discoverNodes(renamedHass())[0]!;
+    expect(node.eSuffixes).toContain(NODE_SUFFIX);
+    expect(node.eSuffixes).toContain("_spring_farm_2");
+  });
+
+  it("still resolves the pre-rename entities", () => {
+    const hass = renamedHass();
+    const node = discoverNodes(hass)[0]!;
+    const scoped = Object.fromEntries(
+      Object.entries(hass.entities).filter(
+        ([, info]) => info.device_id === NODE_DEVICE_ID
+      )
+    );
+    expect(
+      findEntityByDevice(scoped, NODE_DEVICE_ID, "online", node.ePrefix, node.eSuffixes)
+    ).toBe("binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm_2");
+    expect(
+      findEntityByDevice(scoped, NODE_DEVICE_ID, "battery_percentage", node.ePrefix, node.eSuffixes)
+    ).toBe(`${NODE_PREFIX}battery_percentage${NODE_SUFFIX}`);
   });
 });

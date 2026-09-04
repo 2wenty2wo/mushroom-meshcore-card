@@ -1,5 +1,5 @@
 import { findEntityByDevice } from "./discovery.js";
-import type { HomeAssistant } from "./types.js";
+import type { HomeAssistant, NodeInfo } from "./types.js";
 
 export interface EntityLookupOptions {
   domain?: string;
@@ -14,7 +14,7 @@ export function findScopedEntity(
   deviceId: string,
   metric: string,
   ePrefix: string,
-  eSuffix: string,
+  eSuffixes: readonly string[],
   options: EntityLookupOptions = {}
 ): string | null {
   const entities = Object.fromEntries(
@@ -28,7 +28,7 @@ export function findScopedEntity(
       return true;
     })
   );
-  return findEntityByDevice(entities, deviceId, metric, ePrefix, eSuffix);
+  return findEntityByDevice(entities, deviceId, metric, ePrefix, eSuffixes);
 }
 
 export type ExplicitConnectivityState = "online" | "offline" | "unknown";
@@ -46,6 +46,108 @@ export function normalizeConnectivityState(
     return "offline";
   }
   return "unknown";
+}
+
+export interface NodeConnectivity {
+  state: ExplicitConnectivityState;
+  /** The entity that decided the state; null when nothing resolved. */
+  entityId: string | null;
+  source:
+    | "binary_online"
+    | "legacy_status"
+    | "uptime"
+    | "request_successes"
+    | "none";
+  /** Enabled meshcore `binary_sensor` `online`. A discovery result, so it is
+   *  populated regardless of whether that entity has a usable state. */
+  binaryEntityId: string | null;
+  /** Legacy `sensor` `online` ?? `sensor` `status`, likewise state-independent. */
+  statusEntityId: string | null;
+}
+
+const UPTIME_FRESH_MS = 6 * 3600 * 1000;
+
+/** Decide whether one managed node is reachable.
+ *
+ *  Shared by the node card and the status model so the two surfaces cannot
+ *  drift: they previously ran separate chains, and a node whose dedicated
+ *  sensor failed to resolve read "Online" on one and "Unknown" on the other.
+ *
+ *  Explicit signals beat heuristics — a state the integration reported is
+ *  better evidence than a freshness guess, not least because `last_updated`
+ *  also moves on a Home Assistant restart. */
+export function resolveNodeConnectivity(
+  hass: Pick<HomeAssistant, "entities" | "states">,
+  node: NodeInfo,
+  options: { now?: number } = {}
+): NodeConnectivity {
+  const scoped = (metric: string, domain?: string): string | null =>
+    findScopedEntity(hass, node.deviceId, metric, node.ePrefix, node.eSuffixes, {
+      domain,
+      enabledOnly: true,
+      platform: "meshcore",
+    });
+
+  const binaryEntityId = scoped("online", "binary_sensor");
+  const statusEntityId =
+    scoped("online", "sensor") ?? scoped("status", "sensor");
+  const base = { binaryEntityId, statusEntityId };
+
+  // meshcore-ha's dedicated connectivity sensor is authoritative when present,
+  // including its unknown state — that means "not yet polled successfully this
+  // session", which is a real answer rather than a gap to paper over.
+  if (binaryEntityId) {
+    return {
+      ...base,
+      state: normalizeConnectivityState(hass.states[binaryEntityId]?.state),
+      entityId: binaryEntityId,
+      source: "binary_online",
+    };
+  }
+
+  const statusState = statusEntityId
+    ? normalizeConnectivityState(hass.states[statusEntityId]?.state)
+    : "unknown";
+  if (statusEntityId && statusState !== "unknown") {
+    return {
+      ...base,
+      state: statusState,
+      entityId: statusEntityId,
+      source: "legacy_status",
+    };
+  }
+
+  // Compatibility for older integrations with no connectivity entity at all.
+  const uptimeId = scoped("uptime");
+  const uptime = uptimeId ? hass.states[uptimeId] : undefined;
+  if (uptime) {
+    // An unavailable uptime still carries a current `last_updated`, so the
+    // freshness check has to be gated on the state being readable.
+    const timestamp = new Date(uptime.last_updated).getTime();
+    const fresh =
+      !isUnavailableState(uptime.state) &&
+      !Number.isNaN(timestamp) &&
+      (options.now ?? Date.now()) - timestamp < UPTIME_FRESH_MS;
+    return {
+      ...base,
+      state: fresh ? "online" : "offline",
+      entityId: uptimeId,
+      source: "uptime",
+    };
+  }
+
+  const successId = scoped("request_successes");
+  const successes = successId ? Number(hass.states[successId]?.state) : Number.NaN;
+  if (Number.isFinite(successes)) {
+    return {
+      ...base,
+      state: successes > 0 ? "online" : "offline",
+      entityId: successId,
+      source: "request_successes",
+    };
+  }
+
+  return { ...base, state: "unknown", entityId: null, source: "none" };
 }
 
 export function isUnavailableState(value: unknown): boolean {
