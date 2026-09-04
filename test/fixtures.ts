@@ -49,6 +49,8 @@ export const V29_REPEATER_METRICS = {
 } as const;
 
 export const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
+export const NODE_CONTACT_ENTITY =
+  "binary_sensor.meshcore_spring_farm_a1b2c3d4e5f6_contact";
 
 export function state(
   value: unknown,
@@ -168,6 +170,33 @@ export function createV29RepeaterHass(): HomeAssistant {
     entry.entity_id = entityId;
     hass.entities[entityId] = entry;
   }
+  return hass;
+}
+
+/** createHass plus the node's contact binary_sensor, carrying the routing
+ *  attributes that the per-node `out_path_len` sensor reports as `unknown` on
+ *  most real hardware.
+ *
+ *  Deliberately kept separate from `createHass`: every other fixture pairs the
+ *  Spring Farm node with no matching contact, which is why the routing fallback
+ *  stays dormant across the rest of the suite. Adding a contact to `createHass`
+ *  would quietly change `path_length` and `route` chips everywhere.
+ *
+ *  Two traps if you extend the defaults: `adv_lat`/`adv_lon` would introduce a
+ *  Location section and change `locationEntityId`, and merely having a matching
+ *  contact promotes it ahead of `uptimeId` in `primaryEntityId`, so tests built
+ *  on this fixture must not assert header more-info. */
+export function createRoutingContactHass(
+  attributes: Record<string, unknown> = { out_path: "", out_path_len: -1 },
+  options: { sensors?: boolean } = {}
+): HomeAssistant {
+  const hass = options.sensors === false ? createHass() : createV29RepeaterHass();
+  const contactState = state("fresh", { adv_name: NODE_NAME, ...attributes });
+  contactState.entity_id = NODE_CONTACT_ENTITY;
+  hass.states[NODE_CONTACT_ENTITY] = contactState;
+  const contactEntry = registryEntry(HUB_DEVICE_ID);
+  contactEntry.entity_id = NODE_CONTACT_ENTITY;
+  hass.entities[NODE_CONTACT_ENTITY] = contactEntry;
   return hass;
 }
 

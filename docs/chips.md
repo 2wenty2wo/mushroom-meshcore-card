@@ -93,8 +93,10 @@ The entity column lists the preferred MeshCore metric suffix, not a full entity 
 | `firmware` | Firmware | Device registry `sw_version` | text | Hidden |
 | `uptime` | Uptime | `uptime` | days formatted as days/hours | Top |
 | `neighbor_count` | Neighbours heard | Device-scoped neighbour sensors | rolling 48-hour count | Top |
-| `route` | Route | `out_path`, then `routing_path` | text | Details |
-| `path_length` | Path length | `out_path_len`, then `path_length` | count | Details |
+| `route` | Route | `out_path`, then `routing_path`, then the contact entity's `out_path` attribute | text | Details |
+| `path_length` | Path length | `out_path_len`, then `path_length`, then the contact entity's `out_path_len` attribute | `Direct`, `Flood`, or a hop count | Details, plus a header badge |
+
+Routing state is worded rather than shown as a raw number: `-1` means no established route (`Flood`), `0` means the hub reaches the node directly (`Direct`), and anything higher is a hop count. It also appears as a badge beside the node name, because it explains why a flood-routed node reports little else. On most real nodes the per-node `out_path_len` sensor sits at `unknown` while the same value stays live on the node's contact entity, so the contact attribute is used whenever the sensor is unreadable; the chip then opens whichever entity supplied the value.
 
 The neighbour chip is shown only when the integration exposes neighbour data and `show_neighbors` is not false. It opens the recent-neighbours dialog rather than an entity more-info dialog.
 
@@ -193,6 +195,8 @@ Subscribed repeaters can expose the diagnostics defined by the official [MeshCor
 | `route` | `out_path` | `routing_path` |
 | `path_length` | `out_path_len` | `path_length` |
 | Repeater battery voltage | `bat` | `battery_voltage` |
+
+`route` and `path_length` fall back once more, to the node contact entity's `out_path` and `out_path_len` attributes, whenever every sensor in the chain is unreadable. That fallback carries most real installs, where the per-node sensors report `unknown`.
 
 The direct/flood counters, specialized rates, airtime totals, and poll reliability chips use their v2.9 suffixes shown above. Exact device-scoped matching prevents similarly named sensors such as `airtime` and `rx_airtime` from being confused.
 

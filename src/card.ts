@@ -9,6 +9,7 @@ import {
   isOnlineState,
   formatLastSeen,
   batteryColor,
+  formatPathLength,
   formatUptime,
   escapeHtml,
   mapLinkUrl,
@@ -18,6 +19,7 @@ import { STYLES } from "./styles.js";
 import { discoverHubs, discoverNodes } from "./discovery.js";
 import {
   findScopedEntity,
+  isUnavailableState,
   resolveNodeConnectivity,
   type EntityLookupOptions,
 } from "./entity-resolver.js";
@@ -359,9 +361,24 @@ export class MeshcoreCard extends HTMLElement {
       .map(([entityId, info]) => `${entityId}:${info.disabled_by ?? "enabled"}`)
       .sort()
       .join("|");
+    // Home Assistant moves `last_updated` when only attributes change, never
+    // `last_changed`, so routing state read off the contact entity would not
+    // register here on its own. Fold it in for the target node's contact only:
+    // doing it for every contact would rebuild the fingerprint on each of the
+    // hundreds a busy mesh carries and defeat the render throttle.
+    const targetNodeName = target?.type === "node" ? target.id : null;
     const stateFp = Object.entries(hass.states)
       .filter(([id]) => id.includes("meshcore") || overrides.has(id))
-      .map(([id, s]) => `${id}=${s.state}@${s.last_changed}`)
+      .map(([id, s]) => {
+        const routing =
+          targetNodeName &&
+          String(s.attributes["adv_name"] ?? "") === targetNodeName
+            ? `#${String(s.attributes["out_path"] ?? "")}/${String(
+                s.attributes["out_path_len"] ?? ""
+              )}`
+            : "";
+        return `${id}=${s.state}@${s.last_changed}${routing}`;
+      })
       .join("|");
     const fp = `${stateFp}|device=${deviceFp}|online-registry=${onlineRegistryFp}`;
     if (fp === this._fp) return;
@@ -673,6 +690,39 @@ export class MeshcoreCard extends HTMLElement {
     }
     if (numeric && !Number.isFinite(Number(value))) return { id, value: null };
     return { id, value };
+  }
+
+  /** The attribute-sourced counterpart to `_reading`.
+   *
+   *  Several MeshCore metrics are published both as a per-node sensor and as an
+   *  attribute of the node's contact entity, and on most real hardware the
+   *  sensor state sits at `unknown` while the attribute stays live. */
+  private _attrReading(
+    id: string | null,
+    attr: string,
+    numeric = false
+  ): EntityReading {
+    const raw = this._attr(id, attr);
+    if (raw === null || raw === undefined) return { id, value: null };
+    const value = String(raw);
+    if (isUnavailableState(value)) return { id, value: null };
+    if (numeric && !Number.isFinite(Number(value))) return { id, value: null };
+    return { id, value };
+  }
+
+  /** The first reading that carries a usable value.
+   *
+   *  `id` follows the value, so more-info opens whichever entity actually
+   *  supplied the number rather than the one we looked at first. When neither
+   *  resolved a value the primary's id is kept, so an absent metric still
+   *  reports where it would have come from. */
+  private _preferReading(
+    primary: EntityReading,
+    fallback: EntityReading
+  ): EntityReading {
+    if (primary.value !== null) return primary;
+    if (fallback.value !== null) return fallback;
+    return primary;
   }
 
   private _firmwareVersion(deviceId: string): string | null {
@@ -1174,7 +1224,10 @@ export class MeshcoreCard extends HTMLElement {
       }
     }
     const locEntityId = this._config?.location_entity ?? null;
-    const contactId   = locEntityId ? null : this._contactEntity(name);
+    // Routing reads the contact entity even when a location override is set,
+    // so resolve it once and let only the location branch honour the override.
+    const nodeContactId = this._contactEntity(name);
+    const contactId   = locEntityId ? null : nodeContactId;
     const latId       = locEntityId ? null : p("latitude");
     const lonId       = locEntityId ? null : p("longitude");
 
@@ -1245,6 +1298,18 @@ export class MeshcoreCard extends HTMLElement {
     }
     const uptimeReading = this._reading(uptimeId, true);
     uptimeReading.value = formatUptime(uptimeReading.value);
+
+    // The per-node `out_path_len` sensor reports `unknown` on most real nodes,
+    // while the same value stays live on the contact entity's attributes.
+    const routeReading = this._preferReading(
+      this._reading(routeId),
+      this._attrReading(nodeContactId, "out_path")
+    );
+    const pathLengthReading = this._preferReading(
+      this._reading(pathId, true),
+      this._attrReading(nodeContactId, "out_path_len", true)
+    );
+    pathLengthReading.value = formatPathLength(pathLengthReading.value, t);
     const batteryVoltage = this._reading(battVId, true);
     if (batteryVoltage.value !== null && Number(batteryVoltage.value) < 0.001) {
       batteryVoltage.value = null;
@@ -1292,8 +1357,8 @@ export class MeshcoreCard extends HTMLElement {
       humidity: this._reading(humidId, true),
       illuminance: this._reading(illumId, true),
       pressure: this._reading(pressId, true),
-      route: this._reading(routeId),
-      pathLength: this._reading(pathId, true),
+      route: routeReading,
+      pathLength: pathLengthReading,
       uptime: uptimeReading,
       relayed: this._reading(relayedId, true),
       canceled: this._reading(canceledId, true),
@@ -1324,13 +1389,24 @@ export class MeshcoreCard extends HTMLElement {
         : t("card.last_seen", { time: vm.lastSeen })
       : "";
     const secondary = `${stateLabel}${lastSeen ? ` · ${lastSeen}` : ""}`;
+    // The secondary line is a single ellipsised row already carrying last-seen,
+    // so routing state rides in the header's trailing slot instead. `_chip`
+    // yields "" without a value, which is what hides the badge on a node whose
+    // path we could not read.
+    const routingBadge = this._chip(
+      vm.pathLength.id,
+      "",
+      vm.pathLength.value,
+      "routing-badge",
+      [t("card.path_length"), vm.pathLength.value ?? ""].join(" ")
+    );
     return this._renderDeviceHeader(
       vm.displayName,
       secondary,
       vm.icon,
       vm.connectivity === "online",
       vm.primaryEntityId,
-      "",
+      routingBadge,
       vm.connectivity === "unknown" ? "unknown" : "offline",
       vm.connectivity === "unknown" ? "mdi:help" : undefined
     );

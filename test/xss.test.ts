@@ -22,12 +22,14 @@ import {
   HUB_DEVICE_ID,
   HUB_PUBKEY,
   HUB_STATUS_ENTITY,
+  NODE_CONTACT_ENTITY,
   NODE_DEVICE_ID,
   NODE_NAME,
   NODE_PREFIX,
   NODE_SUFFIX,
   createChannelHass,
   createHass,
+  createRoutingContactHass,
   defineOnce,
   registryEntry,
   state,
@@ -312,6 +314,34 @@ describe("hostile advert names in the device card", () => {
       expect(chip).not.toBeNull();
       expect(chip!.textContent ?? "").toContain(payload);
       expect(chip!.getAttribute("title")).toBe(`Route ${payload}`);
+      expectNoInjection(card.shadowRoot);
+    }
+  );
+
+  it.each(PAYLOADS)(
+    "escapes a crafted route carried on the contact entity's attributes: %s",
+    (payload) => {
+      // The routing fallback reads straight off a contact advert, so an
+      // attacker-chosen `out_path` reaches markup without passing through any
+      // sensor state the integration might have sanitised.
+      const hass = createRoutingContactHass({ out_path: payload, out_path_len: 1 });
+      const routeEntity = `${NODE_PREFIX}out_path${NODE_SUFFIX}`;
+      addEntity(hass, routeEntity, state("unknown"));
+
+      const card = renderCard(
+        { target: { type: "node", id: NODE_NAME }, details_default_open: true },
+        hass
+      );
+
+      // The contact also backs the header and the routing badge, so pick the
+      // Details chip by its label rather than taking the first match.
+      const chip = Array.from(
+        card.shadowRoot!.querySelectorAll<HTMLElement>(
+          `.detail-chips [data-entity="${NODE_CONTACT_ENTITY}"]`
+        )
+      ).find((el) => el.querySelector(".chip-label")?.textContent?.trim() === "Route");
+      expect(chip).not.toBeUndefined();
+      expect(chip!.textContent ?? "").toContain(payload);
       expectNoInjection(card.shadowRoot);
     }
   );

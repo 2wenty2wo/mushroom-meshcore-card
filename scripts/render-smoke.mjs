@@ -657,6 +657,9 @@ assert.match(onlineNode.body, /Sent direct\s*<\/span>101/);
 assert.match(onlineNode.body, /TX\/min\s*<\/span>12\.5/);
 assert.match(onlineNode.body, /TX airtime total\s*<\/span>17\.5 min/);
 assert.match(onlineNode.body, /Request failures\s*<\/span>2 requests/);
+// Routing state renders as words, and rides the header's trailing slot.
+assert.match(onlineNode.body, /Path length\s*<\/span>2 hops/);
+assert.match(onlineNode.body, /class="chip routing-badge clickable"/);
 assert.doesNotMatch(onlineNode.body, />Repeater</);
 assert.doesNotMatch(onlineNode.body, />REMOTE NODES</);
 assert.deepEqual(onlineNode.card.getGridOptions(), {

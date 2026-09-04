@@ -201,6 +201,37 @@ export function formatUptime(
   return `${h}h`;
 }
 
+/** Human wording for MeshCore's `out_path_len`.
+ *
+ *  `-1` means no established route, so traffic floods the mesh; `0` means the
+ *  hub reaches the node directly; anything above that is a hop count. The value
+ *  arrives as a native number when read from a contact entity's attributes and
+ *  as a string when read from a sensor state, so both are accepted.
+ *
+ *  Returns null rather than a placeholder for anything unusable, because the
+ *  chip renderers hide a null value — an unreadable path should leave no trace
+ *  instead of claiming the node is direct. */
+export function formatPathLength(
+  hops: string | number | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string | null {
+  if (hops === null || hops === undefined) return null;
+  const normalized = String(hops).trim().toLowerCase();
+  if (
+    !normalized ||
+    ["unknown", "unavailable", "none", "null"].includes(normalized)
+  ) {
+    return null;
+  }
+  const v = Number(normalized);
+  // `-1` is the only meaningful negative, and a fractional hop count is data we
+  // do not understand rather than a value worth rounding.
+  if (!Number.isInteger(v) || v < -1) return null;
+  if (v === -1) return t("card.path_flood");
+  if (v === 0) return t("card.path_direct");
+  return t(v === 1 ? "card.path_hop_one" : "card.path_hops_count", { n: v });
+}
+
 export function rssiClass(rssi: string | number | null): ColorClass {
   const v = Number(rssi);
   if (isNaN(v)) return "dim";
