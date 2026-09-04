@@ -22,6 +22,85 @@ export function isDeviceOnHub(
     hass.devices[deviceId]?.via_device_id === hubDeviceId;
 }
 
+/** The node's pubkey prefix, read back out of its own entity IDs.
+ *
+ *  Device names drift away from the advertised name in normal use: the
+ *  integration prefixes them ("MeshCore Repeater: …"), appends the pubkey
+ *  ("… (d47609)"), and a UI rename replaces the lot. The pubkey embedded in the
+ *  entity IDs survives all of that, so it is the identity worth matching a
+ *  contact on.
+ *
+ *  Integrations publish this token at several widths — four hex is the shortest
+ *  seen. Narrowness is not enforced here; `findNodeContact` requires the match
+ *  to be unique instead, which is what actually makes a short token safe. */
+export function nodePubkey(
+  hass: Pick<HomeAssistant, "entities">,
+  deviceId: string
+): string | null {
+  for (const [entityId, info] of Object.entries(hass.entities ?? {})) {
+    if (info.device_id !== deviceId) continue;
+    const match = entityId.match(/^[a-z_]+\.meshcore_([0-9a-f]{4,})_/);
+    if (match) return match[1]!;
+  }
+  return null;
+}
+
+const CONTACT_ENTITY_RE = /^binary_sensor\.meshcore_.*_contact$/;
+
+/** Find the contact `binary_sensor` advertising for one node.
+ *
+ *  Matches on the pubkey shared by the node's entity IDs and the contact's
+ *  `pubkey_prefix`. Comparing the advertised name is kept as a fallback for
+ *  integrations that publish no pubkey, but it only lands when the device name
+ *  happens to equal `adv_name` — which it does not once the device has been
+ *  renamed or carries the integration's own prefix and suffix.
+ *
+ *  Either identity must be unambiguous to be used. A four-hex token has only
+ *  65k values against the hundreds of contacts a busy mesh carries, and two
+ *  hubs publishing the same radio give contacts sharing both pubkey and name.
+ *  Route data is hub-relative, so answering with the wrong contact would show
+ *  another hub's route as this node's — worse than showing none. */
+export function findNodeContact(
+  hass: Pick<HomeAssistant, "states" | "entities" | "devices">,
+  nodeName: string,
+  deviceId?: string
+): string | null {
+  const pubkey = deviceId ? nodePubkey(hass, deviceId) : null;
+  // Only this node's own hub can answer for it, so exclude contacts published
+  // by any other. `isDeviceOnHub` covers the hub itself as well as anything
+  // filed beneath it, including the node device and a contact given a device of
+  // its own. A node with no `via_device_id` cannot be scoped at all, which is
+  // why the uniqueness rules below have to carry that case.
+  const hubDeviceId = deviceId
+    ? hass.devices?.[deviceId]?.via_device_id ?? null
+    : null;
+  let byName: string | null = null;
+  let nameMatches = 0;
+  let byPubkey: string | null = null;
+  let pubkeyMatches = 0;
+  for (const [id, state] of Object.entries(hass.states ?? {})) {
+    if (!CONTACT_ENTITY_RE.test(id)) continue;
+    if (hubDeviceId && !isDeviceOnHub(hass, hass.entities?.[id]?.device_id, hubDeviceId)) {
+      continue;
+    }
+    if (pubkey) {
+      const prefix = String(state.attributes["pubkey_prefix"] ?? "").toLowerCase();
+      // Either side may be the shorter form, so compare on the overlap.
+      if (prefix.length >= 4 && (prefix.startsWith(pubkey) || pubkey.startsWith(prefix))) {
+        byPubkey = id;
+        pubkeyMatches++;
+      }
+    }
+    if (String(state.attributes["adv_name"] ?? "") === nodeName) {
+      if (byName === null) byName = id;
+      nameMatches++;
+    }
+  }
+  if (pubkeyMatches === 1) return byPubkey;
+  if (nameMatches === 1) return byName;
+  return null;
+}
+
 // Longest suffix shared by at least half of the strings.
 //
 // Why: a node device's entities mostly end with `_<adv_name_slug>`
