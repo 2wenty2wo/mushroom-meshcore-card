@@ -10,6 +10,7 @@ import {
   linkifyHtml,
   longestCommonPrefix,
   longestCommonSuffix,
+  slugifyName,
   mapLinkUrl,
   rssiClass,
   urlSpans,
@@ -398,5 +399,26 @@ describe("linkifyHtml", () => {
     expect(html).toContain('href="https://example.com/?a=1&amp;b=2"');
     expect(html).toContain(">https://example.com/?a=1&amp;b=2</a>&lt;&gt;");
     expect(html).not.toContain("<>");
+  });
+});
+
+describe("slugifyName", () => {
+  it("matches the entity-ID slug Home Assistant derives from a device name", () => {
+    expect(slugifyName("Mount Annan 2")).toBe("mount_annan_2");
+    expect(slugifyName("MeshCore Spring Farm")).toBe("meshcore_spring_farm");
+  });
+
+  it("transliterates accents instead of dropping the letter", () => {
+    expect(slugifyName("Café Nord")).toBe("cafe_nord");
+  });
+
+  it("collapses punctuation runs and trims the edges", () => {
+    expect(slugifyName("  --Yuba/Crest (RPT)-- ")).toBe("yuba_crest_rpt");
+  });
+
+  it("returns an empty slug for nullish or unslugifiable names", () => {
+    expect(slugifyName(null)).toBe("");
+    expect(slugifyName(undefined)).toBe("");
+    expect(slugifyName("---")).toBe("");
   });
 });

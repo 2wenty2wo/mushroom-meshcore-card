@@ -40,6 +40,11 @@ function addEntity(
   hass.entities[entityId] = entry;
 }
 
+function removeEntity(hass: HomeAssistant, entityId: string): void {
+  delete hass.states[entityId];
+  delete hass.entities[entityId];
+}
+
 function statusHass(onlineState = "on"): HomeAssistant {
   const hass = createHass();
   addEntity(hass, NODE_ONLINE_ENTITY, onlineState);
@@ -148,13 +153,38 @@ describe("MeshcoreStatusCard", () => {
 
   it("keeps unknown checks separate while retaining the online denominator", () => {
     const card = createCard({ target }, statusHass("unknown"));
-    expect(shadowBody(card)).toContain("1 unknown · 0/1 online");
+    expect(shadowBody(card)).toContain("0/1 online · 1 node unknown");
     expect(
       card.shadowRoot!.querySelector('[data-row-id="node:node-device:status"]')
     ).not.toBeNull();
     expect(card.shadowRoot!.querySelector("ha-card")?.className).toContain(
-      "status-unknown"
+      "status-healthy"
     );
+  });
+
+  it("keeps unresolved legacy node status rows actionable", () => {
+    const hass = createHass();
+    const uptime = `${NODE_PREFIX}uptime${NODE_SUFFIX}`;
+    const legacy = `${NODE_PREFIX}status${NODE_SUFFIX}`;
+    removeEntity(hass, uptime);
+    addEntity(hass, legacy, "unavailable");
+    const card = createCard({ target }, hass);
+    const monitored = card.shadowRoot!.querySelector<HTMLButtonElement>(
+      `[data-row-id="${NODE_DEVICE_ID}"][data-entity="${legacy}"]`
+    );
+    const unknown = card.shadowRoot!.querySelector<HTMLButtonElement>(
+      `[data-row-id="node:${NODE_DEVICE_ID}:status"][data-entity="${legacy}"]`
+    );
+    expect(monitored).not.toBeNull();
+    expect(unknown).not.toBeNull();
+
+    const seen: string[] = [];
+    card.addEventListener("hass-more-info", (event) => {
+      seen.push((event as CustomEvent<{ entityId: string }>).detail.entityId);
+    });
+    monitored!.click();
+    unknown!.click();
+    expect(seen).toEqual([legacy, legacy]);
   });
 
   it("shows one critical hub issue and suppresses cached child checks", () => {

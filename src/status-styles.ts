@@ -150,7 +150,12 @@ export const STATUS_CARD_STYLES = `${STYLES}
     font-size: var(--mushroom-meshcore-icon-size);
   }
 
+  /* The circle sets a 36px font-size, so an inline ha-icon would align its
+     vertical-align:middle glyph against that strut and sit below centre.
+     Flexing the host removes the line box entirely. */
   .status-row-icon ha-icon {
+    display: flex;
+    line-height: 0;
     --mdc-icon-size: var(--mushroom-meshcore-icon-symbol-size);
   }
   .status-row.warning .status-row-icon {

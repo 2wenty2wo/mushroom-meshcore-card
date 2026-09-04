@@ -288,7 +288,13 @@ export interface NodeInfo {
   deviceId: string;
   hubPubkey: string | null;
   ePrefix: string;
-  eSuffix: string;
+  /**
+   * Candidate entity-ID suffixes for this device, longest first and
+   * de-duplicated, never containing an empty entry. A device renamed after
+   * some of its entities were created carries more than one name slug, so a
+   * single suffix cannot describe it.
+   */
+  eSuffixes: readonly string[];
 }
 
 // ── Render helper types ───────────────────────────────────────────────────────

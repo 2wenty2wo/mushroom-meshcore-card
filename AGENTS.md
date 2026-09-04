@@ -23,7 +23,8 @@ This project is a Mushroom-styled Home Assistant frontend for MeshCore. Preserve
 - `src/channel-card.ts` provides the channel card.
 - `src/mentions-card.ts` provides the automation-backed mentions card.
 - `src/releases-card.ts` provides the sensor-backed software releases card.
-- `src/status-card.ts`, `src/status-badge.ts`, and the shared status model provide the hub-scoped network-health surfaces.
+- `src/status-card.ts`, `src/status-badge.ts`, and the shared status model provide the hub-scoped network-health surfaces. Both surfaces compose their summary line through `src/status-summary.ts`; keep it that way rather than reintroducing per-surface wording.
+- `src/entity-resolver.ts` owns node connectivity (`resolveNodeConnectivity`). The card and the status model must share it, so they cannot disagree about whether the same node is reachable.
 - `src/helpers.ts`, `src/types.ts`, `src/localize.ts`, and `src/translations/` provide shared helpers, types, and localisation.
 - `docs/` contains the public VitePress documentation. `docs/releasing.md` is maintainer-only and excluded from the generated site.
 

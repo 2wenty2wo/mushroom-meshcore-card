@@ -19,6 +19,7 @@ import {
   type StatusSnapshot,
   type StatusUnknownCheck,
 } from "./status-model.js";
+import { statusCardSummary } from "./status-summary.js";
 import { STATUS_CARD_STYLES } from "./status-styles.js";
 import { hydrateTileInfo, renderTileHeader } from "./tile-header.js";
 
@@ -256,42 +257,7 @@ export class MeshcoreStatusCard extends HTMLElement {
   }
 
   private _summary(snapshot: StatusSnapshot, t: LocalizeFunc): string {
-    if (snapshot.hub.state === "offline") {
-      return `${t("card.status_hub_offline")} · ${t(
-        "card.status_downstream_paused"
-      )}`;
-    }
-    if (snapshot.hub.state === "unknown") return t("card.status_unknown");
-
-    const issue = snapshot.issueCount === 1
-      ? t("card.status_issue_one")
-      : t("card.status_issue_count", { n: snapshot.issueCount });
-    const unknown = snapshot.unknownCount === 1
-      ? t("card.status_unknown_one")
-      : t("card.status_unknown_count", { n: snapshot.unknownCount });
-    const online = snapshot.monitoredCount > 0
-      ? t("card.status_online_count", {
-          online: snapshot.onlineCount,
-          total: snapshot.monitoredCount,
-        })
-      : "";
-    if (snapshot.issueCount > 0) {
-      return [issue, snapshot.unknownCount > 0 ? unknown : "", online]
-        .filter(Boolean)
-        .join(" · ");
-    }
-    if (snapshot.unknownCount > 0) {
-      return [unknown, online].filter(Boolean).join(" · ");
-    }
-    if (snapshot.monitoredCount === 0) {
-      return `${t("card.status_healthy")} · ${t(
-        "card.status_no_monitored_nodes"
-      )}`;
-    }
-    return `${t("card.status_healthy")} · ${t("card.status_online_count", {
-      online: snapshot.onlineCount,
-      total: snapshot.monitoredCount,
-    })}`;
+    return statusCardSummary(snapshot, t);
   }
 
   private _groupTitle(group: StatusFindingGroup, t: LocalizeFunc): string {

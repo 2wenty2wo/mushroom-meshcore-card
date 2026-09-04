@@ -1,10 +1,15 @@
 import type {
+  HassDeviceRegistryEntry,
   HassEntityRegistryEntry,
   HomeAssistant,
   HubInfo,
   NodeInfo,
 } from "./types.js";
-import { longestCommonPrefix, longestCommonSuffix } from "./helpers.js";
+import {
+  longestCommonPrefix,
+  longestCommonSuffix,
+  slugifyName,
+} from "./helpers.js";
 
 /** Whether a registry device is the selected hub or one of its direct children. */
 export function isDeviceOnHub(
@@ -45,32 +50,149 @@ function majoritySuffix(strs: string[]): string {
   return best;
 }
 
+/** Every metric core this entity could have, one per candidate suffix it ends
+ *  with. A device renamed after some of its entities were created carries more
+ *  than one name slug, so no single suffix describes it — and `majoritySuffix`
+ *  can over-reach into the metric name on a small pool, so the longest match is
+ *  not reliably the right one either. Trying them all lets a correct candidate
+ *  win without having to rank them.
+ *
+ *  With no discovered suffix, the prefix-stripped base remains the only core,
+ *  preserving exact-before-compatibility matching for suffix-less legacy IDs.
+ *  Otherwise, returns empty when nothing matches and leaves such entities to
+ *  the legacy raw-ID pass. The length guard keeps a core from being stripped
+ *  away entirely on devices small enough for `majoritySuffix` to return a whole
+ *  entity ID. */
+function metricCores(
+  entityId: string,
+  ePrefix: string,
+  eSuffixes: readonly string[]
+): string[] {
+  const base =
+    ePrefix && entityId.startsWith(ePrefix)
+      ? entityId.slice(ePrefix.length)
+      : entityId;
+  if (eSuffixes.length === 0) return [base];
+  return eSuffixes
+    .filter((suffix) => base.endsWith(suffix) && base.length > suffix.length)
+    .map((suffix) => base.slice(0, -suffix.length));
+}
+
+/** A suffix derived from anything other than the majority vote is a guess, so
+ *  it must look like a name slug and actually be shared. `majoritySuffix`
+ *  returns the whole input string when given one or two entities (`half` is 1,
+ *  so the first candidate's full-length suffix wins immediately), which would
+ *  otherwise strip an entity down to nothing. */
+function plausibleSlugSuffix(
+  suffix: string,
+  pool: readonly string[],
+  minShared: number
+): boolean {
+  return (
+    suffix.startsWith("_") &&
+    pool.filter((id) => id.endsWith(suffix)).length >= minShared &&
+    pool.every((id) => id.length > suffix.length)
+  );
+}
+
+/** Every underscore-aligned suffix of the strict shared tail.
+ *
+ *  Two entities can share domain or metric fragments before the node slug, so
+ *  their raw common suffix may be `_online_<node_slug>` rather than just
+ *  `_<node_slug>`. Offering every delimiter boundary lets metric matching find
+ *  the true slug without discovery having to guess which segment belongs to
+ *  the metric. */
+function commonDelimitedSuffixes(pool: readonly string[]): string[] {
+  const common = longestCommonSuffix([...pool]);
+  const suffixes: string[] = [];
+  for (
+    let delimiter = common.indexOf("_");
+    delimiter >= 0;
+    delimiter = common.indexOf("_", delimiter + 1)
+  ) {
+    suffixes.push(common.slice(delimiter));
+  }
+  return suffixes;
+}
+
+/** Entity-ID suffix candidates for one device, longest first and de-duplicated.
+ *
+ *  Home Assistant never rewrites existing entity IDs when a device is renamed,
+ *  so a renamed device can end up with entities from multiple eras: existing
+ *  entities keep their old slug while later entities carry newer ones. Matching
+ *  on a single suffix silently loses all but one of those groups. */
+export function nodeSuffixCandidates(
+  device: Pick<HassDeviceRegistryEntry, "name" | "name_by_user">,
+  suffixSource: readonly string[]
+): string[] {
+  const candidates: string[] = [];
+  // The majority vote is the only candidate that survives a rename untouched,
+  // so it is never subjected to the slug guard the derived candidates get. The
+  // one thing worth dropping is a candidate no entity is longer than: on a
+  // one- or two-entity device `majoritySuffix` returns a whole entity ID, which
+  // `metricCores` can never strip anyway.
+  const majority = majoritySuffix([...suffixSource]);
+  if (majority && suffixSource.some((id) => id.length > majority.length)) {
+    candidates.push(majority);
+  }
+
+  // A UI rename leaves the integration-reported `name` behind, so both name
+  // sources are worth predicting. HA device names are often prefixed with the
+  // integration ("MeshCore Mount Annan 2") while the entity slug is not, so
+  // offer the stripped form too. A candidate nothing ends with costs nothing.
+  for (const source of [device.name_by_user, device.name]) {
+    const slug = slugifyName(source);
+    if (!slug) continue;
+    for (const variant of [slug, slug.replace(/^meshcore_/, "")]) {
+      const suffix = `_${variant}`;
+      if (plausibleSlugSuffix(suffix, suffixSource, 1)) candidates.push(suffix);
+    }
+  }
+
+  // Whatever the majority vote left behind may carry another era's slug.
+  const leftovers = suffixSource.filter((id) => !id.endsWith(majority));
+  if (leftovers.length >= 2) {
+    // A two-item pool cannot produce a meaningful 50% vote: one entity alone
+    // satisfies it. Offer every delimiter boundary of both entities' strict
+    // common tail there; larger pools retain the outlier-tolerant majority.
+    const secondaryCandidates =
+      leftovers.length === 2
+        ? commonDelimitedSuffixes(leftovers)
+        : [majoritySuffix(leftovers)];
+    for (const secondary of secondaryCandidates) {
+      if (secondary && plausibleSlugSuffix(secondary, leftovers, 2)) {
+        candidates.push(secondary);
+      }
+    }
+  }
+
+  return [...new Set(candidates)].sort((a, b) => b.length - a.length);
+}
+
 /** Resolve one metric entity among a device's registry entities, using the
- *  entity-ID prefix/suffix discovered for that device. */
+ *  entity-ID prefix/suffixes discovered for that device. */
 export function findEntityByDevice(
   entities: Record<string, HassEntityRegistryEntry>,
   deviceId: string,
   metric: string,
   ePrefix: string,
-  eSuffix: string
+  eSuffixes: readonly string[]
 ): string | null {
   if (!deviceId) return null;
-  const pLen = (ePrefix || "").length;
-  const sLen = (eSuffix || "").length;
   // First pass: strip the discovered prefix/suffix and prefer an exact metric
   // core across the whole device. Exact matching must finish before the
   // compatibility suffix pass so `airtime` cannot bind to `rx_airtime`
   // merely because the registry enumerates the RX entity first.
   for (const [entityId, info] of Object.entries(entities)) {
     if (info.device_id !== deviceId) continue;
-    const core = entityId.slice(pLen, sLen ? -sLen : undefined);
-    if (core === metric) return entityId;
+    const cores = metricCores(entityId, ePrefix, eSuffixes);
+    if (cores.includes(metric)) return entityId;
   }
   // Compatibility for names such as `last_rssi` when looking up `rssi`.
   for (const [entityId, info] of Object.entries(entities)) {
     if (info.device_id !== deviceId) continue;
-    const core = entityId.slice(pLen, sLen ? -sLen : undefined);
-    if (core.endsWith(`_${metric}`)) return entityId;
+    const cores = metricCores(entityId, ePrefix, eSuffixes);
+    if (cores.some((core) => core.endsWith(`_${metric}`))) return entityId;
   }
   // Fallback for older entity-ID formats with no node-name suffix:
   // accept entities whose ID ends exactly in `_<metric>`. We don't
@@ -142,21 +264,19 @@ export function discoverNodes(hass: HomeAssistant): NodeInfo[] {
     // `..._neighbor_count`) are keyed by the *neighbor's* pubkey, not the
     // node-name slug every other entity shares. A repeater with many
     // neighbors makes these the majority, which defeats majoritySuffix and
-    // collapses eSuffix — so entity lookups fail and the node renders
+    // collapses the majority suffix — so entity lookups fail and the node renders
     // offline. Exclude them when deriving the prefix/suffix; fall back to the
     // full list if a device somehow exposes nothing else.
     const slugEntityIds = deviceEntityIds.filter(
       (id) => !/_neighbor_(?:count$|[0-9a-f]+(?:_seen)?$)/.test(id)
     );
     const suffixSource = slugEntityIds.length ? slugEntityIds : deviceEntityIds;
-    const ePrefix = longestCommonPrefix(suffixSource);
-    const eSuffix = majoritySuffix(suffixSource);
     nodes.push({
       name: device.name_by_user || device.name || deviceId,
       deviceId,
       hubPubkey,
-      ePrefix,
-      eSuffix,
+      ePrefix: longestCommonPrefix(suffixSource),
+      eSuffixes: nodeSuffixCandidates(device, suffixSource),
     });
   }
   return nodes;

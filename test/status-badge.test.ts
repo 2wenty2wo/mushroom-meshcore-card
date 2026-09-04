@@ -84,7 +84,7 @@ describe("Status badge summaries", () => {
     const unknownHass = statusHass("unknown");
     expect(
       statusBadgeSummary(buildStatusSnapshot(unknownHass, HUB_PUBKEY)!, t)
-    ).toBe(t("card.status_unknown"));
+    ).toBe("0/1 online · 1 node unknown");
 
     const warningHass = statusHass();
     warningHass.states[
@@ -94,7 +94,7 @@ describe("Status badge summaries", () => {
       `binary_sensor.meshcore_${HUB_PUBKEY}_mqtt_broker_0_connection_test_hub`;
     addEntity(warningHass, mqttUnknown, "unknown", HUB_DEVICE_ID);
     const warning = buildStatusSnapshot(warningHass, HUB_PUBKEY)!;
-    expect(statusBadgeSummary(warning, t)).toBe("1 issue · 1 unknown");
+    expect(statusBadgeSummary(warning, t)).toBe("1 issue · 1 reading unavailable");
     expect(statusBadgeAccessibleSummary(warning, t)).toContain(
       `${t("card.status_low_batteries")}: 1`
     );

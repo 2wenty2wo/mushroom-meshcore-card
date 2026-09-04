@@ -176,6 +176,8 @@ const DIALOG_STYLES = `
     font-size: var(--mushroom-meshcore-icon-size);
   }
   .status-dialog-icon ha-icon {
+    display: flex;
+    line-height: 0;
     --mdc-icon-size: var(--mushroom-meshcore-icon-symbol-size);
   }
   .status-dialog-icon.critical {

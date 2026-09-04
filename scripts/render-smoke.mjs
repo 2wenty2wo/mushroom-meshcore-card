@@ -1720,6 +1720,46 @@ assert.match(offlineStatusCard.shadowRoot.innerHTML, /Hub offline/);
 assert.match(offlineStatusCard.shadowRoot.innerHTML, /Downstream checks paused/);
 assert.doesNotMatch(offlineStatusCard.shadowRoot.innerHTML, /monitored-nodes/);
 
+// Regression: a device renamed in Home Assistant keeps the old entity-ID slug
+// on everything created before the rename, so its connectivity sensor can carry
+// a slug no other entity on the device shares. The node card used to paper over
+// the failed lookup with an uptime fallback while the status card reported the
+// same node as unknown.
+const renamedStatusHass = createHass();
+const oldOnlineId = "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm";
+const newOnlineId = "binary_sensor.meshcore_a1b2c3d4e5_online_spring_farm_2";
+renamedStatusHass.states[newOnlineId] = renamedStatusHass.states[oldOnlineId];
+delete renamedStatusHass.states[oldOnlineId];
+renamedStatusHass.entities[newOnlineId] = renamedStatusHass.entities[oldOnlineId];
+renamedStatusHass.entities[newOnlineId].entity_id = newOnlineId;
+delete renamedStatusHass.entities[oldOnlineId];
+renamedStatusHass.devices["node-device"].name_by_user = "Spring Farm 2";
+
+const renamedStatusCard = new StatusCard();
+renamedStatusCard.setConfig({
+  target: { type: "hub", id: "55733c" },
+  monitored_nodes_default_open: true,
+});
+renamedStatusCard.hass = renamedStatusHass;
+assert.match(renamedStatusCard.shadowRoot.innerHTML, /Healthy · 1\/1 online/);
+assert.match(renamedStatusCard.shadowRoot.innerHTML, /status-card status-healthy/);
+// The row is clickable again: a null entityId is what dropped the chevron.
+assert.match(
+  renamedStatusCard.shadowRoot.innerHTML,
+  new RegExp(`data-entity="${newOnlineId}"`),
+);
+assert.doesNotMatch(renamedStatusCard.shadowRoot.innerHTML, /1 node unknown/);
+
+// A node the integration genuinely cannot vouch for is reported without
+// repainting the hub, which is online and has no findings.
+const unknownNodeStatusHass = createHass();
+unknownNodeStatusHass.states[oldOnlineId].state = "unknown";
+const unknownNodeStatusCard = new StatusCard();
+unknownNodeStatusCard.setConfig({ target: { type: "hub", id: "55733c" } });
+unknownNodeStatusCard.hass = unknownNodeStatusHass;
+assert.match(unknownNodeStatusCard.shadowRoot.innerHTML, /0\/1 online · 1 node unknown/);
+assert.match(unknownNodeStatusCard.shadowRoot.innerHTML, /status-card status-healthy/);
+
 const StatusBadge = registry.get("mushroom-meshcore-status-badge");
 assert.ok(StatusBadge, "status badge is registered");
 assert.ok(

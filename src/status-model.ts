@@ -3,6 +3,7 @@ import {
   findScopedEntity,
   isUnavailableState,
   normalizeConnectivityState,
+  resolveNodeConnectivity,
   type ExplicitConnectivityState,
 } from "./entity-resolver.js";
 import type {
@@ -347,30 +348,9 @@ function findNodeMetric(
     node.deviceId,
     metric,
     node.ePrefix,
-    node.eSuffix,
+    node.eSuffixes,
     { domain, enabledOnly: true, platform: "meshcore" }
   );
-}
-
-function resolveNodeState(
-  hass: HomeAssistant,
-  node: NodeInfo
-): { state: StatusConnectivityState; entityId: string | null } {
-  const binary = findNodeMetric(hass, node, "online", "binary_sensor");
-  if (binary) {
-    return {
-      state: normalizeConnectivityState(hass.states[binary]?.state),
-      entityId: binary,
-    };
-  }
-  const legacyOnline = findNodeMetric(hass, node, "online", "sensor");
-  const legacyStatus = legacyOnline ?? findNodeMetric(hass, node, "status", "sensor");
-  return {
-    state: normalizeConnectivityState(
-      legacyStatus ? hass.states[legacyStatus]?.state : undefined
-    ),
-    entityId: legacyStatus,
-  };
 }
 
 function resolveNodeBatteryEntity(hass: HomeAssistant, node: NodeInfo): string | null {
@@ -509,7 +489,7 @@ export function buildStatusSnapshot(
       .sort((a, b) => a.name.localeCompare(b.name) || a.deviceId.localeCompare(b.deviceId));
 
     nodes = discoveredNodes.map((node) => {
-      const connectivity = resolveNodeState(hass, node);
+      const connectivity = resolveNodeConnectivity(hass, node, { now });
       const batteryEntity =
         connectivity.state === "online" ? resolveNodeBatteryEntity(hass, node) : null;
       const battery = percentageReading(hass, batteryEntity);
@@ -708,6 +688,10 @@ export function buildStatusSnapshot(
   const online = nodes.filter((node) => node.state === "online").length;
   const offline = nodes.filter((node) => node.state === "offline").length;
   const nodeUnknown = nodes.filter((node) => node.state === "unknown").length;
+  // Severity describes the hub, not the completeness of its telemetry. A
+  // reading we cannot take — an unreadable battery on one repeater, say — is
+  // reported in `unknownChecks` and in the summary, but it must not repaint an
+  // online hub as unknown: that reads as "the hub's own state is a mystery".
   const severity: StatusSeverity =
     hubState === "offline"
       ? "critical"
@@ -715,9 +699,7 @@ export function buildStatusSnapshot(
         ? "unknown"
         : findings.length
           ? "warning"
-          : unknownChecks.length
-            ? "unknown"
-            : "healthy";
+          : "healthy";
 
   return {
     generatedAt: now,
