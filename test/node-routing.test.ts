@@ -12,6 +12,7 @@ import {
   NODE_NAME,
   NODE_ONLINE_ENTITY,
   NODE_PREFIX,
+  NODE_PUBKEY_PREFIX,
   NODE_SUFFIX,
   OTHER_HUB_CONTACT_ENTITY,
   RENAMED_NODE_NAME,
@@ -235,6 +236,46 @@ describe("node routing state", () => {
     setSensor(hass, PATH_SENSOR, "unknown");
     const { card } = renderCard({ target: { type: "node", id: RENAMED_NODE_NAME } }, hass);
     expect(badge(card)).toBeNull();
+  });
+
+  // These two isolate the *name* path: the fixture's node entities use a
+  // non-hex `spring` prefix, so no pubkey is derivable and only `adv_name`
+  // can answer. Its device name equals `adv_name`, unlike a renamed node.
+  it("refuses to pick a hub when a hubless node's radio is published by two", () => {
+    // discoverNodes keeps nodes with no via_device_id, so hub scoping cannot
+    // narrow the candidates. Two hubs publishing the same radio give contacts
+    // sharing an adv_name, and out_path is hub-relative, so either answer
+    // would be a guess at whose route is being shown. The rival goes first, so
+    // taking the first match would take the wrong one.
+    const hass = createRoutingContactHass({ out_path_len: -1 });
+    hass.devices[NODE_DEVICE_ID].via_device_id = null;
+    const rival = "binary_sensor.meshcore_otherhub_ffffffffffff_contact";
+    const rivalState = state("fresh", {
+      adv_name: NODE_NAME,
+      pubkey_prefix: "ffffffffffff",
+      out_path_len: 4,
+    });
+    rivalState.entity_id = rival;
+    const rivalEntry = registryEntry("second-hub-device");
+    rivalEntry.entity_id = rival;
+    hass.entities[rival] = rivalEntry;
+    hass.devices["second-hub-device"] = device("second-hub-device", {
+      name: "Second Hub",
+      model: "Hub",
+    });
+    hass.states = { [rival]: rivalState, ...hass.states };
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard(NODE_TARGET, hass);
+    expect(badge(card)).toBeNull();
+  });
+
+  it("still resolves a hubless node when only one contact answers for it", () => {
+    const hass = createRoutingContactHass({ out_path_len: -1 });
+    hass.devices[NODE_DEVICE_ID].via_device_id = null;
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard(NODE_TARGET, hass);
+    expect(badge(card)?.textContent).toContain(t("card.path_flood"));
+    expect(badge(card)?.dataset["entity"]).toBe(NODE_CONTACT_ENTITY);
   });
 
   it("accepts a contact filed on its own device beneath the node's hub", () => {

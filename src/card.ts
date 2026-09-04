@@ -695,6 +695,7 @@ export class MeshcoreCard extends HTMLElement {
       ? this._hass.devices[deviceId]?.via_device_id ?? null
       : null;
     let byName: string | null = null;
+    let nameMatches = 0;
     let byPubkey: string | null = null;
     let pubkeyMatches = 0;
     for (const [id, state] of Object.entries(this._hass.states)) {
@@ -716,16 +717,23 @@ export class MeshcoreCard extends HTMLElement {
           pubkeyMatches++;
         }
       }
-      if (byName === null && String(state.attributes["adv_name"] ?? "") === nodeName) {
-        byName = id;
+      if (String(state.attributes["adv_name"] ?? "") === nodeName) {
+        if (byName === null) byName = id;
+        nameMatches++;
       }
     }
     // A short token can land on more than one contact — four hex has only 65k
     // values, against the hundreds of contacts a busy mesh carries. Claiming
     // the first would show another node's route as this one's, so an ambiguous
     // pubkey resolves to nothing and leaves the name comparison to answer.
+    //
+    // The name comparison needs the same rule. A node with no `via_device_id`
+    // — which `discoverNodes` keeps — cannot be hub-scoped, so if two hubs both
+    // publish the same radio their contacts share pubkey *and* advertised name,
+    // and either answer would be a guess at which hub's route to show.
     if (pubkeyMatches === 1) return byPubkey;
-    return byName;
+    if (nameMatches === 1) return byName;
+    return null;
   }
 
   // ── Rendering helpers ──────────────────────────────────────────────────────
