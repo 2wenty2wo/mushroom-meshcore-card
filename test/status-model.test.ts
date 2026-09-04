@@ -3,7 +3,11 @@ import {
   DEFAULT_LOW_BATTERY_THRESHOLD,
   buildStatusSnapshot,
 } from "../src/status-model.js";
-import { normalizeConnectivityState } from "../src/entity-resolver.js";
+import {
+  normalizeConnectivityState,
+  resolveNodeConnectivity,
+} from "../src/entity-resolver.js";
+import { discoverNodes } from "../src/discovery.js";
 import type { HassEntity, } from "home-assistant-js-websocket";
 import type { HomeAssistant } from "../src/types.js";
 import {
@@ -132,6 +136,59 @@ describe("buildStatusSnapshot", () => {
     const snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
     expect(snapshot.nodes.items[0]!.state).toBe("offline");
     expect(snapshot.findings[0]!.kind).toBe("node_offline");
+  });
+
+  it.each(["unknown", "unavailable"])(
+    "retains an %s legacy status entity after heuristic fallbacks are exhausted",
+    (legacyState) => {
+      const hass = createHass();
+      const uptime = `${NODE_PREFIX}uptime${NODE_SUFFIX}`;
+      const legacy = `${NODE_PREFIX}status${NODE_SUFFIX}`;
+      removeEntity(hass, uptime);
+      addEntity(hass, legacy, legacyState, NODE_DEVICE_ID);
+
+      const connectivity = resolveNodeConnectivity(hass, discoverNodes(hass)[0]!);
+      expect(connectivity).toMatchObject({
+        state: "unknown",
+        entityId: legacy,
+        source: "legacy_status",
+      });
+
+      const snapshot = buildStatusSnapshot(hass, HUB_PUBKEY)!;
+      expect(snapshot.nodes.items[0]).toMatchObject({
+        state: "unknown",
+        entityId: legacy,
+      });
+      expect(snapshot.unknownChecks).toContainEqual(
+        expect.objectContaining({
+          kind: "node_status",
+          entityId: legacy,
+        })
+      );
+    }
+  );
+
+  it("keeps heuristics ahead of an unreadable legacy status entity", () => {
+    const hass = createHass();
+    const uptime = `${NODE_PREFIX}uptime${NODE_SUFFIX}`;
+    const successes = `${NODE_PREFIX}request_successes${NODE_SUFFIX}`;
+    const legacy = `${NODE_PREFIX}status${NODE_SUFFIX}`;
+    addEntity(hass, legacy, "unknown", NODE_DEVICE_ID);
+    const node = discoverNodes(hass)[0]!;
+
+    expect(resolveNodeConnectivity(hass, node)).toMatchObject({
+      state: "online",
+      entityId: uptime,
+      source: "uptime",
+    });
+
+    removeEntity(hass, uptime);
+    addEntity(hass, successes, 5, NODE_DEVICE_ID);
+    expect(resolveNodeConnectivity(hass, node)).toMatchObject({
+      state: "online",
+      entityId: successes,
+      source: "request_successes",
+    });
   });
 
   it("suppresses cached downstream failures while the hub is offline", () => {

@@ -117,7 +117,7 @@ export function resolveNodeConnectivity(
     };
   }
 
-  // Compatibility for older integrations with no connectivity entity at all.
+  // Compatibility for integrations with no usable explicit connectivity state.
   const uptimeId = scoped("uptime");
   const uptime = uptimeId ? hass.states[uptimeId] : undefined;
   if (uptime) {
@@ -144,6 +144,15 @@ export function resolveNodeConnectivity(
       state: successes > 0 ? "online" : "offline",
       entityId: successId,
       source: "request_successes",
+    };
+  }
+
+  if (statusEntityId) {
+    return {
+      ...base,
+      state: "unknown",
+      entityId: statusEntityId,
+      source: "legacy_status",
     };
   }
 
