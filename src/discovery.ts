@@ -134,6 +134,28 @@ export function hubContacts(
   return contacts;
 }
 
+/** The pubkey prefixes of every repeater this node has heard directly.
+ *
+ *  Read from the raw `_neighbor_<hex>` entity IDs rather than from the rendered
+ *  neighbour list, which is filtered to the last 48 hours and to neighbours
+ *  carrying a numeric SNR. A repeater on the active path is adjacent whether or
+ *  not its SNR sensor happens to be readable this minute.
+ *
+ *  Lowercase, matching the entity IDs; callers comparing against contact keys
+ *  must normalise, since those are uppercased. */
+export function nodeNeighborIds(
+  hass: Pick<HomeAssistant, "entities">,
+  deviceId: string
+): string[] {
+  const ids = new Set<string>();
+  for (const [entityId, info] of Object.entries(hass.entities ?? {})) {
+    if (info.device_id !== deviceId) continue;
+    const match = entityId.match(/_neighbor_([0-9a-f]+)(?:_seen)?$/);
+    if (match) ids.add(match[1]!);
+  }
+  return [...ids];
+}
+
 /** Whether a registry device is the selected hub or one of its direct children. */
 export function isDeviceOnHub(
   hass: Pick<HomeAssistant, "devices">,

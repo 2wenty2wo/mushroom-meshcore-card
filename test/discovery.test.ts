@@ -4,7 +4,9 @@ import {
   discoverNodes,
   findEntityByDevice,
   findNodeContact,
+  hubContacts,
   isDeviceOnHub,
+  nodeNeighborIds,
   nodePubkey,
   nodeSuffixCandidates,
 } from "../src/discovery.js";
@@ -523,5 +525,100 @@ describe("findNodeContact", () => {
       { id: CONTACT, attrs: { adv_name: "Somebody", pubkey_prefix: "a1b2c3d4e5f6" } },
     ]);
     expect(findNodeContact(hass, "no such name")).toBeNull();
+  });
+});
+
+describe("hubContacts", () => {
+  function withContact(
+    entityId: string,
+    attrs: Record<string, unknown>,
+    deviceId: string = HUB_DEVICE_ID,
+    platform = "meshcore"
+  ): HomeAssistant {
+    const hass = createHass();
+    const st = state("fresh", attrs);
+    st.entity_id = entityId;
+    hass.states[entityId] = st;
+    const entry = registryEntry(deviceId, platform);
+    entry.entity_id = entityId;
+    hass.entities[entityId] = entry;
+    return hass;
+  }
+  const CONTACT = "binary_sensor.meshcore_rpt_a1b2c3d4e5f6_contact";
+  const ADVERT = { adv_name: "Repeater One", pubkey_prefix: "a1b2c3d4e5f6" };
+
+  it("reports the contact's identity and the entity that published it", () => {
+    expect(hubContacts(withContact(CONTACT, ADVERT), HUB_DEVICE_ID)).toEqual([
+      { entityId: CONTACT, publicKey: "A1B2C3D4E5F6", name: "Repeater One", keyIsPrefix: true },
+    ]);
+  });
+
+  it("includes contacts filed on devices beneath the hub", () => {
+    const hass = withContact(CONTACT, ADVERT, "child-device");
+    hass.devices["child-device"] = device("child-device", { via_device_id: HUB_DEVICE_ID });
+    expect(hubContacts(hass, HUB_DEVICE_ID).map((c) => c.entityId)).toEqual([CONTACT]);
+  });
+
+  it("excludes contacts belonging to a different hub", () => {
+    const hass = withContact(CONTACT, ADVERT, "other-hub");
+    hass.devices["other-hub"] = device("other-hub", { model: "Hub" });
+    expect(hubContacts(hass, HUB_DEVICE_ID)).toEqual([]);
+  });
+
+  it("excludes entities from another integration", () => {
+    expect(hubContacts(withContact(CONTACT, ADVERT, HUB_DEVICE_ID, "other"), HUB_DEVICE_ID))
+      .toEqual([]);
+  });
+
+  it("returns nothing without a hub to scope to", () => {
+    expect(hubContacts(withContact(CONTACT, ADVERT), null)).toEqual([]);
+  });
+
+  it("prefers a complete public key over a prefix", () => {
+    const hass = withContact(CONTACT, { ...ADVERT, public_key: "a".repeat(64) });
+    const [contact] = hubContacts(hass, HUB_DEVICE_ID);
+    expect(contact!.publicKey).toBe("A".repeat(64));
+    expect(contact!.keyIsPrefix).toBeUndefined();
+  });
+
+  it("drops an advert with no usable name", () => {
+    expect(hubContacts(withContact(CONTACT, { pubkey_prefix: "a1b2c3d4e5f6" }), HUB_DEVICE_ID))
+      .toEqual([]);
+  });
+});
+
+describe("nodeNeighborIds", () => {
+  function withNeighborEntities(ids: string[]): HomeAssistant {
+    const hass = createHass();
+    for (const id of ids) {
+      const entry = registryEntry(NODE_DEVICE_ID);
+      entry.entity_id = id;
+      hass.entities[id] = entry;
+    }
+    return hass;
+  }
+
+  it("collects the hex from neighbour entity IDs, deduping the _seen pair", () => {
+    const hass = withNeighborEntities([
+      "sensor.meshcore_spring_neighbor_28c222",
+      "sensor.meshcore_spring_neighbor_28c222_seen",
+      "sensor.meshcore_spring_neighbor_e963cb",
+    ]);
+    expect(nodeNeighborIds(hass, NODE_DEVICE_ID).sort()).toEqual(["28c222", "e963cb"]);
+  });
+
+  it("does not mistake the neighbour count sensor for a neighbour", () => {
+    const hass = withNeighborEntities(["sensor.meshcore_spring_neighbor_count"]);
+    expect(nodeNeighborIds(hass, NODE_DEVICE_ID)).toEqual([]);
+  });
+
+  it("ignores neighbours belonging to another device", () => {
+    const hass = withNeighborEntities(["sensor.meshcore_spring_neighbor_28c222"]);
+    hass.entities["sensor.meshcore_spring_neighbor_28c222"]!.device_id = "elsewhere";
+    expect(nodeNeighborIds(hass, NODE_DEVICE_ID)).toEqual([]);
+  });
+
+  it("returns nothing for a device exposing no neighbours", () => {
+    expect(nodeNeighborIds(createHass(), NODE_DEVICE_ID)).toEqual([]);
   });
 });
