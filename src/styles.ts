@@ -1,3 +1,5 @@
+import { ROUTE_STYLES } from "./routing.js";
+
 export const STYLES: string = `
   *, *::before, *::after { box-sizing: border-box; }
 
@@ -527,4 +529,4 @@ export const STYLES: string = `
       animation-iteration-count: 1 !important;
     }
   }
-`;
+` + ROUTE_STYLES;

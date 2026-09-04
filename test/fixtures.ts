@@ -261,6 +261,46 @@ export function createMultiHubContactHass(): HomeAssistant {
   return hass;
 }
 
+
+/** The live Gilead case, as a fixture: the node routes through one hop whose
+ *  token matches three hub contacts, only one of which it has heard directly.
+ *
+ *  Built to defeat the wrong implementations rather than merely to be
+ *  realistic. The node's own `out_path` SENSOR says `"flood"` (as
+ *  `createV29RepeaterHass` does), so anything reading the sensor's path with
+ *  the contact's hop count produces nothing; the wrong repeater is listed
+ *  first, so take-first names Mayfield; and a decoy contains "28" without
+ *  starting with it, so substring matching reaches it. */
+export function createRoutedNodeHass(
+  options: { neighbor?: boolean; pathLen?: number; path?: string } = {}
+): HomeAssistant {
+  const hass = createRoutingContactHass({
+    out_path: options.path ?? "28",
+    out_path_len: options.pathLen ?? 1,
+  });
+  const rivals: Array<[string, string, string]> = [
+    ["binary_sensor.meshcore_mayfield_28ba06be0540_contact", "28ba06be0540", "Mayfield backup"],
+    ["binary_sensor.meshcore_mtannan_28c222747e12_contact", "28c222747e12", "Mount Annan Rpt"],
+    ["binary_sensor.meshcore_vk1mcg_283f570a8c66_contact", "283f570a8c66", "VK1MCG"],
+    ["binary_sensor.meshcore_decoy_ff28aa000000_contact", "ff28aa000000", "Decoy"],
+  ];
+  for (const [entityId, pubkey, advName] of rivals) {
+    const st = state("fresh", { adv_name: advName, pubkey_prefix: pubkey });
+    st.entity_id = entityId;
+    hass.states[entityId] = st;
+    const entry = registryEntry(HUB_DEVICE_ID);
+    entry.entity_id = entityId;
+    hass.entities[entityId] = entry;
+  }
+  if (options.neighbor !== false) {
+    const neighborId = "sensor.meshcore_spring_neighbor_28c222";
+    const entry = registryEntry(NODE_DEVICE_ID);
+    entry.entity_id = neighborId;
+    hass.entities[neighborId] = entry;
+  }
+  return hass;
+}
+
 /** createHass plus one channel messages binary_sensor on the hub device. */
 export function createChannelHass(options: { channelState?: string } = {}): HomeAssistant {
   const hass = createHass();

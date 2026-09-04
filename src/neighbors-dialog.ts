@@ -14,6 +14,17 @@ export interface NeighborsDialogParams {
   maxNeighbors?: number;
   localize: LocalizeFunc;
   closeLabel: string;
+  /** Pre-rendered body, shown instead of the neighbour list.
+   *
+   *  The shell here — adaptive dialog with a native `<dialog>` fallback, focus
+   *  restoration, backdrop dismissal and the `[data-entity]` more-info delegate
+   *  — is not specific to neighbours, and the routing hop list needs all of it.
+   *  Supplying content rather than copying two hundred lines keeps one
+   *  implementation of that behaviour. The module name is now narrower than
+   *  what it does; renaming it is mechanical and deliberately left separate. */
+  content?: string;
+  /** Styles for `content`, injected alongside the dialog's own. */
+  styles?: string;
 }
 
 interface AdaptiveDialogElement extends HTMLElement {
@@ -149,7 +160,7 @@ export class MushroomMeshcoreNeighborsDialog extends HTMLElement {
   }
 
   private _render(params: NeighborsDialogParams): void {
-    const content = renderNeighborSection(
+    const content = params.content ?? renderNeighborSection(
       params.snapshot,
       params.localize,
       params.maxNeighbors
@@ -157,7 +168,8 @@ export class MushroomMeshcoreNeighborsDialog extends HTMLElement {
 
     this._adaptiveDialog = undefined;
     this._fallbackDialog = undefined;
-    this.shadowRoot!.innerHTML = `<style>${DIALOG_STYLES}${NEIGHBOR_STYLES}</style>`;
+    this.shadowRoot!.innerHTML =
+      `<style>${DIALOG_STYLES}${params.styles ?? NEIGHBOR_STYLES}</style>`;
 
     if (customElements.get("ha-adaptive-dialog")) {
       const dialog = document.createElement("ha-adaptive-dialog") as AdaptiveDialogElement;

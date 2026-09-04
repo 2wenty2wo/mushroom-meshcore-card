@@ -19,6 +19,7 @@ import {
   createHass,
   createMultiHubContactHass,
   createRenamedNodeHass,
+  createRoutedNodeHass,
   createRoutingContactHass,
   createV29RepeaterHass,
   defineOnce,
@@ -86,7 +87,9 @@ describe("node routing state", () => {
     );
     const { card } = renderCard(NODE_TARGET, hass);
     expect(badge(card)?.textContent).toContain(t("card.path_hops_count", { n: 2 }));
-    expect(badge(card)?.dataset["entity"]).toBe(NODE_CONTACT_ENTITY);
+    // A badge with hops to name opens them rather than the routing entity's
+    // more-info; the six Direct/Flood cases still assert the contact source.
+    expect(badge(card)?.hasAttribute("data-route-dialog")).toBe(true);
   });
 
   it("keeps the sensor authoritative when both carry a usable value", () => {
@@ -365,5 +368,94 @@ describe("node routing state", () => {
       hass
     );
     expect(badge(card)?.textContent).toContain(t("card.path_flood"));
+  });
+});
+
+describe("route hop names", () => {
+  const section = (card: MeshcoreCard) =>
+    Array.from(card.shadowRoot!.querySelectorAll<HTMLElement>(".detail-section")).find(
+      (el) => el.querySelector("h4")?.textContent === t("card.routing_section")
+    );
+  const hopNames = (card: MeshcoreCard) =>
+    Array.from(card.shadowRoot!.querySelectorAll<HTMLElement>(".route-hop-name")).map(
+      (el) => el.textContent?.trim()
+    );
+
+  it("names the hop its neighbour list identifies, not the first candidate", () => {
+    // Mayfield is listed first; only Mount Annan Rpt is a neighbour.
+    const hass = createRoutedNodeHass();
+    const { card } = renderCard({ ...NODE_TARGET, details_default_open: true }, hass);
+    expect(section(card)).toBeTruthy();
+    expect(hopNames(card)).toEqual(["Mount Annan Rpt"]);
+  });
+
+  it("stays ambiguous when the node has not heard any candidate", () => {
+    const hass = createRoutedNodeHass({ neighbor: false });
+    const { card } = renderCard({ ...NODE_TARGET, details_default_open: true }, hass);
+    expect(hopNames(card)?.[0]).toContain(t("card.channel_ambiguous_repeaters", { n: 3 }));
+  });
+
+  it("opens the named hop's own entity when clicked", () => {
+    const hass = createRoutedNodeHass();
+    const { card } = renderCard({ ...NODE_TARGET, details_default_open: true }, hass);
+    const seen: string[] = [];
+    card.addEventListener("hass-more-info", (event) => {
+      seen.push((event as CustomEvent<{ entityId: string }>).detail.entityId);
+    });
+    card.shadowRoot!.querySelector<HTMLElement>(".route-hop-name")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+    expect(seen).toEqual(["binary_sensor.meshcore_mtannan_28c222747e12_contact"]);
+  });
+
+  it("opens a dialog from the badge carrying the same hop list", () => {
+    const hass = createRoutedNodeHass();
+    const { card } = renderCard(NODE_TARGET, hass);
+    let params: Record<string, unknown> | undefined;
+    card.addEventListener("show-dialog", (event) => {
+      params = (event as CustomEvent<{ dialogParams: Record<string, unknown> }>)
+        .detail.dialogParams;
+    });
+    badge(card)!.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+    expect(String(params?.["content"])).toContain("Mount Annan Rpt");
+    expect(String(params?.["title"])).toContain(t("card.routing_section"));
+  });
+
+  it("renders no Routing section for a flood or direct node", () => {
+    // Pins the accident the rest of the suite relies on: the shared fixtures
+    // carry out_path "flood", which is not hex, so no section appears.
+    const { card } = renderCard(
+      { ...NODE_TARGET, details_default_open: true },
+      createV29RepeaterHass()
+    );
+    expect(section(card)).toBeUndefined();
+  });
+
+  it("renders no Routing section when the hop count is unreadable", () => {
+    // Hex alone cannot be split; without a length the width is a guess.
+    const hass = createRoutedNodeHass();
+    setSensor(hass, PATH_SENSOR, "unknown");
+    hass.states[NODE_CONTACT_ENTITY]!.attributes["out_path_len"] = "unknown";
+    const { card } = renderCard({ ...NODE_TARGET, details_default_open: true }, hass);
+    expect(section(card)).toBeUndefined();
+  });
+
+  it("never splits one source's path by another source's hop count", () => {
+    // Sensor path is 3 bytes with no usable sensor length; the contact pair is
+    // coherent at one byte. Mixing them would yield a single AABBCC hop.
+    const hass = createRoutedNodeHass();
+    setSensor(hass, `${NODE_PREFIX}out_path${NODE_SUFFIX}`, "aabbcc");
+    setSensor(hass, PATH_SENSOR, "unknown");
+    const { card } = renderCard({ ...NODE_TARGET, details_default_open: true }, hass);
+    expect(hopNames(card)).toEqual(["Mount Annan Rpt"]);
+  });
+
+  it("hides the Routing section when the route chip is hidden", () => {
+    const hass = createRoutedNodeHass();
+    const { card } = renderCard(
+      { ...NODE_TARGET, details_default_open: true,
+        chip_layout: { top: [], details: [], hidden: ["route"] } },
+      hass
+    );
+    expect(section(card)).toBeUndefined();
   });
 });

@@ -16,7 +16,15 @@ import {
 } from "./helpers.js";
 import { handleAction, HeaderActionController } from "./actions.js";
 import { STYLES } from "./styles.js";
-import { discoverHubs, discoverNodes, findNodeContact } from "./discovery.js";
+import {
+  discoverHubs,
+  discoverNodes,
+  findNodeContact,
+  hubContacts,
+  nodeNeighborIds,
+} from "./discovery.js";
+import { ROUTE_STYLES, renderRouteHops, resolveRouteHops, type RouteHop } from "./routing.js";
+import { splitRoutePath } from "./channel-card.js";
 import {
   findScopedEntity,
   isUnavailableState,
@@ -169,6 +177,7 @@ interface NodeViewModel {
   pressure: EntityReading;
   route: EntityReading;
   pathLength: EntityReading;
+  routeHops: RouteHop[];
   uptime: EntityReading;
   relayed: EntityReading;
   canceled: EntityReading;
@@ -228,6 +237,10 @@ export class MeshcoreCard extends HTMLElement {
     this.shadowRoot!.addEventListener("click", (e: Event) => {
       if (this._headerActions.handleClick(e)) return;
       const target = e.target as Element;
+      if (target.closest("[data-route-dialog]")) {
+        this._showRouteDialog();
+        return;
+      }
       if (target.closest("[data-neighbors-dialog]")) {
         this._showNeighborsDialog();
         return;
@@ -686,6 +699,43 @@ export class MeshcoreCard extends HTMLElement {
     }
     if (numeric && !Number.isFinite(Number(value))) return { id, value: null };
     return { id, value };
+  }
+
+  /** Resolve this node's route to named hops.
+   *
+   *  `out_path` and `out_path_len` are two halves of one answer, so they are
+   *  read as a pair from a single entity — the per-node sensors first, then the
+   *  contact advert. Mixing them would split a path by a hop count that did not
+   *  describe it, which invents hops rather than failing.
+   *
+   *  The hash width is deliberately not taken from `out_path_hash_mode`: that
+   *  is a mode enum reading 0 in practice, and `splitRoutePath` treats its hash
+   *  argument as a byte count in 1..3, so passing the mode would reject every
+   *  real path. Letting it infer the width from the hop count is correct. */
+  private _resolveRouteHops(
+    node: NodeInfo,
+    contactId: string | null,
+    routeId: string | null,
+    pathId: string | null
+  ): RouteHop[] {
+    if (!this._hass) return [];
+    const pairs: Array<[unknown, unknown]> = [
+      [this._val(routeId), this._val(pathId)],
+      [this._attr(contactId, "out_path"), this._attr(contactId, "out_path_len")],
+    ];
+    for (const [rawPath, rawLength] of pairs) {
+      const length = Number(rawLength);
+      if (!Number.isInteger(length) || length < 1) continue;
+      const tokens = splitRoutePath(rawPath, length, undefined);
+      if (!tokens) continue;
+      const hubDeviceId = this._hass.devices[node.deviceId]?.via_device_id ?? null;
+      return resolveRouteHops(
+        tokens,
+        hubContacts(this._hass, hubDeviceId),
+        nodeNeighborIds(this._hass, node.deviceId)
+      );
+    }
+    return [];
   }
 
   /** The attribute-sourced counterpart to `_reading`.
@@ -1307,6 +1357,11 @@ export class MeshcoreCard extends HTMLElement {
       this._reading(pathId, true),
       this._attrReading(nodeContactId, "out_path_len", true)
     );
+    // `out_path` and `out_path_len` describe one route together, but each is
+    // resolved independently above and can therefore come from different
+    // entities. Splitting a path by the wrong source's hop count invents hops,
+    // so tokens are derived from whichever source supplies BOTH halves.
+    const routeHops = this._resolveRouteHops(node, nodeContactId, routeId, pathId);
     pathLengthReading.value = formatPathLength(pathLengthReading.value, t);
     const batteryVoltage = this._reading(battVId, true);
     if (batteryVoltage.value !== null && Number(batteryVoltage.value) < 0.001) {
@@ -1357,6 +1412,7 @@ export class MeshcoreCard extends HTMLElement {
       pressure: this._reading(pressId, true),
       route: routeReading,
       pathLength: pathLengthReading,
+      routeHops,
       uptime: uptimeReading,
       relayed: this._reading(relayedId, true),
       canceled: this._reading(canceledId, true),
@@ -1379,6 +1435,48 @@ export class MeshcoreCard extends HTMLElement {
     };
   }
 
+  /** The routing badge as a dialog trigger, for a node with named hops. */
+  private _routeBadge(vm: NodeViewModel, t: LocalizeFunc): string {
+    if (vm.pathLength.value === null) return "";
+    const label = [t("card.path_length"), vm.pathLength.value].join(" ");
+    return `<button type="button" class="chip routing-badge clickable" data-route-dialog aria-haspopup="dialog" aria-label="${escapeHtml(
+      label
+    )}" title="${escapeHtml(label)}"><ha-ripple></ha-ripple>${escapeHtml(
+      vm.pathLength.value
+    )}</button>`;
+  }
+
+  /** Open the hop list for the selected node. */
+  private _showRouteDialog(): void {
+    if (!this._hass) return;
+    const target = this._config?.target;
+    if (target?.type !== "node") return;
+    const node = this._discoverNodes().find((item) => item.name === target.id);
+    if (!node) return;
+
+    const t = makeLocalize(this._hass.language ?? this._hass.locale?.language ?? "en");
+    const vm = this._buildNodeViewModel(node, t);
+    if (!vm.routeHops.length) return;
+
+    const dialogParams: NeighborsDialogParams = {
+      title: `${this._config?.name || vm.displayName} · ${t("card.routing_section")}`,
+      snapshot: vm.neighbors,
+      localize: t,
+      closeLabel: this._hass.localize?.("ui.common.close") ?? "Close",
+      content: renderRouteHops(vm.routeHops, t),
+      styles: ROUTE_STYLES,
+    };
+    this.dispatchEvent(new CustomEvent("show-dialog", {
+      bubbles: true,
+      composed: true,
+      detail: {
+        dialogTag: NEIGHBORS_DIALOG_TAG,
+        dialogImport: neighborsDialogImport,
+        dialogParams,
+      },
+    }));
+  }
+
   private _renderNodeHeader(vm: NodeViewModel, t: LocalizeFunc): string {
     const stateLabel = t(`card.${vm.connectivity}`);
     const lastSeen = vm.lastSeen
@@ -1399,9 +1497,16 @@ export class MeshcoreCard extends HTMLElement {
       { type: "node", id: vm.node.name },
       this._config!
     ).hidden;
+    // With named hops to show, the badge opens them rather than the routing
+    // entity's more-info. This is the only routing surface an offline node has:
+    // `_renderNode` returns just the header when offline, so Details never
+    // renders, but the header always does.
+    const hasHops = vm.routeHops.length > 0;
     const routingBadge = hiddenChips.includes("path_length")
       ? ""
-      : this._chip(
+      : hasHops
+        ? this._routeBadge(vm, t)
+        : this._chip(
           vm.pathLength.id,
           "",
           vm.pathLength.value,
@@ -1514,10 +1619,17 @@ export class MeshcoreCard extends HTMLElement {
       this._detailSection(t(NODE_DETAIL_CATEGORY_LABELS[category]), chips)
     ).join("");
 
+    // Location-style: appended after the chip runs rather than joining the
+    // category machinery, since it renders a list rather than a chip row.
+    // Follows the `route` chip's own visibility, being the same reading.
+    const routing = vm.routeHops.length && !layout.hidden.includes("route")
+      ? `<section class="detail-section"><h4>${escapeHtml(t("card.routing_section"))}</h4>${renderRouteHops(vm.routeHops, t)}</section>`
+      : "";
+
     const location = vm.latitude !== null && vm.longitude !== null
       ? `<section class="detail-section"><h4>${escapeHtml(t("card.location_section"))}</h4>${this._locLink(vm.latitude, vm.longitude, vm.locationEntityId, t)}</section>`
       : "";
-    const body = sections + location;
+    const body = sections + routing + location;
     return this._renderDetailsDisclosure(vm.node.deviceId, body, t);
   }
 
