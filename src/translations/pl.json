@@ -113,6 +113,8 @@
     "neighbor_contacts": "Odbiory (48 godz.)",
     "path_direct": "Bezpośrednio",
     "path_flood": "Flood",
+    "path_hop_one": "1 przeskok",
+    "path_hops_count": "{n} przeskoków",
     "details": "Szczegóły",
     "last_seen": "Ostatnio widziany {time}",
     "routing_path": "Trasa",

@@ -5,6 +5,7 @@ import {
   computeCssColor,
   escapeHtml,
   formatLastSeen,
+  formatPathLength,
   formatUptime,
   isOnlineState,
   linkifyHtml,
@@ -65,6 +66,44 @@ describe("isOnlineState", () => {
   it("rejects offline and unknown states", () => {
     for (const value of ["offline", "off", "0", "unknown", "unavailable", "", null]) {
       expect(isOnlineState(value), String(value)).toBe(false);
+    }
+  });
+});
+
+describe("formatPathLength", () => {
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    vars?.["n"] === undefined ? key : `${key}:${vars["n"]}`;
+
+  it("names the two sentinel path lengths", () => {
+    expect(formatPathLength(-1, t)).toBe("card.path_flood");
+    expect(formatPathLength(0, t)).toBe("card.path_direct");
+  });
+
+  it("counts hops, choosing the singular form for one", () => {
+    expect(formatPathLength(1, t)).toBe("card.path_hop_one:1");
+    expect(formatPathLength(2, t)).toBe("card.path_hops_count:2");
+    expect(formatPathLength(64, t)).toBe("card.path_hops_count:64");
+  });
+
+  it("reads the same value from an attribute number or a sensor string", () => {
+    // Contact attributes arrive as native numbers, sensor states as strings.
+    expect(formatPathLength("-1", t)).toBe("card.path_flood");
+    expect(formatPathLength("0", t)).toBe("card.path_direct");
+    expect(formatPathLength("7", t)).toBe("card.path_hops_count:7");
+    expect(formatPathLength(" 3 ", t)).toBe("card.path_hops_count:3");
+  });
+
+  it("returns null for absent and unavailable values", () => {
+    for (const value of [null, undefined, "", "   ", "unknown", "unavailable", "none", "null"]) {
+      expect(formatPathLength(value, t), String(value)).toBeNull();
+    }
+  });
+
+  it("returns null rather than guessing at values it does not understand", () => {
+    // -1 is the only meaningful negative and hops are whole; anything else is
+    // data we cannot read, which must hide the chip instead of rendering junk.
+    for (const value of ["abc", Infinity, -Infinity, NaN, -2, -1.5, 2.5]) {
+      expect(formatPathLength(value, t), String(value)).toBeNull();
     }
   });
 });

@@ -113,6 +113,8 @@
     "neighbor_contacts": "Ontvangsten (48 uur)",
     "path_direct": "Direct",
     "path_flood": "Flood",
+    "path_hop_one": "1 hop",
+    "path_hops_count": "{n} hops",
     "details": "Details",
     "last_seen": "Laatst gezien {time}",
     "routing_path": "Route",

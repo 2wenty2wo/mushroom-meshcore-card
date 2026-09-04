@@ -9,15 +9,17 @@ import {
   isOnlineState,
   formatLastSeen,
   batteryColor,
+  formatPathLength,
   formatUptime,
   escapeHtml,
   mapLinkUrl,
 } from "./helpers.js";
 import { handleAction, HeaderActionController } from "./actions.js";
 import { STYLES } from "./styles.js";
-import { discoverHubs, discoverNodes } from "./discovery.js";
+import { discoverHubs, discoverNodes, isDeviceOnHub } from "./discovery.js";
 import {
   findScopedEntity,
+  isUnavailableState,
   resolveNodeConnectivity,
   type EntityLookupOptions,
 } from "./entity-resolver.js";
@@ -359,9 +361,30 @@ export class MeshcoreCard extends HTMLElement {
       .map(([entityId, info]) => `${entityId}:${info.disabled_by ?? "enabled"}`)
       .sort()
       .join("|");
+    // Home Assistant moves `last_updated` when only attributes change, never
+    // `last_changed`, so routing state read off the contact entity would not
+    // register here on its own. Fold it in for the target node's contact only:
+    // doing it for every contact would rebuild the fingerprint on each of the
+    // hundreds a busy mesh carries and defeat the render throttle.
+    // Resolved through `_contactEntity` rather than re-derived, so the entity
+    // watched here is by construction the one the renderer reads. Matching it
+    // by name here instead would go stale on exactly the renamed devices the
+    // pubkey lookup exists for.
+    const targetContactId =
+      target?.type === "node" && targetDevices[0]
+        ? this._contactEntity(target.id, targetDevices[0].id)
+        : null;
     const stateFp = Object.entries(hass.states)
       .filter(([id]) => id.includes("meshcore") || overrides.has(id))
-      .map(([id, s]) => `${id}=${s.state}@${s.last_changed}`)
+      .map(([id, s]) => {
+        const routing =
+          id === targetContactId
+            ? `#${String(s.attributes["out_path"] ?? "")}/${String(
+                s.attributes["out_path_len"] ?? ""
+              )}`
+            : "";
+        return `${id}=${s.state}@${s.last_changed}${routing}`;
+      })
       .join("|");
     const fp = `${stateFp}|device=${deviceFp}|online-registry=${onlineRegistryFp}`;
     if (fp === this._fp) return;
@@ -630,13 +653,86 @@ export class MeshcoreCard extends HTMLElement {
     return this._find(`sensor.meshcore_${pubkey}_${metric}`);
   }
 
-  /** Find the contact binary_sensor for a node (matched by adv_name attribute). */
-  private _contactEntity(nodeName: string): string | null {
+  /** The node's pubkey prefix, read back out of its own entity IDs.
+   *
+   *  Device names drift away from the advertised name in normal use: the
+   *  integration prefixes them ("MeshCore Repeater: …"), appends the pubkey
+   *  ("… (d47609)"), and a UI rename replaces the lot. The pubkey embedded in
+   *  the entity IDs survives all of that, so it is the identity worth matching
+   *  a contact on. */
+  private _nodePubkey(deviceId: string): string | null {
     if (!this._hass) return null;
+    for (const [entityId, info] of Object.entries(this._hass.entities)) {
+      if (info.device_id !== deviceId) continue;
+      // Integrations publish this token at several widths — four hex is the
+      // shortest seen. Narrowness is not enforced here: `_contactEntity`
+      // requires the match to be unique instead, which is what actually makes a
+      // short token safe.
+      const match = entityId.match(/^[a-z_]+\.meshcore_([0-9a-f]{4,})_/);
+      if (match) return match[1]!;
+    }
+    return null;
+  }
+
+  /** Find the contact binary_sensor for a node.
+   *
+   *  Matches on the pubkey shared by the node's entity IDs and the contact's
+   *  `pubkey_prefix`. Comparing the advertised name is kept as a fallback for
+   *  integrations that publish no pubkey, but it only lands when the device
+   *  name happens to equal `adv_name` — which it does not once the device has
+   *  been renamed or carries the integration's own prefix and suffix. */
+  private _contactEntity(nodeName: string, deviceId?: string): string | null {
+    if (!this._hass) return null;
+    const pubkey = deviceId ? this._nodePubkey(deviceId) : null;
+    // `out_path` and `out_path_len` are hub-relative: one radio visible through
+    // two hubs has a contact per hub carrying different routes under the same
+    // pubkey. Only this node's own hub can answer for it, so exclude contacts
+    // published by any other. `isDeviceOnHub` is the shared notion of hub
+    // membership — the channel card scopes its own contacts with it — and it
+    // covers the hub itself as well as anything filed beneath it, including the
+    // node device and a contact given a device of its own.
+    const hubDeviceId = deviceId
+      ? this._hass.devices[deviceId]?.via_device_id ?? null
+      : null;
+    let byName: string | null = null;
+    let nameMatches = 0;
+    let byPubkey: string | null = null;
+    let pubkeyMatches = 0;
     for (const [id, state] of Object.entries(this._hass.states)) {
       if (!/^binary_sensor\.meshcore_.*_contact$/.test(id)) continue;
-      if (String(state.attributes["adv_name"] ?? "") === nodeName) return id;
+      if (
+        hubDeviceId &&
+        !isDeviceOnHub(this._hass, this._hass.entities[id]?.device_id, hubDeviceId)
+      ) {
+        continue;
+      }
+      if (pubkey) {
+        const prefix = String(state.attributes["pubkey_prefix"] ?? "").toLowerCase();
+        // Either side may be the shorter form, so compare on the overlap.
+        if (
+          prefix.length >= 4 &&
+          (prefix.startsWith(pubkey) || pubkey.startsWith(prefix))
+        ) {
+          byPubkey = id;
+          pubkeyMatches++;
+        }
+      }
+      if (String(state.attributes["adv_name"] ?? "") === nodeName) {
+        if (byName === null) byName = id;
+        nameMatches++;
+      }
     }
+    // A short token can land on more than one contact — four hex has only 65k
+    // values, against the hundreds of contacts a busy mesh carries. Claiming
+    // the first would show another node's route as this one's, so an ambiguous
+    // pubkey resolves to nothing and leaves the name comparison to answer.
+    //
+    // The name comparison needs the same rule. A node with no `via_device_id`
+    // — which `discoverNodes` keeps — cannot be hub-scoped, so if two hubs both
+    // publish the same radio their contacts share pubkey *and* advertised name,
+    // and either answer would be a guess at which hub's route to show.
+    if (pubkeyMatches === 1) return byPubkey;
+    if (nameMatches === 1) return byName;
     return null;
   }
 
@@ -673,6 +769,39 @@ export class MeshcoreCard extends HTMLElement {
     }
     if (numeric && !Number.isFinite(Number(value))) return { id, value: null };
     return { id, value };
+  }
+
+  /** The attribute-sourced counterpart to `_reading`.
+   *
+   *  Several MeshCore metrics are published both as a per-node sensor and as an
+   *  attribute of the node's contact entity, and on most real hardware the
+   *  sensor state sits at `unknown` while the attribute stays live. */
+  private _attrReading(
+    id: string | null,
+    attr: string,
+    numeric = false
+  ): EntityReading {
+    const raw = this._attr(id, attr);
+    if (raw === null || raw === undefined) return { id, value: null };
+    const value = String(raw);
+    if (isUnavailableState(value)) return { id, value: null };
+    if (numeric && !Number.isFinite(Number(value))) return { id, value: null };
+    return { id, value };
+  }
+
+  /** The first reading that carries a usable value.
+   *
+   *  `id` follows the value, so more-info opens whichever entity actually
+   *  supplied the number rather than the one we looked at first. When neither
+   *  resolved a value the primary's id is kept, so an absent metric still
+   *  reports where it would have come from. */
+  private _preferReading(
+    primary: EntityReading,
+    fallback: EntityReading
+  ): EntityReading {
+    if (primary.value !== null) return primary;
+    if (fallback.value !== null) return fallback;
+    return primary;
   }
 
   private _firmwareVersion(deviceId: string): string | null {
@@ -1174,7 +1303,10 @@ export class MeshcoreCard extends HTMLElement {
       }
     }
     const locEntityId = this._config?.location_entity ?? null;
-    const contactId   = locEntityId ? null : this._contactEntity(name);
+    // Routing reads the contact entity even when a location override is set,
+    // so resolve it once and let only the location branch honour the override.
+    const nodeContactId = this._contactEntity(name, deviceId);
+    const contactId   = locEntityId ? null : nodeContactId;
     const latId       = locEntityId ? null : p("latitude");
     const lonId       = locEntityId ? null : p("longitude");
 
@@ -1245,6 +1377,18 @@ export class MeshcoreCard extends HTMLElement {
     }
     const uptimeReading = this._reading(uptimeId, true);
     uptimeReading.value = formatUptime(uptimeReading.value);
+
+    // The per-node `out_path_len` sensor reports `unknown` on most real nodes,
+    // while the same value stays live on the contact entity's attributes.
+    const routeReading = this._preferReading(
+      this._reading(routeId),
+      this._attrReading(nodeContactId, "out_path")
+    );
+    const pathLengthReading = this._preferReading(
+      this._reading(pathId, true),
+      this._attrReading(nodeContactId, "out_path_len", true)
+    );
+    pathLengthReading.value = formatPathLength(pathLengthReading.value, t);
     const batteryVoltage = this._reading(battVId, true);
     if (batteryVoltage.value !== null && Number(batteryVoltage.value) < 0.001) {
       batteryVoltage.value = null;
@@ -1292,8 +1436,8 @@ export class MeshcoreCard extends HTMLElement {
       humidity: this._reading(humidId, true),
       illuminance: this._reading(illumId, true),
       pressure: this._reading(pressId, true),
-      route: this._reading(routeId),
-      pathLength: this._reading(pathId, true),
+      route: routeReading,
+      pathLength: pathLengthReading,
       uptime: uptimeReading,
       relayed: this._reading(relayedId, true),
       canceled: this._reading(canceledId, true),
@@ -1324,13 +1468,34 @@ export class MeshcoreCard extends HTMLElement {
         : t("card.last_seen", { time: vm.lastSeen })
       : "";
     const secondary = `${stateLabel}${lastSeen ? ` · ${lastSeen}` : ""}`;
+    // The secondary line is a single ellipsised row already carrying last-seen,
+    // so routing state rides in the header's trailing slot instead. `_chip`
+    // yields "" without a value, which is what hides the badge on a node whose
+    // path we could not read.
+    //
+    // Hiding `path_length` in the chip layout means "do not show me this
+    // reading", so it has to silence the badge too — otherwise the same value
+    // reappears in a place the layout cannot reach.
+    const hiddenChips = effectiveChipLayout(
+      { type: "node", id: vm.node.name },
+      this._config!
+    ).hidden;
+    const routingBadge = hiddenChips.includes("path_length")
+      ? ""
+      : this._chip(
+          vm.pathLength.id,
+          "",
+          vm.pathLength.value,
+          "routing-badge",
+          [t("card.path_length"), vm.pathLength.value ?? ""].join(" ")
+        );
     return this._renderDeviceHeader(
       vm.displayName,
       secondary,
       vm.icon,
       vm.connectivity === "online",
       vm.primaryEntityId,
-      "",
+      routingBadge,
       vm.connectivity === "unknown" ? "unknown" : "offline",
       vm.connectivity === "unknown" ? "mdi:help" : undefined
     );

@@ -113,6 +113,8 @@
     "neighbor_contacts": "Receptions (48h)",
     "path_direct": "Direct",
     "path_flood": "Flood",
+    "path_hop_one": "1 hop",
+    "path_hops_count": "{n} hops",
     "details": "Details",
     "last_seen": "Last seen {time}",
     "routing_path": "Route",

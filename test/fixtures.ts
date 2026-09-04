@@ -49,6 +49,15 @@ export const V29_REPEATER_METRICS = {
 } as const;
 
 export const CHANNEL_ENTITY = "binary_sensor.meshcore_edfaf6_ch_0_messages";
+export const NODE_CONTACT_ENTITY =
+  "binary_sensor.meshcore_spring_farm_a1b2c3d4e5f6_contact";
+/** The contact's advertised pubkey, whose first 10 hex are what
+ *  `NODE_ONLINE_ENTITY` carries — the overlap a contact is matched on. */
+export const NODE_PUBKEY_PREFIX = "a1b2c3d4e5f6";
+/** The device name as meshcore-ha actually publishes it: an integration prefix
+ *  and a pubkey suffix around the advertised name, so it never equals
+ *  `adv_name`. */
+export const RENAMED_NODE_NAME = `MeshCore Repeater: ${NODE_NAME} (a1b2c3)`;
 
 export function state(
   value: unknown,
@@ -168,6 +177,87 @@ export function createV29RepeaterHass(): HomeAssistant {
     entry.entity_id = entityId;
     hass.entities[entityId] = entry;
   }
+  return hass;
+}
+
+/** createHass plus the node's contact binary_sensor, carrying the routing
+ *  attributes that the per-node `out_path_len` sensor reports as `unknown` on
+ *  most real hardware.
+ *
+ *  Deliberately kept separate from `createHass`: every other fixture pairs the
+ *  Spring Farm node with no matching contact, which is why the routing fallback
+ *  stays dormant across the rest of the suite. Adding a contact to `createHass`
+ *  would quietly change `path_length` and `route` chips everywhere.
+ *
+ *  Two traps if you extend the defaults: `adv_lat`/`adv_lon` would introduce a
+ *  Location section and change `locationEntityId`, and merely having a matching
+ *  contact promotes it ahead of `uptimeId` in `primaryEntityId`, so tests built
+ *  on this fixture must not assert header more-info. */
+export function createRoutingContactHass(
+  attributes: Record<string, unknown> = { out_path: "", out_path_len: -1 },
+  options: { sensors?: boolean } = {}
+): HomeAssistant {
+  const hass = options.sensors === false ? createHass() : createV29RepeaterHass();
+  const contactState = state("fresh", {
+    adv_name: NODE_NAME,
+    pubkey_prefix: NODE_PUBKEY_PREFIX,
+    ...attributes,
+  });
+  contactState.entity_id = NODE_CONTACT_ENTITY;
+  hass.states[NODE_CONTACT_ENTITY] = contactState;
+  const contactEntry = registryEntry(HUB_DEVICE_ID);
+  contactEntry.entity_id = NODE_CONTACT_ENTITY;
+  hass.entities[NODE_CONTACT_ENTITY] = contactEntry;
+  return hass;
+}
+
+/** The node as meshcore-ha really presents it: the device name carries the
+ *  integration's prefix and a pubkey suffix, so it never equals the contact's
+ *  `adv_name`. Matching a contact by name cannot work here — the pubkey shared
+ *  between the node's entity IDs and the contact's `pubkey_prefix` is what has
+ *  to carry it. Target this hass with `RENAMED_NODE_NAME`. */
+export function createRenamedNodeHass(
+  attributes: Record<string, unknown> = { out_path: "", out_path_len: -1 }
+): HomeAssistant {
+  const hass = createRoutingContactHass(attributes);
+  hass.devices[NODE_DEVICE_ID].name_by_user = RENAMED_NODE_NAME;
+  // The hex-bearing entity ID is where the node's pubkey is read from; the
+  // other fixture entities use a non-hex `spring` prefix.
+  const onlineState = state("on");
+  onlineState.entity_id = NODE_ONLINE_ENTITY;
+  hass.states[NODE_ONLINE_ENTITY] = onlineState;
+  const onlineEntry = registryEntry(NODE_DEVICE_ID);
+  onlineEntry.entity_id = NODE_ONLINE_ENTITY;
+  hass.entities[NODE_ONLINE_ENTITY] = onlineEntry;
+  return hass;
+}
+
+export const OTHER_HUB_DEVICE_ID = "other-hub-device";
+export const OTHER_HUB_CONTACT_ENTITY =
+  "binary_sensor.meshcore_otherhub_spring_farm_a1b2c3d4e5f6_contact";
+
+/** The same radio seen through a second hub. Both hubs publish a contact for
+ *  the one pubkey, but `out_path` and `out_path_len` describe the route from
+ *  *that* hub, so the values differ and only the node's own hub can answer for
+ *  it. The rival is inserted ahead of the real contact, so a scan that ignores
+ *  hub scope reaches the wrong one first. */
+export function createMultiHubContactHass(): HomeAssistant {
+  const hass = createRenamedNodeHass({ out_path: "", out_path_len: -1 });
+  const rival = state("fresh", {
+    adv_name: NODE_NAME,
+    pubkey_prefix: NODE_PUBKEY_PREFIX,
+    out_path: "aabb",
+    out_path_len: 3,
+  });
+  rival.entity_id = OTHER_HUB_CONTACT_ENTITY;
+  const rivalEntry = registryEntry(OTHER_HUB_DEVICE_ID);
+  rivalEntry.entity_id = OTHER_HUB_CONTACT_ENTITY;
+  hass.entities[OTHER_HUB_CONTACT_ENTITY] = rivalEntry;
+  hass.devices[OTHER_HUB_DEVICE_ID] = device(OTHER_HUB_DEVICE_ID, {
+    name: "Other Hub",
+    model: "Hub",
+  });
+  hass.states = { [OTHER_HUB_CONTACT_ENTITY]: rival, ...hass.states };
   return hass;
 }
 

@@ -113,6 +113,8 @@
     "neighbor_contacts": "Réceptions (48 h)",
     "path_direct": "Direct",
     "path_flood": "Flood",
+    "path_hop_one": "1 saut",
+    "path_hops_count": "{n} sauts",
     "details": "Détails",
     "last_seen": "Vu pour la dernière fois {time}",
     "routing_path": "Itinéraire",
